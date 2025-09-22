@@ -47,3 +47,14 @@
     }
   ]
 }
+
+{
+  "crons": [
+    {
+      "path": "/api/cron/expiring-subscriptions",
+      "schedule": "0 0 * * *" // Runs every day at midnight UTC
+    }
+  ],
+  // ... other configs (build, headers, rewrites)
+}
+
