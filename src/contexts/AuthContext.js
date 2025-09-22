@@ -3,9 +3,8 @@ import {
   onAuthStateChanged, 
   signOut as firebaseSignOut,
   getIdToken,
-  getIdTokenResult
 } from 'firebase/auth';
-import { auth } from '../firebase/firebase';
+import { auth } from '../firebase/firebase'; // Keep Firebase auth
 import { CircularProgress, Box } from '@mui/material';
 import PropTypes from 'prop-types';
 
@@ -19,20 +18,43 @@ export function useAuth() {
   return context;
 }
 
+// Function to fetch user claims from your Vercel API
+const fetchUserClaims = async (firebaseToken) => {
+  if (!firebaseToken) return null;
+  try {
+    const response = await fetch('/api/auth/claims', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${firebaseToken}`
+      },
+      // You can send additional data if needed, like the UID
+      body: JSON.stringify({ uid: auth.currentUser.uid })
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch user claims');
+    }
+    const data = await response.json();
+    return data.claims;
+  } catch (error) {
+    console.error('Error fetching claims from API:', error);
+    return null;
+  }
+};
+
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [claims, setClaims] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(null);
 
-  // Refresh user claims when needed
   const refreshClaims = async () => {
     if (!currentUser) return;
     try {
-      await currentUser.getIdToken(true); // Force token refresh
-      const tokenResult = await currentUser.getIdTokenResult();
-      setClaims(tokenResult.claims);
-      setToken(tokenResult.token);
+      const firebaseToken = await currentUser.getIdToken(true); // Force token refresh
+      const fetchedClaims = await fetchUserClaims(firebaseToken);
+      setClaims(fetchedClaims);
+      setToken(firebaseToken);
     } catch (error) {
       console.error('Error refreshing claims:', error);
     }
@@ -40,12 +62,14 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setLoading(true);
       try {
         if (user) {
-          const tokenResult = await user.getIdTokenResult();
+          const firebaseToken = await user.getIdToken();
+          const fetchedClaims = await fetchUserClaims(firebaseToken);
           setCurrentUser(user);
-          setClaims(tokenResult.claims);
-          setToken(tokenResult.token);
+          setClaims(fetchedClaims);
+          setToken(firebaseToken);
         } else {
           setCurrentUser(null);
           setClaims(null);
@@ -53,9 +77,6 @@ export function AuthProvider({ children }) {
         }
       } catch (error) {
         console.error('Auth state change error:', error);
-        setCurrentUser(null);
-        setClaims(null);
-        setToken(null);
       } finally {
         setLoading(false);
       }
@@ -80,10 +101,10 @@ export function AuthProvider({ children }) {
     loading,
     signOut,
     refreshClaims,
-    isAdmin: claims?.admin === true,
-    isAssessor: claims?.assessor === true,
-    isCandidate: claims?.candidate === true,
-    getOrgRole: (orgId) => claims?.orgRoles?.[orgId] || null,
+    isAdmin: claims?.role === 'admin',
+    isAssessor: claims?.role === 'assessor',
+    isCandidate: claims?.role === 'candidate',
+    getOrgRole: (orgId) => claims?.orgs?.[orgId] || null,
     hasPermission: (permission) => claims?.permissions?.includes(permission) || false
   }), [currentUser, claims, token, loading]);
 
