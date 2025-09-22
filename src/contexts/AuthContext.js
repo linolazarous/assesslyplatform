@@ -1,12 +1,7 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { 
-  onAuthStateChanged, 
-  signOut as firebaseSignOut,
-  getIdToken,
-} from 'firebase/auth';
-import { auth } from '../firebase/firebase'; // Keep Firebase auth
+import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
 import { CircularProgress, Box } from '@mui/material';
 import PropTypes from 'prop-types';
+import jwt_decode from 'jwt-decode';
 
 const AuthContext = createContext();
 
@@ -18,81 +13,59 @@ export function useAuth() {
   return context;
 }
 
-// Function to fetch user claims from your Vercel API
-const fetchUserClaims = async (firebaseToken) => {
-  if (!firebaseToken) return null;
-  try {
-    const response = await fetch('/api/auth/claims', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${firebaseToken}`
-      },
-      // You can send additional data if needed, like the UID
-      body: JSON.stringify({ uid: auth.currentUser.uid })
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch user claims');
-    }
-    const data = await response.json();
-    return data.claims;
-  } catch (error) {
-    console.error('Error fetching claims from API:', error);
-    return null;
-  }
-};
-
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
-  const [claims, setClaims] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [claims, setClaims] = useState(null);
   const [token, setToken] = useState(null);
 
-  const refreshClaims = async () => {
-    if (!currentUser) return;
-    try {
-      const firebaseToken = await currentUser.getIdToken(true); // Force token refresh
-      const fetchedClaims = await fetchUserClaims(firebaseToken);
-      setClaims(fetchedClaims);
-      setToken(firebaseToken);
-    } catch (error) {
-      console.error('Error refreshing claims:', error);
+  // Function to decode and set user data from a JWT
+  const decodeAndSetUser = useCallback((jwtToken) => {
+    if (!jwtToken) {
+      setCurrentUser(null);
+      setClaims(null);
+      setToken(null);
+      return;
     }
-  };
+    try {
+      const decoded = jwt_decode(jwtToken);
+      const { email, role, orgs, permissions, exp } = decoded;
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setLoading(true);
-      try {
-        if (user) {
-          const firebaseToken = await user.getIdToken();
-          const fetchedClaims = await fetchUserClaims(firebaseToken);
-          setCurrentUser(user);
-          setClaims(fetchedClaims);
-          setToken(firebaseToken);
-        } else {
-          setCurrentUser(null);
-          setClaims(null);
-          setToken(null);
-        }
-      } catch (error) {
-        console.error('Auth state change error:', error);
-      } finally {
-        setLoading(false);
+      if (Date.now() >= exp * 1000) {
+        // Token is expired
+        console.warn('Token has expired');
+        localStorage.removeItem('token');
+        setCurrentUser(null);
+        setClaims(null);
+        setToken(null);
+        return;
       }
-    });
-
-    return unsubscribe;
+      
+      setCurrentUser({ email, role, id: decoded.userId });
+      setClaims({ role, orgs, permissions });
+      setToken(jwtToken);
+      localStorage.setItem('token', jwtToken);
+    } catch (error) {
+      console.error('Failed to decode JWT:', error);
+      localStorage.removeItem('token');
+      setCurrentUser(null);
+      setClaims(null);
+      setToken(null);
+    }
   }, []);
 
-  const signOut = async () => {
-    try {
-      await firebaseSignOut(auth);
-    } catch (error) {
-      console.error('Sign out error:', error);
-      throw error;
-    }
-  };
+  useEffect(() => {
+    const storedToken = localStorage.getItem('token');
+    decodeAndSetUser(storedToken);
+    setLoading(false);
+  }, [decodeAndSetUser]);
+
+  const signOut = useCallback(() => {
+    localStorage.removeItem('token');
+    setCurrentUser(null);
+    setClaims(null);
+    setToken(null);
+  }, []);
 
   const value = useMemo(() => ({
     currentUser,
@@ -100,13 +73,16 @@ export function AuthProvider({ children }) {
     token,
     loading,
     signOut,
-    refreshClaims,
+    // Methods to be implemented in components
+    login: async (email, password) => {},
+    register: async (email, password) => {},
+    resetPassword: async (email) => {},
     isAdmin: claims?.role === 'admin',
     isAssessor: claims?.role === 'assessor',
     isCandidate: claims?.role === 'candidate',
     getOrgRole: (orgId) => claims?.orgs?.[orgId] || null,
     hasPermission: (permission) => claims?.permissions?.includes(permission) || false
-  }), [currentUser, claims, token, loading]);
+  }), [currentUser, claims, token, loading, signOut]);
 
   if (loading) {
     return (
