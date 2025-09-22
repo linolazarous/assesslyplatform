@@ -1,11 +1,5 @@
 import React, { useState } from 'react';
 import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithPopup 
-} from 'firebase/auth';
-import { 
   Button, 
   TextField, 
   Paper, 
@@ -22,13 +16,11 @@ import {
   Visibility, 
   VisibilityOff,
   Google,
-  AccountCircle,
-  HowToReg
+  AccountCircle
 } from '@mui/icons-material';
-import { auth, functions, httpsCallable } from '../firebase';
 import { useSnackbar } from 'notistack';
 import PropTypes from 'prop-types';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 export default function Auth({ disableSignup = false }) {
   const [email, setEmail] = useState('');
@@ -38,6 +30,7 @@ export default function Auth({ disableSignup = false }) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { enqueueSnackbar } = useSnackbar();
+  const navigate = useNavigate();
 
   const validateForm = () => {
     if (!email || !email.includes('@')) {
@@ -55,23 +48,35 @@ export default function Auth({ disableSignup = false }) {
     if (!validateForm()) return;
 
     setLoading(true);
+    const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+    
     try {
-      if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
-        enqueueSnackbar('Login successful', { variant: 'success' });
-      } else {
-        const { user } = await createUserWithEmailAndPassword(auth, email, password);
-        const setRoleFn = httpsCallable(functions, 'setRole');
-        await setRoleFn({ uid: user.uid, role });
-        enqueueSnackbar('Account created successfully', { variant: 'success' });
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, role }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Authentication failed');
       }
+
+      // For login, store the JWT token
+      if (isLogin) {
+        localStorage.setItem('token', data.token);
+        enqueueSnackbar('Login successful', { variant: 'success' });
+        // Navigate to the dashboard or a protected route
+        navigate('/'); 
+      } else {
+        enqueueSnackbar('Account created successfully. Please sign in.', { variant: 'success' });
+        setIsLogin(true); // Switch to login view
+      }
+
     } catch (err) {
       console.error('Auth error:', err);
-      let message = err.message;
-      if (err.code === 'auth/email-already-in-use') {
-        message = 'Email already in use. Please login instead.';
-      }
-      enqueueSnackbar(message, { 
+      enqueueSnackbar(err.message, { 
         variant: 'error',
         autoHideDuration: 5000
       });
@@ -80,19 +85,11 @@ export default function Auth({ disableSignup = false }) {
     }
   };
 
-  const googleLogin = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithPopup(auth, provider);
-      enqueueSnackbar('Google login successful', { variant: 'success' });
-    } catch (err) {
-      console.error('Google auth error:', err);
-      enqueueSnackbar(`Google login failed: ${err.message}`, { 
-        variant: 'error',
-        autoHideDuration: 5000
-      });
-    }
+  // Google Login is not handled by the Vercel API, as this is a custom JWT-based
+  // authentication flow. Google authentication needs its own backend handler, 
+  // which you would build separately. For now, it is removed to prevent errors.
+  const googleLogin = () => {
+    enqueueSnackbar('Google login is not yet implemented for this platform.', { variant: 'info' });
   };
 
   return (
