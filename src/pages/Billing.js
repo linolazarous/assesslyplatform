@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -11,24 +11,79 @@ import {
   Chip,
   Grid
 } from '@mui/material';
-import { doc } from 'firebase/firestore';
-import { useDocument } from 'react-firebase-hooks/firestore';
 import { useSnackbar } from 'notistack';
 import PropTypes from 'prop-types';
-import { db } from '../../firebase/firebase';
-import { redirectToCheckout } from '../../services/subscriptions';
 import BillingHistory from '../../components/billing/BillingHistory';
 import PaymentMethods from '../../components/billing/PaymentMethods';
 
 export default function Billing({ orgId }) {
-  const [orgDoc, orgLoading, orgError] = useDocument(doc(db, `organizations/${orgId}`));
-  const [loading, setLoading] = useState(false);
+  const [orgData, setOrgData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const { enqueueSnackbar } = useSnackbar();
+
+  // New function to fetch organization data from your Vercel API
+  const fetchOrgData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found');
+
+      const response = await fetch(`/api/organizations/${orgId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to fetch organization data');
+      }
+
+      const data = await response.json();
+      setOrgData(data);
+    } catch (err) {
+      console.error('Fetch organization data error:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrgData();
+  }, [orgId]);
 
   const handleUpgrade = async (priceId) => {
     try {
       setLoading(true);
-      await redirectToCheckout(orgId, priceId);
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch('/api/billing/checkout-session', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          orgId,
+          priceId,
+          successUrl: `${window.location.origin}/dashboard/billing?success=true`,
+          cancelUrl: `${window.location.origin}/dashboard/billing?canceled=true`
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create checkout session');
+      }
+
+      // Redirect to the Stripe checkout page
+      window.location.href = data.url;
+
     } catch (error) {
       console.error('Checkout error:', error);
       enqueueSnackbar(error.message, { 
@@ -41,15 +96,15 @@ export default function Billing({ orgId }) {
     }
   };
 
-  if (orgError) {
+  if (error) {
     return (
       <Alert severity="error" sx={{ m: 2 }}>
-        Error loading organization data: {orgError.message}
+        Error loading organization data: {error}
       </Alert>
     );
   }
 
-  if (orgLoading) {
+  if (loading || !orgData) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
         <CircularProgress />
@@ -57,9 +112,8 @@ export default function Billing({ orgId }) {
     );
   }
 
-  const org = orgDoc?.data();
-  const isActive = org?.subscriptionStatus === 'active';
-  const subscriptionEndDate = org?.subscriptionEnd?.toDate();
+  const isActive = orgData.subscription.status === 'active';
+  const subscriptionEndDate = orgData.subscription.currentPeriodEnd ? new Date(orgData.subscription.currentPeriodEnd) : null;
 
   return (
     <Box sx={{ p: 3, maxWidth: '100%', overflowX: 'hidden' }}>
@@ -82,10 +136,10 @@ export default function Billing({ orgId }) {
                 mb: 2 
               }}>
                 <Typography variant="body1" component="span">
-                  {org?.planName || 'Free Tier'}
+                  {orgData.subscription.plan || 'Free Tier'}
                 </Typography>
                 <Chip 
-                  label={org?.subscriptionStatus || 'inactive'} 
+                  label={orgData.subscription.status || 'inactive'} 
                   color={isActive ? 'success' : 'default'}
                   variant="outlined"
                   size="small"
