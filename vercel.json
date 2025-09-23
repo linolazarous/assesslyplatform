@@ -4,6 +4,12 @@
       "VITE_STRIPE_PUBLIC_KEY": "@vercel-stripe-public-key"
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/expiring-subscriptions",
+      "schedule": "0 0 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
@@ -47,14 +53,3 @@
     }
   ]
 }
-
-{
-  "crons": [
-    {
-      "path": "/api/cron/expiring-subscriptions",
-      "schedule": "0 0 * * *" // Runs every day at midnight UTC
-    }
-  ],
-  // ... other configs (build, headers, rewrites)
-}
-
