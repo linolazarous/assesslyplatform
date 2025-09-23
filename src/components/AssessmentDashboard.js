@@ -20,17 +20,6 @@ import {
   HourglassEmpty,
   DoneAll
 } from '@mui/icons-material';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot,
-  doc,
-  updateDoc,
-  serverTimestamp,
-  orderBy
-} from 'firebase/firestore';
-import { db, auth } from '../firebase';
 import { useSnackbar } from 'notistack';
 import PropTypes from 'prop-types';
 
@@ -48,58 +37,56 @@ export default function AssessmentDashboard() {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const { enqueueSnackbar } = useSnackbar();
 
-  useEffect(() => {
+  // New function to fetch assessments from the Vercel API
+  const fetchAssessments = async () => {
     setLoading(true);
-    let q;
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found');
 
-    if (auth.currentUser?.claims?.isAdmin) {
-      q = query(
-        collection(db, 'assessments'),
-        orderBy('createdAt', 'desc')
-      );
-    } else if (auth.currentUser?.claims?.isAssessor) {
-      q = query(
-        collection(db, 'assessments'),
-        where('status', '==', activeTab),
-        orderBy('createdAt', 'desc')
-      );
-    } else {
-      q = query(
-        collection(db, 'assessments'),
-        where('assignedCandidates', 'array-contains', auth.currentUser?.uid),
-        where('status', '==', activeTab),
-        orderBy('createdAt', 'desc')
-      );
-    }
+      const response = await fetch(`/api/assessments?status=${activeTab}`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
 
-    const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        const data = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate()
-        }));
-        setAssessments(data);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Error fetching assessments:', error);
-        enqueueSnackbar('Failed to load assessments', { variant: 'error' });
-        setLoading(false);
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch assessments');
       }
-    );
 
-    return () => unsubscribe();
+      setAssessments(data.assessments);
+    } catch (error) {
+      console.error('Error fetching assessments:', error);
+      enqueueSnackbar('Failed to load assessments', { variant: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAssessments();
   }, [activeTab, enqueueSnackbar]);
 
   const handleStartAssessment = async (assessmentId) => {
     try {
-      await updateDoc(doc(db, 'assessments', assessmentId), {
-        status: 'in_progress',
-        startedAt: serverTimestamp(),
-        assessorId: auth.currentUser.uid
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found');
+
+      const response = await fetch(`/api/assessments/${assessmentId}/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
       });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to start assessment');
+      }
+
       enqueueSnackbar('Assessment started', { variant: 'success' });
+      fetchAssessments(); // Refresh the list
     } catch (err) {
       console.error('Error starting assessment:', err);
       enqueueSnackbar(`Failed to start assessment: ${err.message}`, { 
@@ -182,11 +169,11 @@ export default function AssessmentDashboard() {
                     secondary={
                       <>
                         <Typography variant="body2" component="span" display="block">
-                          Created: {assessment.createdAt?.toLocaleString()}
+                          Created: {assessment.createdAt}
                         </Typography>
                         {assessment.dueDate && (
                           <Typography variant="body2" component="span" display="block">
-                            Due: {assessment.dueDate.toLocaleString()}
+                            Due: {new Date(assessment.dueDate).toLocaleString()}
                           </Typography>
                         )}
                       </>
@@ -213,3 +200,7 @@ export default function AssessmentDashboard() {
     </Paper>
   );
 }
+
+AssessmentDashboard.propTypes = {
+  // Add prop types if needed based on parent components
+};
