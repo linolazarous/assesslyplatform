@@ -1,7 +1,7 @@
 {
   "build": {
     "env": {
-      "VITE_STRIPE_PUBLIC_KEY": "@vercel-stripe-public-key"
+      "VITE_STRIPE_PUBLIC_KEY": "@VERCEL_STRIPE_PUBLIC_KEY"
     }
   },
   "crons": [
