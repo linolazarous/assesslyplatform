@@ -13,8 +13,6 @@ import {
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useSnackbar } from 'notistack';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../../firebase/firebase';
 import PropTypes from 'prop-types';
 
 const PLANS = [
@@ -70,13 +68,27 @@ export default function PricingCards({ orgId, currentPlan }) {
 
     setLoadingPlan(planId);
     try {
-      const createCheckout = httpsCallable(functions, 'ext-firestore-stripe-payments-createCheckoutSession');
-      const { data } = await createCheckout({ 
-        orgId,
-        priceId,
-        successUrl: `${window.location.origin}/organization/${orgId}/billing?success=true`,
-        cancelUrl: `${window.location.origin}/organization/${orgId}/billing`
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found');
+
+      const response = await fetch('/api/billing/checkout-session', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          orgId,
+          priceId,
+          successUrl: `${window.location.origin}/organization/${orgId}/billing?success=true`,
+          cancelUrl: `${window.location.origin}/organization/${orgId}/billing`
+        })
       });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to initiate subscription');
+      }
       
       window.location.assign(data.url);
     } catch (error) {
