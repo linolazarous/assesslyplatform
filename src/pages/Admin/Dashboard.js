@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Box, 
   Typography, 
@@ -15,16 +15,6 @@ import {
   Business as BusinessIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
-import { 
-  collection, 
-  query, 
-  where, 
-  getCountFromServer,
-  orderBy,
-  limit
-} from 'firebase/firestore';
-import { useCollection } from 'react-firebase-hooks/firestore';
-import { db } from '../../firebase/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSnackbar } from 'notistack';
 import PropTypes from 'prop-types';
@@ -35,82 +25,63 @@ import IconButton from '@mui/material/IconButton';
 export default function AdminDashboard() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { currentUser, claims } = useAuth();
+  const { claims } = useAuth();
   const { enqueueSnackbar } = useSnackbar();
-  const [loadingStats, setLoadingStats] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     assessments: 0,
     activeUsers: 0,
     organizations: 0,
     completions: 0
   });
+  const [assessments, setAssessments] = useState([]);
 
-  // Get all assessments
-  const [assessments, assessmentsLoading, assessmentsError] = useCollection(
-    query(
-      collection(db, 'assessments'),
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    ),
-    { snapshotListenOptions: { includeMetadataChanges: true } }
-  );
+  const token = localStorage.getItem('token');
 
-  // Load summary statistics
-  const loadStats = async () => {
+  const fetchDashboardData = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoadingStats(true);
-      
-      const [assessmentsCount, usersCount, orgsCount, completionsCount] = await Promise.all([
-        getCountFromServer(collection(db, 'assessments')),
-        getCountFromServer(query(collection(db, 'users'), where('active', '==', true))),
-        getCountFromServer(collection(db, 'organizations')),
-        getCountFromServer(collection(db, 'assessmentResponses'))
-      ]);
+      if (!token) throw new Error('Authentication token not found');
 
-      setStats({
-        assessments: assessmentsCount.data().count,
-        activeUsers: usersCount.data().count,
-        organizations: orgsCount.data().count,
-        completions: completionsCount.data().count
+      // Fetch summary statistics
+      const statsResponse = await fetch('/api/admin/stats', {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
+      const statsData = await statsResponse.json();
+      if (!statsResponse.ok) throw new Error(statsData.message);
+      setStats(statsData);
+
+      // Fetch recent assessments
+      const assessmentsResponse = await fetch('/api/admin/assessments', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const assessmentsData = await assessmentsResponse.json();
+      if (!assessmentsResponse.ok) throw new Error(assessmentsData.message);
+      setAssessments(assessmentsData);
+
     } catch (error) {
-      console.error('Error loading stats:', error);
-      enqueueSnackbar('Failed to load dashboard statistics', { 
+      console.error('Error fetching dashboard data:', error);
+      enqueueSnackbar('Failed to load dashboard data', { 
         variant: 'error',
         autoHideDuration: 3000
       });
     } finally {
-      setLoadingStats(false);
+      setLoading(false);
     }
-  };
+  }, [token, enqueueSnackbar]);
 
   useEffect(() => {
-    loadStats();
-  }, []);
+    if (claims?.role === 'admin') {
+      fetchDashboardData();
+    }
+  }, [claims, fetchDashboardData]);
 
-  if (!claims?.admin) {
+  if (!claims?.role === 'admin') {
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
         <Typography variant="h6" color="error">
           You don't have permission to access this page
         </Typography>
-      </Box>
-    );
-  }
-
-  if (assessmentsError) {
-    return (
-      <Box sx={{ p: 3, textAlign: 'center' }}>
-        <Typography variant="h6" color="error">
-          Error loading assessments: {assessmentsError.message}
-        </Typography>
-        <Button 
-          variant="outlined" 
-          onClick={loadStats}
-          sx={{ mt: 2 }}
-        >
-          Retry
-        </Button>
       </Box>
     );
   }
@@ -127,15 +98,15 @@ export default function AdminDashboard() {
           Admin Dashboard
         </Typography>
         <IconButton 
-          onClick={loadStats}
+          onClick={fetchDashboardData}
           aria-label="refresh"
-          disabled={loadingStats}
+          disabled={loading}
         >
           <RefreshIcon />
         </IconButton>
       </Box>
 
-      {loadingStats && <LinearProgress sx={{ mb: 3 }} />}
+      {loading && <LinearProgress sx={{ mb: 3 }} />}
 
       <Grid container spacing={isMobile ? 1 : 3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
@@ -143,7 +114,7 @@ export default function AdminDashboard() {
             title="Total Assessments"
             value={stats.assessments}
             icon={<AssessmentIcon color="primary" />}
-            loading={loadingStats}
+            loading={loading}
             trend="up"
           />
         </Grid>
@@ -152,7 +123,7 @@ export default function AdminDashboard() {
             title="Active Users"
             value={stats.activeUsers}
             icon={<PeopleIcon color="secondary" />}
-            loading={loadingStats}
+            loading={loading}
             trend="up"
           />
         </Grid>
@@ -161,7 +132,7 @@ export default function AdminDashboard() {
             title="Organizations"
             value={stats.organizations}
             icon={<BusinessIcon color="success" />}
-            loading={loadingStats}
+            loading={loading}
             trend="neutral"
           />
         </Grid>
@@ -170,7 +141,7 @@ export default function AdminDashboard() {
             title="Completions"
             value={stats.completions}
             icon={<AssessmentIcon color="info" />}
-            loading={loadingStats}
+            loading={loading}
             trend="up"
           />
         </Grid>
@@ -186,7 +157,7 @@ export default function AdminDashboard() {
             <Typography variant="h6" gutterBottom>
               Recent Assessments
             </Typography>
-            {assessmentsLoading ? (
+            {loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
                 <CircularProgress />
               </Box>
@@ -214,7 +185,7 @@ export default function AdminDashboard() {
         <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
           <Button 
             variant="contained"
-            onClick={loadStats}
+            onClick={fetchDashboardData}
             startIcon={<RefreshIcon />}
           >
             Refresh Data
@@ -226,6 +197,7 @@ export default function AdminDashboard() {
 }
 
 function StatCard({ title, value, icon, loading, trend }) {
+  // ... (StatCard component remains unchanged as it has no Firebase dependencies)
   const theme = useTheme();
   const trendColors = {
     up: theme.palette.success.main,
