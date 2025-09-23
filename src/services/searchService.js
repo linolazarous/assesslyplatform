@@ -1,14 +1,6 @@
-import { db } from '../firebase/firebase';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  or,
-  orderBy
-} from 'firebase/firestore';
+// src/services/searchService.js
 
-// Debounce function to limit API calls
+// Debounce function to limit API calls (remains the same)
 const debounce = (func, delay) => {
   let timeoutId;
   return (...args) => {
@@ -18,83 +10,43 @@ const debounce = (func, delay) => {
 };
 
 /**
- * Search assessments in Firestore with enhanced query
+ * Searches for assessments or questions via Vercel API.
  * @param {string} searchTerm - The term to search for
- * @param {string} userId - Current user's ID for organization filtering
+ * @param {string} userId - Current user's ID
+ * @param {string} [type='assessments'] - Type of search ('assessments' or 'questions')
  * @param {number} [limitCount=20] - Maximum number of results to return
- * @returns {Promise<Array>} Array of matching assessments
+ * @returns {Promise<Array>} Array of matching results
  */
-const searchAssessments = async (searchTerm, userId, limitCount = 20) => {
+const performSearch = async (searchTerm, userId, type = 'assessments', limitCount = 20) => {
   try {
     if (!searchTerm?.trim()) return [];
-    
-    const assessmentsRef = collection(db, 'assessments');
-    const searchTermLower = searchTerm.toLowerCase();
-    const searchTermEnd = searchTermLower + '\uf8ff';
-    
-    const q = query(
-      assessmentsRef,
-      where('organizationId', '==', userId),
-      or(
-        where('titleLower', '>=', searchTermLower),
-        where('titleLower', '<=', searchTermEnd),
-        where('descriptionLower', '>=', searchTermLower),
-        where('descriptionLower', '<=', searchTermEnd),
-        where('tags', 'array-contains', searchTermLower)
-      ),
-      orderBy('titleLower'),
-      limit(limitCount)
-    );
 
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      // Convert Firestore timestamp to ISO string if exists
-      createdAt: doc.data().createdAt?.toDate()?.toISOString(),
-      updatedAt: doc.data().updatedAt?.toDate()?.toISOString()
-    }));
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('Authentication token not found');
+
+    const response = await fetch('/api/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        searchTerm,
+        type,
+        userId,
+        limitCount,
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || 'Search failed');
+    }
+
+    return data;
   } catch (error) {
-    console.error('Assessment search error:', error);
-    throw new Error('Failed to search assessments. Please try again later.');
-  }
-};
-
-/**
- * Search questions within assessments with improved matching
- * @param {string} searchTerm - The term to search for in questions
- * @param {string} userId - Current user's ID for organization filtering
- * @param {number} [limitCount=20] - Maximum number of results to return
- * @returns {Promise<Array>} Array of matching questions with assessment context
- */
-const searchQuestions = async (searchTerm, userId, limitCount = 20) => {
-  try {
-    if (!searchTerm?.trim()) return [];
-    
-    const assessmentsRef = collection(db, 'assessments');
-    const q = query(
-      assessmentsRef,
-      where('organizationId', '==', userId),
-      limit(limitCount)
-    );
-
-    const querySnapshot = await getDocs(q);
-    const searchTermLower = searchTerm.toLowerCase();
-    
-    return querySnapshot.docs.flatMap(doc => {
-      const assessmentData = doc.data();
-      return assessmentData.questions
-        ?.filter(q => q.text.toLowerCase().includes(searchTermLower))
-        .map(question => ({
-          id: question.id || `${doc.id}-${Math.random().toString(36).substr(2, 9)}`,
-          assessmentId: doc.id,
-          assessmentTitle: assessmentData.title,
-          ...question
-        })) || [];
-    }).slice(0, limitCount);
-  } catch (error) {
-    console.error('Question search error:', error);
-    throw new Error('Failed to search questions. Please try again later.');
+    console.error('Search error:', error);
+    throw new Error('Failed to perform search. Please try again later.');
   }
 };
 
@@ -115,9 +67,7 @@ const debouncedSearch = (searchTerm, userId, callback, type = 'assessments', deb
     if (!active) return;
     
     try {
-      const results = type === 'questions'
-        ? await searchQuestions(searchTerm, userId)
-        : await searchAssessments(searchTerm, userId);
+      const results = await performSearch(searchTerm, userId, type);
       
       if (active) callback(results, null);
     } catch (error) {
@@ -125,14 +75,11 @@ const debouncedSearch = (searchTerm, userId, callback, type = 'assessments', deb
     }
   };
 
-  // Cancel previous debounced call if exists
   cancelPrevious();
   
-  // Create new debounced function
   const debounced = debounce(searchFn, debounceTime);
   debounced();
   
-  // Update cancel function
   cancelPrevious = () => {
     active = false;
   };
@@ -141,7 +88,6 @@ const debouncedSearch = (searchTerm, userId, callback, type = 'assessments', deb
 };
 
 export { 
-  searchAssessments, 
-  searchQuestions, 
+  performSearch, 
   debouncedSearch 
 };
