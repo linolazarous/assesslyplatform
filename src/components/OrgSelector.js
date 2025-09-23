@@ -1,6 +1,4 @@
-import React from 'react';
-import { useCollection } from 'react-firebase-hooks/firestore';
-import { collection, query, where } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
 import { 
   Select, 
   MenuItem, 
@@ -11,23 +9,53 @@ import {
   Typography,
   Box
 } from '@mui/material';
-import { db, auth } from '../../firebase';
+import { useSnackbar } from 'notistack';
 import PropTypes from 'prop-types';
 
 export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium' }) {
-  const [orgsSnapshot, loading, error] = useCollection(
-    query(
-      collection(db, 'organizations'),
-      where('members', 'array-contains', auth.currentUser?.uid)
-    )
-  );
+  const [orgs, setOrgs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const { enqueueSnackbar } = useSnackbar();
+
+  const fetchOrganizations = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found');
+
+      const response = await fetch('/api/organizations', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to load organizations');
+      }
+
+      setOrgs(data);
+      if (data.length > 0 && !currentOrg) {
+        setCurrentOrg(data[0].id);
+      }
+    } catch (err) {
+      console.error('Error loading organizations:', err);
+      enqueueSnackbar('Failed to load organizations', { variant: 'error' });
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrganizations();
+  }, []);
 
   const handleChange = (event) => {
     setCurrentOrg(event.target.value);
   };
 
   if (error) {
-    console.error('Error loading organizations:', error);
     return (
       <Typography color="error">
         Failed to load organizations
@@ -45,7 +73,7 @@ export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium'
     );
   }
 
-  if (!orgsSnapshot || orgsSnapshot.empty) {
+  if (orgs.length === 0) {
     return (
       <Box sx={{ p: 1 }}>
         <Typography variant="body2" color="text.secondary">
@@ -62,11 +90,11 @@ export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium'
         value={currentOrg || ''}
         label="Organization"
         onChange={handleChange}
-        disabled={orgsSnapshot.size <= 1}
+        disabled={orgs.length <= 1}
       >
-        {orgsSnapshot.docs.map(doc => (
-          <MenuItem key={doc.id} value={doc.id}>
-            {doc.data().name}
+        {orgs.map(org => (
+          <MenuItem key={org.id} value={org.id}>
+            {org.name}
           </MenuItem>
         ))}
       </Select>
