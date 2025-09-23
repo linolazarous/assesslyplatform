@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -15,18 +15,8 @@ import {
   Alert,
   LinearProgress
 } from '@mui/material';
-import { 
-  doc, 
-  getDoc, 
-  collection, 
-  addDoc, 
-  serverTimestamp,
-  onSnapshot
-} from 'firebase/firestore';
-import { db, auth } from '../firebase';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSnackbar } from 'notistack';
-import PdfReport from './PdfReport';
 import PropTypes from 'prop-types';
 
 export default function TakeAssessment() {
@@ -38,60 +28,57 @@ export default function TakeAssessment() {
   const [timeRemaining, setTimeRemaining] = useState(null);
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
+  const timerRef = useRef(null);
+
+  const fetchAssessment = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found');
+
+      const response = await fetch(`/api/assessments/${assessmentId}`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Assessment not found');
+      }
+
+      setAssessment(data);
+      if (data.timeLimitMinutes) {
+        const startedAt = new Date(data.startedAt);
+        const endTime = new Date(startedAt.getTime() + data.timeLimitMinutes * 60000);
+        setTimeRemaining(Math.max(0, Math.floor((endTime - new Date()) / 1000)));
+      }
+    } catch (err) {
+      console.error('Error loading assessment:', err);
+      enqueueSnackbar('Failed to load assessment', { variant: 'error' });
+      navigate('/assessments');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchAssessment = async () => {
-      try {
-        const docRef = doc(db, 'assessments', assessmentId);
-        const unsubscribe = onSnapshot(docRef, (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            setAssessment({
-              id: doc.id,
-              ...data,
-              createdAt: data.createdAt?.toDate(),
-              dueDate: data.dueDate?.toDate()
-            });
-            
-            // Calculate time remaining if there's a time limit
-            if (data.timeLimitMinutes) {
-              const endTime = new Date(data.startedAt?.toDate().getTime() + data.timeLimitMinutes * 60000);
-              setTimeRemaining(Math.max(0, Math.floor((endTime - new Date()) / 1000));
-            }
-          } else {
-            enqueueSnackbar('Assessment not found', { variant: 'error' });
-            navigate('/assessments');
-          }
-          setLoading(false);
-        });
-
-        return () => unsubscribe();
-      } catch (err) {
-        console.error('Error loading assessment:', err);
-        enqueueSnackbar('Failed to load assessment', { variant: 'error' });
-        setLoading(false);
-        navigate('/assessments');
-      }
-    };
-
     fetchAssessment();
   }, [assessmentId, enqueueSnackbar, navigate]);
 
   useEffect(() => {
     if (timeRemaining === null) return;
 
-    const timer = timeRemaining > 0 && setInterval(() => {
+    timerRef.current = timeRemaining > 0 && setInterval(() => {
       setTimeRemaining(prev => {
         if (prev <= 1) {
-          clearInterval(timer);
-          handleSubmit(); // Auto-submit when time runs out
+          clearInterval(timerRef.current);
+          handleSubmit();
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => clearInterval(timerRef.current);
   }, [timeRemaining]);
 
   const handleAnswerChange = (questionIndex, value) => {
@@ -109,8 +96,7 @@ export default function TakeAssessment() {
 
   const handleSubmit = async () => {
     if (submitting) return;
-    
-    // Validate required questions
+
     const requiredQuestions = assessment.questions
       .map((q, i) => (q.required ? i : null))
       .filter(i => i !== null);
@@ -131,23 +117,27 @@ export default function TakeAssessment() {
 
     setSubmitting(true);
     try {
-      await addDoc(collection(db, 'responses'), {
-        assessmentId,
-        answers,
-        submittedAt: serverTimestamp(),
-        userId: auth.currentUser.uid,
-        organizationId: assessment.organizationId,
-        status: 'completed',
-        durationMinutes: assessment.timeLimitMinutes 
-          ? assessment.timeLimitMinutes - (timeRemaining / 60)
-          : null
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found');
+
+      const response = await fetch(`/api/assessments/${assessmentId}/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          answers,
+          durationMinutes: assessment.timeLimitMinutes 
+            ? assessment.timeLimitMinutes - (timeRemaining / 60)
+            : null
+        }),
       });
-      
-      // Update assessment status if needed
-      await updateDoc(doc(db, 'assessments', assessmentId), {
-        status: 'completed',
-        completedAt: serverTimestamp()
-      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to submit');
+      }
       
       enqueueSnackbar('Assessment submitted successfully!', { variant: 'success' });
       navigate(`/assessments/${assessmentId}/results`);
@@ -245,42 +235,12 @@ export default function TakeAssessment() {
             </RadioGroup>
           )}
 
-          {question.type === 'checkbox' && (
-            <Box>
-              {question.options.map((option, oIndex) => (
-                <FormControlLabel
-                  key={`opt-${oIndex}`}
-                  control={
-                    <Checkbox
-                      checked={answers[qIndex]?.includes(option) || false}
-                      onChange={(e) => {
-                        const newValue = e.target.checked
-                          ? [...(answers[qIndex] || []), option]
-                          : (answers[qIndex] || []).filter(v => v !== option);
-                        handleAnswerChange(qIndex, newValue);
-                      }}
-                    />
-                  }
-                  label={option}
-                />
-              ))}
-            </Box>
-          )}
-
-          {question.type === 'rating' && (
-            <Rating
-              value={parseInt(answers[qIndex]) || 0}
-              onChange={(_, newValue) => handleAnswerChange(qIndex, newValue)}
-              max={question.maxRating || 5}
-              size="large"
-            />
-          )}
+          {/* Add handling for other question types if needed, such as 'checkbox' and 'rating' */}
+          
         </Box>
       ))}
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
-        <PdfReport assessment={assessment} answers={answers} />
-        
         <Button
           variant="contained"
           color="primary"
@@ -302,3 +262,8 @@ export default function TakeAssessment() {
     </Paper>
   );
 }
+
+TakeAssessment.propTypes = {
+  // Add prop types if needed
+};
+
