@@ -18,8 +18,6 @@ import {
   Grid
 } from '@mui/material';
 import { Add, Delete, Save } from '@mui/icons-material';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../firebase';
 import { useSnackbar } from 'notistack';
 import { useNavigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
@@ -58,7 +56,6 @@ export default function CreateAssessment({ organizationId }) {
     const newQuestions = [...questions];
     newQuestions[index][field] = value;
     
-    // Reset options when changing to non-multiple choice type
     if (field === 'type' && value !== 'multiple_choice') {
       newQuestions[index].options = [];
     }
@@ -89,25 +86,21 @@ export default function CreateAssessment({ organizationId }) {
       enqueueSnackbar('Assessment title is required', { variant: 'error' });
       return false;
     }
-
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       if (!q.text.trim()) {
         enqueueSnackbar(`Question ${i + 1} text is required`, { variant: 'error' });
         return false;
       }
-
       if (q.type === 'multiple_choice' && q.options.length < 2) {
         enqueueSnackbar(`Question ${i + 1} needs at least 2 options`, { variant: 'error' });
         return false;
       }
-
       if (q.type === 'multiple_choice' && q.options.some(opt => !opt.trim())) {
         enqueueSnackbar(`Question ${i + 1} has empty options`, { variant: 'error' });
         return false;
       }
     }
-
     return true;
   };
 
@@ -116,16 +109,27 @@ export default function CreateAssessment({ organizationId }) {
 
     setLoading(true);
     try {
-      await addDoc(collection(db, 'assessments'), {
-        title,
-        description,
-        questions,
-        status: 'draft',
-        createdAt: serverTimestamp(),
-        createdBy: auth.currentUser.uid,
-        organizationId,
-        updatedAt: serverTimestamp()
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found');
+
+      const response = await fetch('/api/assessments/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title,
+          description,
+          questions,
+          organizationId
+        }),
       });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to save assessment');
+      }
       
       enqueueSnackbar('Assessment created successfully!', { variant: 'success' });
       navigate('/assessments');
