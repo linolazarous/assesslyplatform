@@ -20,8 +20,6 @@ import {
   CircularProgress
 } from '@mui/material';
 import { Add, Delete, Save } from '@mui/icons-material';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../firebase';
 import { useSnackbar } from 'notistack';
 import { useNavigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
@@ -98,25 +96,21 @@ export default function QuestionnaireBuilder({ organizationId }) {
       enqueueSnackbar('Title is required', { variant: 'error' });
       return false;
     }
-
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       if (!q.text.trim()) {
         enqueueSnackbar(`Question ${i + 1} text is required`, { variant: 'error' });
         return false;
       }
-
       if (q.type === 'multiple_choice' && q.options.length < 2) {
         enqueueSnackbar(`Question ${i + 1} needs at least 2 options`, { variant: 'error' });
         return false;
       }
-
       if (q.type === 'multiple_choice' && q.options.some(opt => !opt.trim())) {
         enqueueSnackbar(`Question ${i + 1} has empty options`, { variant: 'error' });
         return false;
       }
     }
-
     return true;
   };
 
@@ -125,17 +119,29 @@ export default function QuestionnaireBuilder({ organizationId }) {
 
     setLoading(true);
     try {
-      const collectionName = isTemplate ? 'questionnaireTemplates' : 'questionnaires';
-      await addDoc(collection(db, collectionName), {
-        title,
-        description,
-        questions,
-        isTemplate,
-        createdAt: serverTimestamp(),
-        createdBy: auth.currentUser.uid,
-        organizationId,
-        updatedAt: serverTimestamp()
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found');
+
+      const endpoint = isTemplate ? '/api/templates/create' : '/api/assessments/create';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title,
+          description,
+          questions,
+          organizationId,
+          isTemplate
+        }),
       });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to save');
+      }
       
       enqueueSnackbar(
         `${isTemplate ? 'Template' : 'Questionnaire'} saved successfully!`, 
