@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { Button, CircularProgress, Tooltip } from '@mui/material';
 import { useSnackbar } from 'notistack';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../../firebase/firebase';
 import PropTypes from 'prop-types';
 
 export default function BillingPortalButton({ orgId }) {
@@ -17,11 +15,25 @@ export default function BillingPortalButton({ orgId }) {
 
     setLoading(true);
     try {
-      const createPortalLink = httpsCallable(functions, 'ext-firestore-stripe-payments-createPortalLink');
-      const { data } = await createPortalLink({ 
-        orgId,
-        returnUrl: `${window.location.origin}/organization/${orgId}/billing`
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found');
+
+      const response = await fetch('/api/billing/portal-link', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          orgId,
+          returnUrl: `${window.location.origin}/organization/${orgId}/billing`
+        })
       });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to access billing portal');
+      }
       
       window.location.assign(data.url);
     } catch (error) {
