@@ -5,9 +5,9 @@
   "description": "An assessment platform built with React and Vercel",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "build",
+    "build": "npm run build",
+    "preview": "build preview"
   },
   "dependencies": {
     "@emotion/react": "^11.11.1",
@@ -29,6 +29,6 @@
     "vite": "^5.0.0"
   },
   "engines": {
-    "node": "20.x"
+    "node": "22.x"
   }
 }
