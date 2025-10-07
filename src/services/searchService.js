@@ -1,6 +1,11 @@
 // src/services/searchService.js
 
-// Debounce function to limit API calls (remains the same)
+/**
+ * Simple debounce helper to limit search API calls
+ * @param {function} func - Function to debounce
+ * @param {number} delay - Delay in ms
+ * @returns {function}
+ */
 const debounce = (func, delay) => {
   let timeoutId;
   return (...args) => {
@@ -10,84 +15,60 @@ const debounce = (func, delay) => {
 };
 
 /**
- * Searches for assessments or questions via Vercel API.
- * @param {string} searchTerm - The term to search for
- * @param {string} userId - Current user's ID
- * @param {string} [type='assessments'] - Type of search ('assessments' or 'questions')
- * @param {number} [limitCount=20] - Maximum number of results to return
- * @returns {Promise<Array>} Array of matching results
+ * Perform a search against Assessly’s internal API
+ * Supports assessment or question queries
  */
-const performSearch = async (searchTerm, userId, type = 'assessments', limitCount = 20) => {
-  try {
-    if (!searchTerm?.trim()) return [];
+export const performSearch = async (searchTerm, userId, type = 'assessments', limitCount = 20) => {
+  if (!searchTerm?.trim()) return [];
 
+  try {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('Authentication token not found');
 
-    const response = await fetch('/api/search', {
+    const response = await fetch(`/api/search`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         searchTerm,
         type,
         userId,
         limitCount,
-      })
+      }),
     });
 
     const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.message || 'Search failed');
-    }
 
-    return data;
+    if (!response.ok) throw new Error(data.message || 'Search failed');
+    return data.results || data;
   } catch (error) {
-    console.error('Search error:', error);
-    throw new Error('Failed to perform search. Please try again later.');
+    console.error('[Assessly Search Error]:', error);
+    throw new Error('Unable to complete search. Please try again.');
   }
 };
 
 /**
- * Enhanced debounced search with cancellation and type handling
- * @param {string} searchTerm - Term to search for
- * @param {string} userId - Current user's ID
- * @param {function} callback - (results, error) => void
- * @param {string} [type='assessments'] - Type of search ('assessments' or 'questions')
- * @param {number} [debounceTime=300] - Debounce delay in ms
- * @returns {function} Cancel function to abort pending search
+ * Debounced version for better UX and performance
  */
-const debouncedSearch = (searchTerm, userId, callback, type = 'assessments', debounceTime = 300) => {
+export const debouncedSearch = (searchTerm, userId, callback, type = 'assessments', delay = 400) => {
   let active = true;
-  let cancelPrevious = () => {};
-  
-  const searchFn = async () => {
+
+  const doSearch = async () => {
     if (!active) return;
-    
     try {
       const results = await performSearch(searchTerm, userId, type);
-      
       if (active) callback(results, null);
     } catch (error) {
       if (active) callback([], error.message);
     }
   };
 
-  cancelPrevious();
-  
-  const debounced = debounce(searchFn, debounceTime);
-  debounced();
-  
-  cancelPrevious = () => {
+  const debouncedFn = debounce(doSearch, delay);
+  debouncedFn();
+
+  return () => {
     active = false;
   };
-  
-  return cancelPrevious;
-};
-
-export { 
-  performSearch, 
-  debouncedSearch 
 };
