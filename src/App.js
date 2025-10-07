@@ -1,101 +1,89 @@
-import React, { useState, useMemo } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { ThemeProvider, CssBaseline } from '@mui/material';
-import { AuthProvider } from './contexts/AuthContext';
-import ErrorBoundary from './components/common/ErrorBoundary';
-import { lightTheme, darkTheme } from './styles/theme';
-import AuthLayout from './layouts/AuthLayout';
-import MainLayout from './layouts/MainLayout';
-import ProtectedRoute from './components/common/ProtectedRoute';
-import LoadingScreen from './components/ui/LoadingScreen';
-import { usePageTracking } from './utils/analytics';
+import React, { useState, useEffect } from "react";
 
-// Lazy load pages for better performance
-const LoginPage = React.lazy(() => import('./pages/Auth/LoginPage'));
-const RegisterPage = React.lazy(() => import('./pages/Auth/RegisterPage'));
-const ResetPasswordPage = React.lazy(() => import('./pages/Auth/ResetPasswordPage'));
-const AdminDashboard = React.lazy(() => import('./pages/Admin/Dashboard'));
-const AdminReports = React.lazy(() => import('./pages/Admin/Reports'));
-const UserManagement = React.lazy(() => import('./pages/Admin/UserManagement'));
-const AssessorPortal = React.lazy(() => import('./pages/Assessor/Portal'));
-const AssessorAssessments = React.lazy(() => import('./pages/Assessor/Assessments'));
-const CandidateTests = React.lazy(() => import('./pages/Candidate/Tests'));
-const TakeAssessment = React.lazy(() => import('./pages/Candidate/TakeAssessment'));
-const OrganizationSelect = React.lazy(() => import('./pages/Organization/Select'));
-const ProfilePage = React.lazy(() => import('./pages/Profile/ProfilePage'));
-const SettingsPage = React.lazy(() => import('./pages/Settings/SettingsPage'));
-const BillingPage = React.lazy(() => import('./pages/Billing/BillingPage'));
-const UnauthorizedPage = React.lazy(() => import('./pages/Error/UnauthorizedPage'));
-const ErrorPage = React.lazy(() => import('./pages/Error/ErrorPage'));
-const NotFoundPage = React.lazy(() => import('./pages/Error/NotFoundPage'));
+// Example of a “backend-like” local function
+async function createAssessment(data) {
+  // This could later call a cloud function or local API
+  return new Promise((resolve) => {
+    setTimeout(() => resolve({ success: true, id: Date.now(), ...data }), 800);
+  });
+}
 
 function App() {
-  usePageTracking();
-  const [darkMode, setDarkMode] = useState(false);
+  const [assessments, setAssessments] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [title, setTitle] = useState("");
 
-  // Create theme based on dark mode state
-  const theme = useMemo(
-    () => responsiveFontSizes(darkMode ? darkTheme : lightTheme),
-    [darkMode]
-  );
+  useEffect(() => {
+    document.title = "Assessly | Dashboard";
+  }, []);
+
+  const handleCreate = async () => {
+    if (!title.trim()) return;
+    setLoading(true);
+    const newAssessment = await createAssessment({ title });
+    setAssessments((prev) => [newAssessment, ...prev]);
+    setTitle("");
+    setLoading(false);
+  };
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <ErrorBoundary>
-        <AuthProvider>
-          <BrowserRouter>
-            <React.Suspense fallback={<LoadingScreen />}>
-              <Routes>
-                {/* Auth Routes */}
-                <Route element={<AuthLayout />}>
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route path="/register" element={<RegisterPage />} />
-                  <Route path="/reset-password" element={<ResetPasswordPage />} />
-                </Route>
+    <div
+      style={{
+        fontFamily: "Inter, sans-serif",
+        padding: "2rem",
+        maxWidth: "600px",
+        margin: "auto",
+      }}
+    >
+      <h1 style={{ color: "#3f51b5", textAlign: "center" }}>
+        Assessly Dashboard
+      </h1>
 
-                {/* Main Application Routes */}
-                <Route element={<MainLayout darkMode={darkMode} toggleDarkMode={() => setDarkMode(!darkMode)} />}>
-                  {/* Organization Selection */}
-                  <Route path="/select-org" element={<OrganizationSelect />} />
+      <div style={{ marginTop: "1.5rem", display: "flex", gap: "0.5rem" }}>
+        <input
+          type="text"
+          placeholder="Enter assessment title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          style={{
+            flex: 1,
+            padding: "0.5rem",
+            border: "1px solid #ccc",
+            borderRadius: "8px",
+          }}
+        />
+        <button
+          onClick={handleCreate}
+          disabled={loading}
+          style={{
+            padding: "0.5rem 1rem",
+            backgroundColor: "#3f51b5",
+            color: "white",
+            border: "none",
+            borderRadius: "8px",
+            cursor: loading ? "not-allowed" : "pointer",
+          }}
+        >
+          {loading ? "Creating..." : "Create"}
+        </button>
+      </div>
 
-                  {/* Admin Routes */}
-                  <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-                    <Route path="/admin" element={<AdminDashboard />} />
-                    <Route path="/admin/reports" element={<AdminReports />} />
-                    <Route path="/admin/users" element={<UserManagement />} />
-                  </Route>
-
-                  {/* Assessor Routes */}
-                  <Route element={<ProtectedRoute allowedRoles={['assessor', 'admin']} />}>
-                    <Route path="/assessor" element={<AssessorPortal />} />
-                    <Route path="/assessor/assessments" element={<AssessorAssessments />} />
-                    <Route path="/assessor/assessments/:id" element={<AssessorAssessmentDetail />} />
-                  </Route>
-
-                  {/* Candidate Routes */}
-                  <Route element={<ProtectedRoute allowedRoles={['candidate']} />}>
-                    <Route path="/assessments" element={<CandidateTests />} />
-                    <Route path="/assessments/:id" element={<TakeAssessment />} />
-                  </Route>
-
-                  {/* Common Routes */}
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/billing" element={<BillingPage />} />
-                  <Route path="/search" element={<SearchPage />} />
-
-                  {/* Error Pages */}
-                  <Route path="/unauthorized" element={<UnauthorizedPage />} />
-                  <Route path="/error" element={<ErrorPage />} />
-                  <Route path="*" element={<NotFoundPage />} />
-                </Route>
-              </Routes>
-            </React.Suspense>
-          </BrowserRouter>
-        </AuthProvider>
-      </ErrorBoundary>
-    </ThemeProvider>
+      <ul style={{ marginTop: "2rem", listStyle: "none", padding: 0 }}>
+        {assessments.map((a) => (
+          <li
+            key={a.id}
+            style={{
+              background: "#f5f5f5",
+              margin: "0.5rem 0",
+              padding: "0.75rem",
+              borderRadius: "8px",
+            }}
+          >
+            {a.title}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
