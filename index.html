@@ -6,7 +6,7 @@
   <meta name="description" content="Assessly - Modern Assessment Platform for creating and managing assessments" />
   <meta name="theme-color" content="#3f51b5" />
   <title>Assessly | Modern Assessment Platform</title>
-  
+
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
@@ -14,51 +14,49 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="preconnect" href="https://js.stripe.com" />
-  <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
-  
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  
+
+  <!-- Security Headers -->
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
   <meta http-equiv="X-Frame-Options" content="DENY" />
-  <meta http-equiv="Content-Security-Policy" 
-    content="default-src 'self';
-    script-src 'self' 'wasm-unsafe-eval' https://js.stripe.com;
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' https://js.stripe.com;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     font-src 'self' https://fonts.gstatic.com;
     img-src 'self' data: blob:;
-    connect-src 'self' https://api.stripe.com;" />
+    connect-src 'self' https://api.stripe.com;
+  " />
 </head>
 <body>
   <noscript>
-    <div style="padding: 2rem; text-align: center; font-family: sans-serif;">
-      <h1 style="color: #d32f2f;">JavaScript Required</h1>
-      <p style="font-size: 1.2rem;">
-        Assessly requires JavaScript to function properly. Please enable JavaScript in your browser settings.
-      </p>
+    <div style="padding:2rem; text-align:center; font-family:sans-serif;">
+      <h1 style="color:#d32f2f;">JavaScript Required</h1>
+      <p>Assessly requires JavaScript to function properly. Please enable it in your browser settings.</p>
     </div>
   </noscript>
-  
+
   <div id="root"></div>
 
-  <script type="module" src="../src/main.jsx"></script>
-
+  <!-- Stripe Async Loader -->
   <script>
     (function() {
       const stripePromise = new Promise((resolve) => {
         if (window.Stripe) return resolve(window.Stripe);
-        
         const script = document.createElement('script');
         script.src = 'https://js.stripe.com/v3/';
         script.async = true;
         script.onload = () => resolve(window.Stripe);
         document.head.appendChild(script);
       });
-      
       window.getStripe = () => stripePromise;
     })();
   </script>
+
+  <!-- React Entry -->
+  <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>
