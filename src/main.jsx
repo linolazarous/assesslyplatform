@@ -1,21 +1,25 @@
-// src/main.jsx
 import React from "react";
-import { createRoot } from "react-dom/client";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import { CssBaseline, ThemeProvider } from "@mui/material";
 import App from "./App";
-import "./index.css";
+import theme from "./theme";
+import { AuthProvider } from "./contexts/AuthContext";
+import ErrorBoundary from "./ErrorBoundary";
 
-// Create root container
-const rootElement = document.getElementById("root");
-const root = createRoot(rootElement);
+import "./styles/global.css";
 
-// Mount React application
-root.render(
+ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <BrowserRouter>
+        <AuthProvider>
+          <ErrorBoundary>
+            <App />
+          </ErrorBoundary>
+        </AuthProvider>
+      </BrowserRouter>
+    </ThemeProvider>
   </React.StrictMode>
 );
-
-// Enable hot reload (Vite or CRA dev)
-if (import.meta.hot) {
-  import.meta.hot.accept();
-}
