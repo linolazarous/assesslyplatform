@@ -1,89 +1,84 @@
-import React, { useState, useEffect } from "react";
+// src/App.js
+import React, { useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { CssBaseline, CircularProgress, Box } from "@mui/material";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
-// Example of a “backend-like” local function
-async function createAssessment(data) {
-  // This could later call a cloud function or local API
-  return new Promise((resolve) => {
-    setTimeout(() => resolve({ success: true, id: Date.now(), ...data }), 800);
-  });
-}
+// Pages
+import LandingScreen from "./pages/Landing/LandingScreen";
+import Dashboard from "./pages/Admin/Dashboard";
+import Billing from "./pages/Billing";
+import SearchPage from "./pages/SearchPage";
+import LandingPage from "./pages/LandingPage";
 
+/**
+ * Simple route guard to protect private routes (Dashboard, Billing)
+ */
+const PrivateRoute = ({ children }) => {
+  const { currentUser, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100vh",
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!currentUser) return <Navigate to="/" replace />;
+  return children;
+};
+
+/**
+ * Root Application Component
+ */
 function App() {
-  const [assessments, setAssessments] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [title, setTitle] = useState("");
-
   useEffect(() => {
-    document.title = "Assessly | Dashboard";
+    document.title = "Assessly | Modern Assessment Platform";
   }, []);
 
-  const handleCreate = async () => {
-    if (!title.trim()) return;
-    setLoading(true);
-    const newAssessment = await createAssessment({ title });
-    setAssessments((prev) => [newAssessment, ...prev]);
-    setTitle("");
-    setLoading(false);
-  };
-
   return (
-    <div
-      style={{
-        fontFamily: "Inter, sans-serif",
-        padding: "2rem",
-        maxWidth: "600px",
-        margin: "auto",
-      }}
-    >
-      <h1 style={{ color: "#3f51b5", textAlign: "center" }}>
-        Assessly Dashboard
-      </h1>
+    <AuthProvider>
+      <Router>
+        <CssBaseline />
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<LandingScreen />} />
+          <Route path="/home" element={<LandingPage />} />
 
-      <div style={{ marginTop: "1.5rem", display: "flex", gap: "0.5rem" }}>
-        <input
-          type="text"
-          placeholder="Enter assessment title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          style={{
-            flex: 1,
-            padding: "0.5rem",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-          }}
-        />
-        <button
-          onClick={handleCreate}
-          disabled={loading}
-          style={{
-            padding: "0.5rem 1rem",
-            backgroundColor: "#3f51b5",
-            color: "white",
-            border: "none",
-            borderRadius: "8px",
-            cursor: loading ? "not-allowed" : "pointer",
-          }}
-        >
-          {loading ? "Creating..." : "Create"}
-        </button>
-      </div>
+          {/* Search Page (public or limited access) */}
+          <Route path="/search" element={<SearchPage />} />
 
-      <ul style={{ marginTop: "2rem", listStyle: "none", padding: 0 }}>
-        {assessments.map((a) => (
-          <li
-            key={a.id}
-            style={{
-              background: "#f5f5f5",
-              margin: "0.5rem 0",
-              padding: "0.75rem",
-              borderRadius: "8px",
-            }}
-          >
-            {a.title}
-          </li>
-        ))}
-      </ul>
-    </div>
+          {/* Private Routes */}
+          <Route
+            path="/admin/dashboard"
+            element={
+              <PrivateRoute>
+                <Dashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/organization/:orgId/billing"
+            element={
+              <PrivateRoute>
+                <Billing />
+              </PrivateRoute>
+            }
+          />
+
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
 
