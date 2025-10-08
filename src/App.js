@@ -1,111 +1,75 @@
 import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
-import Navbar from "./components/common/Navbar";
-import Sidebar from "./components/common/Sidebar";
-import ProtectedRoute from "./components/common/ProtectedRoute";
-import HeroSection from "./components/layout/HeroSection";
-import Header from "./components/layout/Header";
-import Auth from "./components/Auth";
-import AssessmentDashboard from "./components/AssessmentDashboard";
-import CreateAssessment from "./components/CreateAssessment";
-import OrgSelector from "./components/OrgSelector";
-import PdfReport from "./components/PdfReport";
-import QuestionnaireBuilder from "./components/QuestionnaireBuilder";
-import TakeAssessment from "./components/TakeAssessment";
-import RoleGuard from "./components/RoleGuard";
-import { Box } from "@mui/material";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 
-export default function App() {
+import Navbar from "@/components/common/Navbar";
+import Sidebar from "@/components/common/Sidebar";
+import ProtectedRoute from "@/components/common/ProtectedRoute";
+import AssessmentDashboard from "@/components/AssessmentDashboard";
+import CreateAssessment from "@/components/CreateAssessment";
+import TakeAssessment from "@/components/TakeAssessment";
+import PdfReport from "@/components/PdfReport";
+import Auth from "@/components/Auth";
+import OrgSelector from "@/components/OrgSelector";
+import HeroSection from "@/components/layout/HeroSection";
+import Header from "@/components/layout/Header";
+
+function App() {
   return (
-    <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      {/* Global Navbar */}
-      <Navbar />
+    <Router>
+      <div className="flex flex-col min-h-screen bg-gray-50 text-gray-900">
+        <Header />
+        <Navbar />
 
-      {/* App Layout */}
-      <Box sx={{ display: "flex", flexGrow: 1 }}>
-        <Sidebar />
+        <main className="flex-1 flex">
+          <Sidebar />
 
-        <Box
-          component="main"
-          sx={{
-            flexGrow: 1,
-            p: { xs: 2, md: 4 },
-            bgcolor: "background.default",
-          }}
-        >
-          <Routes>
-            {/* Public routes */}
-            <Route
-              path="/"
-              element={
-                <>
-                  <HeroSection />
-                  <Header title="Welcome to Assessly" subtitle="Your AI-powered assessment platform" />
-                </>
-              }
-            />
-            <Route path="/login" element={<Auth />} />
-            <Route path="/register" element={<Auth mode="register" />} />
+          <div className="flex-1 p-4">
+            <Routes>
+              <Route path="/" element={<HeroSection />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/org" element={<OrgSelector />} />
 
-            {/* Protected routes */}
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute>
-                  <AssessmentDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/organization"
-              element={
-                <ProtectedRoute>
-                  <OrgSelector />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/assessment/create"
-              element={
-                <ProtectedRoute roles={["admin", "manager"]}>
-                  <RoleGuard>
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <AssessmentDashboard />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/create"
+                element={
+                  <ProtectedRoute>
                     <CreateAssessment />
-                  </RoleGuard>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/assessment/:id"
-              element={
-                <ProtectedRoute>
-                  <TakeAssessment />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/assessment/:id/report"
-              element={
-                <ProtectedRoute>
-                  <PdfReport />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/assessment/:id/edit"
-              element={
-                <ProtectedRoute roles={["admin", "editor"]}>
-                  <RoleGuard>
-                    <QuestionnaireBuilder />
-                  </RoleGuard>
-                </ProtectedRoute>
-              }
-            />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Catch-all */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Box>
-      </Box>
-    </Box>
+              <Route
+                path="/take/:id"
+                element={
+                  <ProtectedRoute>
+                    <TakeAssessment />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/report/:id"
+                element={
+                  <ProtectedRoute>
+                    <PdfReport />
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </div>
+        </main>
+      </div>
+    </Router>
   );
 }
+
+export default App;
