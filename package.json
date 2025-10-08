@@ -1,7 +1,7 @@
 {
   "scripts": {
     "dev": "vite",
-    "build": "vite build",    ← ✅ Auto-detected as build command
-    "start": "node server.js" ← ✅ Auto-detected as start command
+    "build": "vite build",
+    "start": "node server.js"
   }
 }
