@@ -22,13 +22,11 @@ function App() {
 
         <main className="flex-1 flex">
           <Sidebar />
-
           <div className="flex-1 p-4">
             <Routes>
               <Route path="/" element={<HeroSection />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/org" element={<OrgSelector />} />
-
               <Route
                 path="/dashboard"
                 element={
@@ -37,7 +35,6 @@ function App() {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/create"
                 element={
@@ -46,7 +43,6 @@ function App() {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/take/:id"
                 element={
@@ -55,7 +51,6 @@ function App() {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/report/:id"
                 element={
