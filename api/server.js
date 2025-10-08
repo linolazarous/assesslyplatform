@@ -26,7 +26,8 @@ app.use('/api/search', searchRoutes);
 app.use('/api/admin/login', adminLoginRoutes);
 app.use('/api/organizations', organizationsRoutes);
 
-// Add more API routes as needed
+// Add billing routes if they exist
+// import billingRoutes from './api/billing/index.js';
 // app.use('/api/billing', billingRoutes);
 
 // Health check
