@@ -1,0 +1,29 @@
+# .render.yaml
+services:
+  - type: web
+    name: assesslyplatform
+    env: node
+    plan: free
+    region: frankfurt  # You can switch to "oregon" or "virginia"
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: PORT
+        value: 8080
+      - key: VITE_STRIPE_PUBLIC_KEY
+        sync: false
+      - key: VITE_API_BASE_URL
+        value: https://assesslyplatform.onrender.com/api
+
+    routes:
+      # Serve backend functions under /api/
+      - type: rewrite
+        source: /api/*
+        destination: /src/pages/api/$1.js
+
+      # Allow SPA navigation
+      - type: rewrite
+        source: /*
+        destination: /index.html
