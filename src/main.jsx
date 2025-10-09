@@ -1,10 +1,14 @@
 import React from "react";
-import ReactDOM from "react-dom/client";
+import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles/global.css";
 import ErrorBoundary from "./ErrorBoundary";
 
-ReactDOM.createRoot(document.getElementById("root")).render(
+// Enable React 18 root API with error boundaries for safety
+const rootElement = document.getElementById("root");
+const root = createRoot(rootElement);
+
+root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <App />
