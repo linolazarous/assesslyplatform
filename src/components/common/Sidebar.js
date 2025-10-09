@@ -1,5 +1,6 @@
 import React from 'react';
-import { Box, 
+import { 
+  Box,
   Drawer,
   List,
   ListItem,
@@ -8,10 +9,9 @@ import { Box,
   Divider,
   Toolbar,
   useMediaQuery,
-  useTheme,
-  Box
+  useTheme
 } from '@mui/material';
-import { Box,
+import {
   Assessment as AssessmentIcon,
   BarChart as ReportsIcon,
   Description as TemplatesIcon,
@@ -19,7 +19,7 @@ import { Box,
   ExitToApp as LogoutIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import { Box, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import Logo from '../brand/logo';
 
 const drawerWidth = 240;
