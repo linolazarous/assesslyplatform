@@ -8,7 +8,8 @@ import {
   Divider,
   Toolbar,
   useMediaQuery,
-  useTheme
+  useTheme,
+  Box
 } from '@mui/material';
 import {
   Assessment as AssessmentIcon,
@@ -19,7 +20,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import Logo from './brand/Logo';
+import Logo from '../brand/logo';
 
 const drawerWidth = 240;
 
