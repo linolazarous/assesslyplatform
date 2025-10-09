@@ -14,6 +14,10 @@
   "dependencies": {
     "@headlessui/react": "^2.2.0",
     "@heroicons/react": "^2.1.5",
+    "@mui/material": "^5.16.7",
+    "@mui/icons-material": "^5.16.7",
+    "@emotion/react": "^11.13.5",
+    "@emotion/styled": "^11.13.5",
     "axios": "^1.7.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
