@@ -13,14 +13,27 @@ export default function PdfReport({ assessment, answers, responses }) {
     try {
       const doc = new jsPDF();
       
-      // Add logo
+      // Add logo with improved loading
+      let logoUrl = null;
       try {
         const logoResponse = await fetch('/logo.png');
+        if (!logoResponse.ok) {
+          throw new Error('Logo not found');
+        }
         const logoBlob = await logoResponse.blob();
-        const logoUrl = URL.createObjectURL(logoBlob);
-        doc.addImage(logoUrl, 'PNG', 15, 10, 30, 10); // Adjusted size for better proportions
+        logoUrl = URL.createObjectURL(logoBlob);
+        
+        // Add logo to PDF
+        doc.addImage(logoUrl, 'PNG', 15, 10, 30, 10);
+        
+        // Clean up the object URL after a short delay
+        setTimeout(() => {
+          if (logoUrl) URL.revokeObjectURL(logoUrl);
+        }, 1000);
+        
       } catch (e) {
-        console.warn('Could not load logo:', e);
+        console.warn('Could not load logo:', e.message);
+        // Continue without logo - don't break PDF generation
       }
 
       // Title section
@@ -76,7 +89,7 @@ export default function PdfReport({ assessment, answers, responses }) {
           doc.setFontSize(8);
           doc.setTextColor(150);
           doc.text(
-            `Page ${data.pageCount} of ${data.pageCount}`,
+            `Page ${data.pageNumber} of ${doc.internal.getNumberOfPages()}`,
             105,
             doc.internal.pageSize.height - 10,
             { align: 'center' }
@@ -125,14 +138,3 @@ PdfReport.propTypes = {
     ])
   }))
 };
-
-
-// In ReportTemplate.js
-function ReportTemplate() {
-  return (
-    <div>
-      <div className="no-print"> {/* Print button */} </div>
-      <div> {/* Printable content */} </div>
-    </div>
-  )
-}
