@@ -1,5 +1,5 @@
 import React from 'react';
-import { 
+import { Box, 
   Drawer,
   List,
   ListItem,
@@ -11,15 +11,15 @@ import {
   useTheme,
   Box
 } from '@mui/material';
-import {
+import { Box,
   Assessment as AssessmentIcon,
   BarChart as ReportsIcon,
   Description as TemplatesIcon,
   Settings as SettingsIcon,
   ExitToApp as LogoutIcon
 } from '@mui/icons-material';
-import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { Box, useNavigate } from 'react-router-dom';
 import Logo from '../brand/logo';
 
 const drawerWidth = 240;
