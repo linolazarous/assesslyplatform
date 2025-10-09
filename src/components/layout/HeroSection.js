@@ -6,7 +6,7 @@ import {
   useTheme
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import Logo from '../../../components/brand/Logo';
+import Logo from '../../brand/logo';  // ← FIXED IMPORT PATH
 
 const HeroSection = () => {
   const theme = useTheme();
