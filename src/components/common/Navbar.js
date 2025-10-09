@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import Logo from '../brand/Logo';
+import Logo from '../brand/logo';
 import { 
   AppBar, 
   Toolbar, 
