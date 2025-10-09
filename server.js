@@ -1,43 +1,56 @@
-import express from 'express';
-import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import express from "express";
+import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
+import dotenv from "dotenv";
+import { connectDB } from "./api/db.js";
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
-// Middleware
+// === Connect MongoDB ===
+connectDB();
+
+// === Middleware ===
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from Vite build
-app.use(express.static(path.join(__dirname, 'dist')));
+// === Auto-load API Routes ===
+const apiPath = path.join(__dirname, "api");
+if (fs.existsSync(apiPath)) {
+  fs.readdirSync(apiPath).forEach((file) => {
+    if (file.endsWith(".js") && file !== "db.js") {
+      import(path.join(apiPath, file)).then((module) => {
+        if (typeof module.default === "function") {
+          module.default(app);
+          console.log(`✅ Loaded API: /api/${file.replace(".js", "")}`);
+        }
+      });
+    }
+  });
+}
 
-// Basic API routes (remove the problematic imports)
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is running' });
+// === Serve React Build ===
+const distPath = path.join(__dirname, "dist");
+app.use(express.static(distPath));
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(distPath, "index.html"));
 });
 
-app.get('/api/search', (req, res) => {
-  res.json({ results: [], message: 'Search API is working' });
+// === Error Handling ===
+app.use((err, req, res, next) => {
+  console.error("🔥 Error:", err.stack);
+  res.status(500).json({ error: "Internal Server Error" });
 });
 
-app.post('/api/admin/login', (req, res) => {
-  res.json({ success: true, message: 'Login API is working' });
-});
-
-app.get('/api/organizations', (req, res) => {
-  res.json({ organizations: [], message: 'Organizations API is working' });
-});
-
-// Handle client-side routing - must be last
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// === Start Server ===
+app.listen(PORT, "0.0.0.0", () =>
+  console.log(`🚀 Assessly running on port ${PORT}`)
+);
