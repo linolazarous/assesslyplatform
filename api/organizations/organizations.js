@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { ObjectId } from 'mongodb';
 
 export default async function handler(req, res) {
-  const { orgId } = req.query;
+  const { orgId } = req.params; // Changed from req.query to req.params
   const token = req.headers.authorization?.split(' ')[1];
 
   if (req.method !== 'GET') {
