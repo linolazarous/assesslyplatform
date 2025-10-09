@@ -4,7 +4,6 @@ import App from "./App.jsx";
 import "./styles/global.css";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 
-// Enable React 18 root API with error boundaries for safety
 const rootElement = document.getElementById("root");
 const root = createRoot(rootElement);
 
