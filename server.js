@@ -17,6 +17,16 @@ app.use(express.json());
 
 connectDB();
 
+// Import API routes
+import createUser from './api/auth/create-user.js';
+import register from './api/auth/register.js';
+import login from './api/auth/login.js';
+
+// Use API routes
+app.post('/api/auth/create-user', createUser);
+app.post('/api/auth/register', register);
+app.post('/api/auth/login', login);
+
 // Serve frontend
 const distPath = path.join(__dirname, "dist");
 app.use(express.static(distPath));
