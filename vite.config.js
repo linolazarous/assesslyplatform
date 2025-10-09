@@ -4,23 +4,28 @@ import path from "path";
 
 export default defineConfig({
   plugins: [react()],
-  root: ".", // index.html is in root
+  root: ".",
   publicDir: "public",
   build: {
     outDir: "dist",
     sourcemap: false,
-    rollupOptions: {
-      input: path.resolve(__dirname, "index.html")
-    }
   },
   server: {
-    host: "0.0.0.0",
     port: 5173,
-    cors: true
+    open: true,
+  },
+  preview: {
+    port: 8080,
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src")
-    }
-  }
+      "@": path.resolve(__dirname, "./src"),
+    },
+    extensions: ['.js', '.jsx', '.ts', '.tsx', '.json']
+  },
+  esbuild: {
+    loader: 'jsx',
+    include: /src\/.*\.jsx?$/,
+    exclude: [],
+  },
 });
