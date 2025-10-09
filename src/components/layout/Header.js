@@ -27,7 +27,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import Logo from '../brand/Logo';
+import Logo from '../brand/logo';
 import PropTypes from 'prop-types';
 
 function HideOnScroll({ children }) {
