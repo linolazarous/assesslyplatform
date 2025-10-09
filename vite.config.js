@@ -4,25 +4,23 @@ import path from "path";
 
 export default defineConfig({
   plugins: [react()],
-  root: ".", // ✅ because index.html is in root
+  root: ".", // index.html is in root
   publicDir: "public",
   build: {
     outDir: "dist",
     sourcemap: false,
     rollupOptions: {
-      input: path.resolve(__dirname, "index.html"),
-    },
+      input: path.resolve(__dirname, "index.html")
+    }
   },
   server: {
+    host: "0.0.0.0",
     port: 5173,
-    open: true,
-  },
-  preview: {
-    port: 8080,
+    cors: true
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-  },
+      "@": path.resolve(__dirname, "./src")
+    }
+  }
 });
