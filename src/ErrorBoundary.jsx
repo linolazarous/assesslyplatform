@@ -6,9 +6,7 @@ import {
   Container,
   Paper
 } from '@mui/material';
-import { useSnackbar } from 'notistack';
-import SentimentVeryDissatisfiedIcon from '@mui/icons-material/SentimentVeryDissatisfied';
-import { trackError } from '../utils/analytics';
+import SentimentVeryDissatisfiedIcon from '@mui/icons-material/SentimentVeryDissatisfiedIcon';
 
 export default class ErrorBoundary extends React.Component {
   state = { 
@@ -23,10 +21,6 @@ export default class ErrorBoundary extends React.Component {
   
   componentDidCatch(error, errorInfo) {
     console.error('Error Boundary caught:', error, errorInfo);
-    trackError(error, {
-      componentStack: errorInfo.componentStack,
-      boundary: this.constructor.name
-    });
     this.setState({ errorInfo });
   }
   
@@ -36,9 +30,9 @@ export default class ErrorBoundary extends React.Component {
   
   handleReport = () => {
     const { error, errorInfo } = this.state;
-    // In a real app, you would send this to an error tracking service
     console.error('User reported error:', error, errorInfo);
-    this.props.enqueueSnackbar('Error report sent. Thank you!', { variant: 'success' });
+    // Show simple alert instead of snackbar
+    alert('Error report sent. Thank you!');
     this.setState({ hasError: false });
   };
   
