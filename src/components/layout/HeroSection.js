@@ -6,27 +6,32 @@ import {
   useTheme
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import Logo from '../brand/logo';  // ← CORRECT IMPORT PATH
+import Logo from '../brand/logo'; 
+import PropTypes from 'prop-types'; // Added PropTypes import
 
 const HeroSection = () => {
   const theme = useTheme();
   const navigate = useNavigate();
 
   return (
-    <Box sx={{ 
-      textAlign: 'center',
-      py: 10,
-      background: theme.palette.mode === 'dark' 
-        ? 'linear-gradient(180deg, #121212 0%, #1E1E1E 100%)'
-        : 'linear-gradient(180deg, #f5f7fa 0%, #e4e8f0 100%)',
-      borderRadius: 4,
-      mb: 8,
-      px: 4
-    }}>
+    <Box 
+      component="section" // Use semantic tag
+      sx={{ 
+        textAlign: 'center',
+        py: { xs: 8, md: 10 }, // Responsive padding
+        background: theme.palette.mode === 'dark' 
+          ? 'linear-gradient(180deg, #121212 0%, #1E1E1E 100%)'
+          : 'linear-gradient(180deg, #f5f7fa 0%, #e4e8f0 100%)',
+        borderRadius: 4,
+        mb: 8,
+        px: 4
+      }}
+    >
       <Logo size={120} sx={{ mb: 4 }} />
       
       <Typography 
         variant="h2" 
+        component="h1" // Use h1 for the primary page title for SEO/accessibility
         sx={{ 
           fontWeight: 800,
           mb: 3,
@@ -57,7 +62,7 @@ const HeroSection = () => {
         <Button 
           variant="contained" 
           size="large"
-          onClick={() => navigate('/signup')}
+          onClick={() => navigate('/auth?tab=signup')} // Navigate directly to signup tab
           sx={{ px: 5 }}
         >
           Get Started
@@ -74,5 +79,7 @@ const HeroSection = () => {
     </Box>
   );
 };
+
+// No PropTypes needed as HeroSection receives no props.
 
 export default HeroSection;
