@@ -19,14 +19,16 @@ import {
   ExitToApp as LogoutIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom'; // Added useLocation for active state
 import Logo from '../brand/logo';
+import PropTypes from 'prop-types';
 
 const drawerWidth = 240;
 
 export default function Sidebar({ mobileOpen, onDrawerToggle }) {
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation(); // Get current path for active state
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -41,27 +43,40 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
     { text: 'Logout', icon: <LogoutIcon />, action: logout }
   ];
 
-  const handleNavigation = (path) => {
-    navigate(path);
+  const handleNavigation = (item) => {
+    if (item.action) {
+      item.action();
+    } else {
+      navigate(item.path);
+    }
     if (isMobile) onDrawerToggle();
   };
 
   const drawerContent = (
-    <>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Toolbar sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
         <Logo size={40} />
       </Toolbar>
       <Divider />
-      <List>
+      <List component="nav" sx={{ flexGrow: 0 }}>
         {menuItems.map((item) => (
           <ListItem 
             button 
             key={item.text}
-            onClick={() => handleNavigation(item.path)}
+            onClick={() => handleNavigation(item)}
+            selected={location.pathname.startsWith(item.path)} // Check if active
             sx={{
               '&:hover': {
                 backgroundColor: theme.palette.action.hover
-              }
+              },
+              // Highlight active link
+              ...(location.pathname.startsWith(item.path) && {
+                backgroundColor: theme.palette.primary.main,
+                color: theme.palette.common.white,
+                '& .MuiListItemIcon-root': {
+                  color: theme.palette.common.white,
+                }
+              })
             }}
           >
             <ListItemIcon sx={{ minWidth: 40 }}>
@@ -72,16 +87,25 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
         ))}
       </List>
       <Divider sx={{ my: 1 }} />
-      <List sx={{ mt: 'auto' }}>
+      <List component="nav" sx={{ mt: 'auto', mb: 0 }}>
         {bottomMenuItems.map((item) => (
           <ListItem
             button
             key={item.text}
-            onClick={() => item.action ? item.action() : handleNavigation(item.path)}
+            onClick={() => handleNavigation(item)}
+            selected={!item.action && location.pathname.startsWith(item.path)} // Only check path for non-logout items
             sx={{
               '&:hover': {
                 backgroundColor: theme.palette.action.hover
-              }
+              },
+              // Highlight active link
+              ...(!item.action && location.pathname.startsWith(item.path) && {
+                backgroundColor: theme.palette.primary.main,
+                color: theme.palette.common.white,
+                '& .MuiListItemIcon-root': {
+                  color: theme.palette.common.white,
+                }
+              })
             }}
           >
             <ListItemIcon sx={{ minWidth: 40 }}>
@@ -91,7 +115,7 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
           </ListItem>
         ))}
       </List>
-    </>
+    </Box>
   );
 
   return (
@@ -109,7 +133,7 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
         open={mobileOpen}
         onClose={onDrawerToggle}
         ModalProps={{
-          keepMounted: true // Better open performance on mobile
+          keepMounted: true 
         }}
         sx={{
           display: { xs: 'block', md: 'none' },
@@ -132,7 +156,7 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
             boxSizing: 'border-box'
           }
         }}
-        open
+        open // Drawer is open by default for permanent
       >
         {drawerContent}
       </Drawer>
@@ -141,6 +165,6 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
 }
 
 Sidebar.propTypes = {
-  mobileOpen: PropTypes.bool,
-  onDrawerToggle: PropTypes.func
+  mobileOpen: PropTypes.bool.isRequired, // Changed to required as it's passed from parent
+  onDrawerToggle: PropTypes.func.isRequired // Changed to required
 };
