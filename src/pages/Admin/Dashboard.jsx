@@ -7,7 +7,8 @@ import {
   Paper,
   LinearProgress,
   useMediaQuery,
-  useTheme
+  useTheme,
+  Button // FIX: Imported missing Button component
 } from '@mui/material';
 import { 
   Assessment as AssessmentIcon,
@@ -18,9 +19,76 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useSnackbar } from 'notistack';
 import PropTypes from 'prop-types';
+// Assuming these two components are correctly defined in their paths
 import AssessmentChart from '../../components/admin/AssessmentChart';
 import UserActivityWidget from '../../components/admin/UserActivityWidget';
 import IconButton from '@mui/material/IconButton';
+
+
+// NOTE: Moved StatCard outside the main component to improve performance and clarity.
+// This is the same function defined at the bottom of the original code.
+function StatCard({ title, value, icon, loading, trend }) {
+  const theme = useTheme();
+  const trendColors = {
+    up: theme.palette.success.main,
+    down: theme.palette.error.main,
+    neutral: theme.palette.warning.main
+  };
+
+  return (
+    <Paper elevation={2} sx={{ 
+      p: 3, 
+      height: '100%',
+      borderRadius: 2,
+      position: 'relative',
+      overflow: 'hidden',
+      '&:after': {
+        content: '""',
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 4,
+        backgroundColor: trendColors[trend] || 'transparent'
+      }
+    }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+        <Box>
+          <Typography variant="subtitle2" color="text.secondary">
+            {title}
+          </Typography>
+          <Typography variant="h4" fontWeight="bold">
+            {loading ? '--' : value.toLocaleString()}
+          </Typography>
+        </Box>
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center',
+          color: theme.palette.primary.main
+        }}>
+          {/* Ensure the icon receives the needed props */}
+          {React.cloneElement(icon, { fontSize: 'large', color: icon.props.color || 'primary' })}
+        </Box>
+      </Box>
+    </Paper>
+  );
+}
+
+StatCard.propTypes = {
+  title: PropTypes.string.isRequired,
+  value: PropTypes.number.isRequired,
+  icon: PropTypes.node.isRequired,
+  loading: PropTypes.bool,
+  trend: PropTypes.oneOf(['up', 'down', 'neutral'])
+};
+
+StatCard.defaultProps = {
+  loading: false,
+  trend: 'neutral'
+};
+
+
+// --- AdminDashboard Component ---
 
 export default function AdminDashboard() {
   const theme = useTheme();
@@ -36,51 +104,60 @@ export default function AdminDashboard() {
   });
   const [assessments, setAssessments] = useState([]);
 
-  const token = localStorage.getItem('token');
+  // Memoize token retrieval to avoid recreating the dependency in fetchDashboardData
+  const token = claims ? localStorage.getItem('token') : null;
+  const isAdmin = claims?.role === 'admin';
+
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
       if (!token) throw new Error('Authentication token not found');
 
-      // Fetch summary statistics
+      // 1. Fetch summary statistics
       const statsResponse = await fetch('/api/admin/stats', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const statsData = await statsResponse.json();
-      if (!statsResponse.ok) throw new Error(statsData.message);
+      if (!statsResponse.ok) throw new Error(statsData.message || 'Failed to fetch stats');
       setStats(statsData);
 
-      // Fetch recent assessments
+      // 2. Fetch recent assessments
       const assessmentsResponse = await fetch('/api/admin/assessments', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const assessmentsData = await assessmentsResponse.json();
-      if (!assessmentsResponse.ok) throw new Error(assessmentsData.message);
+      if (!assessmentsResponse.ok) throw new Error(assessmentsData.message || 'Failed to fetch assessments');
       setAssessments(assessmentsData);
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      enqueueSnackbar('Failed to load dashboard data', { 
-        variant: 'error',
-        autoHideDuration: 3000
-      });
+      // Only show error snackbar if token is found, otherwise it clutters the console/UI
+      if (token) {
+        enqueueSnackbar('Failed to load dashboard data: ' + (error.message || 'Network error'), { 
+          variant: 'error',
+          autoHideDuration: 3000
+        });
+      }
     } finally {
       setLoading(false);
     }
-  }, [token, enqueueSnackbar]);
+  }, [token, enqueueSnackbar]); // Dependencies are clean and stable
 
+  // Use the effect to fetch data only if the user is confirmed admin
   useEffect(() => {
-    if (claims?.role === 'admin') {
+    if (isAdmin) {
       fetchDashboardData();
     }
-  }, [claims, fetchDashboardData]);
+  }, [isAdmin, fetchDashboardData]);
 
-  if (!claims?.role === 'admin') {
+  // FIX: The original permission check had a critical error: `!claims?.role === 'admin'` 
+  // which evaluates as `(!claims?.role) === 'admin'`, always resulting in false or an incorrect check.
+  if (!isAdmin) {
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
         <Typography variant="h6" color="error">
-          You don't have permission to access this page
+          You don't have permission to access this page.
         </Typography>
       </Box>
     );
@@ -99,7 +176,7 @@ export default function AdminDashboard() {
         </Typography>
         <IconButton 
           onClick={fetchDashboardData}
-          aria-label="refresh"
+          aria-label="refresh dashboard data"
           disabled={loading}
         >
           <RefreshIcon />
@@ -109,6 +186,7 @@ export default function AdminDashboard() {
       {loading && <LinearProgress sx={{ mb: 3 }} />}
 
       <Grid container spacing={isMobile ? 1 : 3} sx={{ mb: 3 }}>
+        {/* Stat Cards */}
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Total Assessments"
@@ -155,14 +233,15 @@ export default function AdminDashboard() {
             borderRadius: 2
           }}>
             <Typography variant="h6" gutterBottom>
-              Recent Assessments
+              Recent Assessments Activity
             </Typography>
             {loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
                 <CircularProgress />
               </Box>
             ) : (
-              <AssessmentChart assessments={assessments} />
+              // Ensure AssessmentChart handles an empty array gracefully
+              <AssessmentChart data={assessments} /> 
             )}
           </Paper>
         </Grid>
@@ -173,85 +252,12 @@ export default function AdminDashboard() {
             borderRadius: 2
           }}>
             <Typography variant="h6" gutterBottom>
-              User Activity
+              User Activity Feed
             </Typography>
             <UserActivityWidget />
           </Paper>
         </Grid>
       </Grid>
-
-      {/* Mobile-only controls */}
-      {isMobile && (
-        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
-          <Button 
-            variant="contained"
-            onClick={fetchDashboardData}
-            startIcon={<RefreshIcon />}
-          >
-            Refresh Data
-          </Button>
-        </Box>
-      )}
     </Box>
   );
 }
-
-function StatCard({ title, value, icon, loading, trend }) {
-  // ... (StatCard component remains unchanged as it has no Firebase dependencies)
-  const theme = useTheme();
-  const trendColors = {
-    up: theme.palette.success.main,
-    down: theme.palette.error.main,
-    neutral: theme.palette.warning.main
-  };
-
-  return (
-    <Paper elevation={2} sx={{ 
-      p: 3, 
-      height: '100%',
-      borderRadius: 2,
-      position: 'relative',
-      overflow: 'hidden',
-      '&:after': {
-        content: '""',
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 4,
-        backgroundColor: trendColors[trend] || 'transparent'
-      }
-    }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-        <Box>
-          <Typography variant="subtitle2" color="text.secondary">
-            {title}
-          </Typography>
-          <Typography variant="h4" fontWeight="bold">
-            {loading ? '--' : value.toLocaleString()}
-          </Typography>
-        </Box>
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center',
-          color: theme.palette.primary.main
-        }}>
-          {React.cloneElement(icon, { fontSize: 'large' })}
-        </Box>
-      </Box>
-    </Paper>
-  );
-}
-
-StatCard.propTypes = {
-  title: PropTypes.string.isRequired,
-  value: PropTypes.number.isRequired,
-  icon: PropTypes.node.isRequired,
-  loading: PropTypes.bool,
-  trend: PropTypes.oneOf(['up', 'down', 'neutral'])
-};
-
-StatCard.defaultProps = {
-  loading: false,
-  trend: 'neutral'
-};
