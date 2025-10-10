@@ -2,7 +2,8 @@ import React from 'react';
 import { Box } from '@mui/material';
 import PropTypes from 'prop-types';
 import { motion } from 'framer-motion';
-import { Logo } from '../components/brand';
+// Ensure this import uses the correct path (assuming brand/index.jsx)
+import { Logo } from '../components/brand'; 
 
 export default function AuthLayout({ children }) {
   return (
@@ -27,7 +28,8 @@ export default function AuthLayout({ children }) {
         }}
       >
         <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-          <Logo size={80} />
+          {/* Always show the logo for branding, using a fixed light mode for contrast */}
+          <Logo size={80} darkMode={false} /> 
         </Box>
         <Box
           sx={{
