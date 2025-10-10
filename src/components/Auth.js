@@ -37,6 +37,7 @@ export default function Auth({ disableSignup = false }) {
       enqueueSnackbar('Please enter a valid email', { variant: 'error' });
       return false;
     }
+    // Simple password validation for demonstration
     if (!password || password.length < 6) {
       enqueueSnackbar('Password must be at least 6 characters', { variant: 'error' });
       return false;
@@ -54,24 +55,23 @@ export default function Auth({ disableSignup = false }) {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, role }),
+        // Only include role in the body if registering
+        body: JSON.stringify({ email, password, role: isLogin ? undefined : role }), 
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Authentication failed');
+        throw new Error(data.message || (isLogin ? 'Login failed' : 'Registration failed'));
       }
 
-      // For login, store the JWT token
       if (isLogin) {
         localStorage.setItem('token', data.token);
         enqueueSnackbar('Login successful', { variant: 'success' });
-        // Navigate to the dashboard or a protected route
         navigate('/'); 
       } else {
         enqueueSnackbar('Account created successfully. Please sign in.', { variant: 'success' });
-        setIsLogin(true); // Switch to login view
+        setIsLogin(true);
       }
 
     } catch (err) {
@@ -85,9 +85,6 @@ export default function Auth({ disableSignup = false }) {
     }
   };
 
-  // Google Login is not handled by the Vercel API, as this is a custom JWT-based
-  // authentication flow. Google authentication needs its own backend handler, 
-  // which you would build separately. For now, it is removed to prevent errors.
   const googleLogin = () => {
     enqueueSnackbar('Google login is not yet implemented for this platform.', { variant: 'info' });
   };
@@ -128,6 +125,7 @@ export default function Auth({ disableSignup = false }) {
                 <IconButton
                   onClick={() => setShowPassword(!showPassword)}
                   edge="end"
+                  aria-label="toggle password visibility"
                 >
                   {showPassword ? <VisibilityOff /> : <Visibility />}
                 </IconButton>
@@ -136,18 +134,20 @@ export default function Auth({ disableSignup = false }) {
           }}
         />
 
+        {/* Use FormControl for Select for better accessibility and styling */}
         {!isLogin && !disableSignup && (
-          <Select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            fullWidth
-            margin="dense"
-            sx={{ mt: 2 }}
-          >
-            <MenuItem value="admin">Admin</MenuItem>
-            <MenuItem value="assessor">Assessor</MenuItem>
-            <MenuItem value="candidate">Candidate</MenuItem>
-          </Select>
+          <Box sx={{ mt: 2 }}>
+            <Select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              fullWidth
+              displayEmpty
+            >
+              <MenuItem value="admin">Admin</MenuItem>
+              <MenuItem value="assessor">Assessor</MenuItem>
+              <MenuItem value="candidate">Candidate</MenuItem>
+            </Select>
+          </Box>
         )}
 
         <Button
@@ -156,7 +156,7 @@ export default function Auth({ disableSignup = false }) {
           fullWidth
           onClick={handleAuth}
           disabled={loading}
-          startIcon={loading ? <CircularProgress size={20} /> : null}
+          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
           sx={{ mt: 3, py: 1.5 }}
         >
           {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Sign Up'}
@@ -190,8 +190,8 @@ export default function Auth({ disableSignup = false }) {
           </Box>
         )}
 
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 3 }}>
-          <Link to="/forgot-password">Forgot password?</Link>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 3, textAlign: 'center' }}>
+          <Link to="/forgot-password" style={{ color: 'inherit' }}>Forgot password?</Link>
         </Typography>
       </Paper>
     </Box>
