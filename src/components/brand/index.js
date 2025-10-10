@@ -1,2 +1,2 @@
 // brand/index.jsx
-export * from './Logo';
+export * from './logo';
