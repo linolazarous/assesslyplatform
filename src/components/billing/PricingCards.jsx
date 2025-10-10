@@ -16,6 +16,7 @@ import { useSnackbar } from 'notistack';
 import PropTypes from 'prop-types';
 
 const PLANS = [
+  // ... (PLANS array unchanged)
   {
     id: 'basic',
     name: 'Basic',
@@ -65,6 +66,22 @@ export default function PricingCards({ orgId, currentPlan }) {
       enqueueSnackbar('Organization ID is missing', { variant: 'error' });
       return;
     }
+    // Prevent action if already on this plan or the current plan is loading
+    if (currentPlan?.toLowerCase() === planId) return; 
+
+    // Enterprise plans typically require contact, not a checkout session
+    if (planId === 'enterprise') {
+        enqueueSnackbar('Please contact sales for Enterprise pricing.', { variant: 'info' });
+        // Optionally navigate to a contact form
+        return;
+    }
+    
+    // Ensure stripePriceId exists for non-Enterprise plans
+    if (!priceId) {
+        enqueueSnackbar('Price ID configuration is missing for this plan.', { variant: 'error' });
+        return;
+    }
+
 
     setLoadingPlan(planId);
     try {
@@ -97,6 +114,7 @@ export default function PricingCards({ orgId, currentPlan }) {
         variant: 'error',
         autoHideDuration: 5000 
       });
+    } finally {
       setLoadingPlan(null);
     }
   };
@@ -151,8 +169,8 @@ export default function PricingCards({ orgId, currentPlan }) {
               </Typography>
               
               <List dense sx={{ mb: 2 }}>
-                {plan.features.map((feature, index) => (
-                  <ListItem key={index} disableGutters>
+                {plan.features.map((feature) => (
+                  <ListItem key={feature} disableGutters> {/* FIX: Use feature string as key */}
                     <ListItemIcon sx={{ minWidth: 32 }}>
                       <CheckCircleIcon color="primary" fontSize="small" />
                     </ListItemIcon>
@@ -168,7 +186,7 @@ export default function PricingCards({ orgId, currentPlan }) {
                 size="large"
                 variant={isCurrentPlan ? 'contained' : 'outlined'}
                 color={isCurrentPlan ? 'success' : 'primary'}
-                disabled={isCurrentPlan || !!loadingPlan || !plan.stripePriceId}
+                disabled={isCurrentPlan || !!loadingPlan}
                 onClick={() => handleSubscribe(plan.id, plan.stripePriceId)}
                 sx={{ py: 1.5 }}
               >
