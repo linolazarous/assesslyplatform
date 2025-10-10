@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { Button, CircularProgress } from '@mui/material';
@@ -6,34 +6,37 @@ import { PictureAsPdf } from '@mui/icons-material';
 import PropTypes from 'prop-types';
 
 export default function PdfReport({ assessment, answers, responses }) {
-  const [generating, setGenerating] = React.useState(false);
+  // FIX: Renamed state to follow convention
+  const [isGenerating, setIsGenerating] = useState(false); 
 
-  const generatePdf = async () => {
-    setGenerating(true);
+  // FIX: Use useCallback to memoize the generation function
+  const generatePdf = useCallback(async () => {
+    setIsGenerating(true);
+    let logoUrl = null;
+    
     try {
       const doc = new jsPDF();
       
-      // Add logo with improved loading
-      let logoUrl = null;
+      // Logo handling: Load and clean up URL
       try {
         const logoResponse = await fetch('/logo.png');
-        if (!logoResponse.ok) {
-          throw new Error('Logo not found');
+        if (logoResponse.ok) {
+          const logoBlob = await logoResponse.blob();
+          logoUrl = URL.createObjectURL(logoBlob);
+          doc.addImage(logoUrl, 'PNG', 15, 10, 30, 10);
+        } else {
+          console.warn('Could not load logo: Response not OK');
         }
-        const logoBlob = await logoResponse.blob();
-        logoUrl = URL.createObjectURL(logoBlob);
-        
-        // Add logo to PDF
-        doc.addImage(logoUrl, 'PNG', 15, 10, 30, 10);
-        
-        // Clean up the object URL after a short delay
-        setTimeout(() => {
-          if (logoUrl) URL.revokeObjectURL(logoUrl);
-        }, 1000);
-        
       } catch (e) {
-        console.warn('Could not load logo:', e.message);
-        // Continue without logo - don't break PDF generation
+        // Handle network errors for logo gracefully
+        console.warn('Could not load logo (fetch error):', e.message);
+      } finally {
+        // FIX: Clean up the object URL immediately after doc.addImage is done, 
+        // which is safer than relying on setTimeout. jsPDF makes a copy.
+        if (logoUrl) {
+          URL.revokeObjectURL(logoUrl);
+          logoUrl = null; // Clear reference
+        }
       }
 
       // Title section
@@ -50,13 +53,27 @@ export default function PdfReport({ assessment, answers, responses }) {
         doc.setFontSize(12);
         doc.setTextColor(60);
         const splitDesc = doc.splitTextToSize(assessment.description, 180);
-        doc.text(splitDesc, 15, 40);
+        // FIX: Adjust starting Y position based on logo presence and description
+        const startY = assessment.description ? 40 : 35;
+        doc.text(splitDesc, 15, startY);
       }
       
       // Questions table
       const tableData = assessment.questions.map((q, i) => {
-        let answer = answers?.[i] || responses?.[i]?.answer || 'Not answered';
+        // Robustly determine the answer
+        let answer = 'Not answered';
+
+        if (Array.isArray(answers) && answers[i] !== undefined) {
+          answer = answers[i];
+        } else if (Array.isArray(responses) && responses[i]?.answer !== undefined) {
+          answer = responses[i].answer;
+        } else if (answers?.[i] !== undefined) {
+          // Fallback for object-style access
+          answer = answers[i];
+        }
+
         if (Array.isArray(answer)) answer = answer.join(', ');
+        
         return [
           `Q${i+1}`,
           q.text,
@@ -65,7 +82,8 @@ export default function PdfReport({ assessment, answers, responses }) {
       });
 
       doc.autoTable({
-        startY: 50,
+        // Calculate startY after description
+        startY: doc.lastAutoTable.finalY + 10 || (assessment.description ? 65 : 50),
         head: [['#', 'Question', 'Answer']],
         body: tableData,
         theme: 'grid',
@@ -100,22 +118,23 @@ export default function PdfReport({ assessment, answers, responses }) {
       doc.save(`${assessment.title.replace(/[^a-z0-9]/gi, '_')}_report.pdf`);
     } catch (error) {
       console.error('PDF generation failed:', error);
+      // Optional: Add a snackbar notification here
     } finally {
-      setGenerating(false);
+      setIsGenerating(false);
     }
-  };
+  }, [assessment, answers, responses]); // Dependencies added
 
   return (
     <Button
       variant="contained"
       color="secondary"
       onClick={generatePdf}
-      startIcon={generating ? <CircularProgress size={20} /> : <PictureAsPdf />}
-      disabled={generating}
+      startIcon={isGenerating ? <CircularProgress size={20} /> : <PictureAsPdf />}
+      disabled={isGenerating}
       size="small"
       sx={{ minWidth: 180 }}
     >
-      {generating ? 'Generating...' : 'Download PDF Report'}
+      {isGenerating ? 'Generating...' : 'Download PDF Report'}
     </Button>
   );
 }
@@ -129,7 +148,11 @@ PdfReport.propTypes = {
       type: PropTypes.string
     })).isRequired
   }).isRequired,
-  answers: PropTypes.object,
+  // FIX: Changed answers to PropTypes.oneOfType to allow for arrays/objects
+  answers: PropTypes.oneOfType([
+    PropTypes.object, 
+    PropTypes.array
+  ]),
   responses: PropTypes.arrayOf(PropTypes.shape({
     answer: PropTypes.oneOfType([
       PropTypes.string,
