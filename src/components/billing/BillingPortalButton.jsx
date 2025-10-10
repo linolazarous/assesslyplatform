@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Button, CircularProgress, Tooltip } from '@mui/material';
+import { CreditCard as CreditCardIcon } from '@mui/icons-material'; // Added icon import
 import { useSnackbar } from 'notistack';
 import PropTypes from 'prop-types';
 
@@ -18,6 +19,9 @@ export default function BillingPortalButton({ orgId }) {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('Authentication token not found');
 
+      // The returnUrl points back to the current billing page after managing subscription
+      const returnUrl = `${window.location.origin}/organization/${orgId}/billing`;
+
       const response = await fetch('/api/billing/portal-link', {
         method: 'POST',
         headers: { 
@@ -26,7 +30,7 @@ export default function BillingPortalButton({ orgId }) {
         },
         body: JSON.stringify({
           orgId,
-          returnUrl: `${window.location.origin}/organization/${orgId}/billing`
+          returnUrl
         })
       });
 
@@ -35,6 +39,7 @@ export default function BillingPortalButton({ orgId }) {
         throw new Error(data.message || 'Failed to access billing portal');
       }
       
+      // Redirect user to the Stripe Customer Portal URL
       window.location.assign(data.url);
     } catch (error) {
       console.error('Billing portal error:', error);
@@ -48,13 +53,13 @@ export default function BillingPortalButton({ orgId }) {
   };
 
   return (
-    <Tooltip title="Manage your subscription and payment methods">
+    <Tooltip title="Manage your subscription, change plan, and update payment methods">
       <Button 
         variant="contained" 
         color="primary"
         onClick={handleManageSubscription}
         disabled={loading || !orgId}
-        startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
+        startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <CreditCardIcon />}
         sx={{ minWidth: 220 }}
       >
         {loading ? 'Loading...' : 'Manage Billing'}
