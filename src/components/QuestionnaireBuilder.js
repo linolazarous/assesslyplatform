@@ -9,7 +9,6 @@ import {
   IconButton,
   List,
   ListItem,
-  ListItemText,
   Divider,
   Box,
   Grid,
@@ -35,8 +34,9 @@ export default function QuestionnaireBuilder({ organizationId }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isTemplate, setIsTemplate] = useState(false);
+  // Use a unique ID for questions to ensure stable keys
   const [questions, setQuestions] = useState([
-    { text: '', type: 'text', options: [], required: true }
+    { id: Date.now(), text: '', type: 'text', options: [{id: Date.now() + 1, text: ''}], required: true }
   ]);
   const [loading, setLoading] = useState(false);
   const { enqueueSnackbar } = useSnackbar();
@@ -47,7 +47,13 @@ export default function QuestionnaireBuilder({ organizationId }) {
       enqueueSnackbar('Maximum 50 questions allowed', { variant: 'warning' });
       return;
     }
-    setQuestions([...questions, { text: '', type: 'text', options: [], required: true }]);
+    setQuestions([...questions, { 
+      id: Date.now(), 
+      text: '', 
+      type: 'text', 
+      options: [], 
+      required: true 
+    }]);
   };
 
   const removeQuestion = (index) => {
@@ -62,10 +68,14 @@ export default function QuestionnaireBuilder({ organizationId }) {
     const newQuestions = [...questions];
     newQuestions[index][field] = value;
     
+    // Convert to a structure with unique IDs for options to ensure proper keying
     if (field === 'type' && value !== 'multiple_choice') {
       newQuestions[index].options = [];
+    } else if (field === 'type' && value === 'multiple_choice' && newQuestions[index].options.length === 0) {
+       // Initialize with one empty option if switching to MC
+       newQuestions[index].options = [{ id: Date.now(), text: '' }];
     }
-    
+
     setQuestions(newQuestions);
   };
 
@@ -75,13 +85,14 @@ export default function QuestionnaireBuilder({ organizationId }) {
       enqueueSnackbar('Maximum 10 options per question', { variant: 'warning' });
       return;
     }
-    newQuestions[qIndex].options = [...newQuestions[qIndex].options, ''];
+    // FIX: Options should be objects with IDs for stable keying
+    newQuestions[qIndex].options = [...newQuestions[qIndex].options, { id: Date.now(), text: '' }];
     setQuestions(newQuestions);
   };
 
   const updateOption = (qIndex, oIndex, value) => {
     const newQuestions = [...questions];
-    newQuestions[qIndex].options[oIndex] = value;
+    newQuestions[qIndex].options[oIndex].text = value; // Update the text property
     setQuestions(newQuestions);
   };
 
@@ -102,13 +113,16 @@ export default function QuestionnaireBuilder({ organizationId }) {
         enqueueSnackbar(`Question ${i + 1} text is required`, { variant: 'error' });
         return false;
       }
-      if (q.type === 'multiple_choice' && q.options.length < 2) {
-        enqueueSnackbar(`Question ${i + 1} needs at least 2 options`, { variant: 'error' });
-        return false;
-      }
-      if (q.type === 'multiple_choice' && q.options.some(opt => !opt.trim())) {
-        enqueueSnackbar(`Question ${i + 1} has empty options`, { variant: 'error' });
-        return false;
+      if (q.type === 'multiple_choice') {
+        // Validation check for new option structure
+        if (q.options.length < 2) {
+          enqueueSnackbar(`Question ${i + 1} needs at least 2 options`, { variant: 'error' });
+          return false;
+        }
+        if (q.options.some(opt => !opt.text.trim())) { // Check the 'text' property
+          enqueueSnackbar(`Question ${i + 1} has empty options`, { variant: 'error' });
+          return false;
+        }
       }
     }
     return true;
@@ -123,6 +137,15 @@ export default function QuestionnaireBuilder({ organizationId }) {
       if (!token) throw new Error('Authentication token not found');
 
       const endpoint = isTemplate ? '/api/templates/create' : '/api/assessments/create';
+      
+      // Map questions to API format, converting options back to string array
+      const questionsPayload = questions.map(q => ({
+        text: q.text,
+        type: q.type,
+        required: q.required,
+        options: q.type === 'multiple_choice' ? q.options.map(opt => opt.text) : []
+      }));
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -132,9 +155,9 @@ export default function QuestionnaireBuilder({ organizationId }) {
         body: JSON.stringify({
           title,
           description,
-          questions,
+          questions: questionsPayload,
           organizationId,
-          isTemplate
+          isTemplate // This might be ignored by one endpoint, but included for completeness
         }),
       });
 
@@ -210,7 +233,7 @@ export default function QuestionnaireBuilder({ organizationId }) {
       <List>
         {questions.map((question, qIndex) => (
           <ListItem 
-            key={`q-${qIndex}`} 
+            key={question.id} // FIX: Use stable question ID for key
             divider 
             sx={{ 
               p: 3,
@@ -229,6 +252,7 @@ export default function QuestionnaireBuilder({ organizationId }) {
                   color="error" 
                   onClick={() => removeQuestion(qIndex)}
                   disabled={questions.length <= 1}
+                  aria-label={`remove question ${qIndex + 1}`}
                 >
                   <Delete />
                 </IconButton>
@@ -246,8 +270,9 @@ export default function QuestionnaireBuilder({ organizationId }) {
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Question Type</InputLabel>
+                    <InputLabel id={`q-type-label-${qIndex}`}>Question Type</InputLabel>
                     <Select
+                      labelId={`q-type-label-${qIndex}`}
                       value={question.type}
                       label="Question Type"
                       onChange={(e) => updateQuestion(qIndex, 'type', e.target.value)}
@@ -261,7 +286,7 @@ export default function QuestionnaireBuilder({ organizationId }) {
                   </FormControl>
                 </Grid>
 
-                <Grid item xs={12} md={6}>
+                <Grid item xs={12} md={6} sx={{ display: 'flex', alignItems: 'center' }}>
                   <FormControlLabel
                     control={
                       <Switch
@@ -282,9 +307,10 @@ export default function QuestionnaireBuilder({ organizationId }) {
                   </Typography>
                   
                   {question.options.map((option, oIndex) => (
-                    <Box key={`opt-${oIndex}`} sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                    // FIX: Use stable option ID for key
+                    <Box key={option.id} sx={{ display: 'flex', gap: 1, mb: 1 }}> 
                       <TextField
-                        value={option}
+                        value={option.text} // Use the text property
                         onChange={(e) => updateOption(qIndex, oIndex, e.target.value)}
                         fullWidth
                         size="small"
@@ -294,6 +320,7 @@ export default function QuestionnaireBuilder({ organizationId }) {
                         color="error"
                         onClick={() => removeOption(qIndex, oIndex)}
                         disabled={question.options.length <= 2}
+                        aria-label={`remove option ${oIndex + 1}`}
                       >
                         <Delete fontSize="small" />
                       </IconButton>
@@ -330,7 +357,7 @@ export default function QuestionnaireBuilder({ organizationId }) {
           variant="contained"
           color="primary"
           onClick={handleSave}
-          startIcon={loading ? <CircularProgress size={20} /> : <Save />}
+          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <Save />}
           disabled={loading}
           sx={{ minWidth: 150 }}
         >
