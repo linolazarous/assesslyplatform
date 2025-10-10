@@ -22,6 +22,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Serve static files from root directory
+app.use(express.static(__dirname));
+
 // Health check endpoint
 app.get("/api/health", (req, res) => {
   res.json({ 
@@ -31,9 +34,9 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// ===== BASIC API ROUTES (Add these first) =====
+// ===== BASIC API ROUTES =====
 
-// Auth routes (placeholder - add real implementations later)
+// Auth routes
 app.post('/api/auth/register', (req, res) => {
   res.json({ message: "Register endpoint - implement later" });
 });
@@ -74,7 +77,7 @@ app.get('/api/organizations/:orgId', (req, res) => {
   });
 });
 
-// ===== PROTECTED ROUTES (Add authentication later) =====
+// ===== PROTECTED ROUTES =====
 
 // Admin routes
 app.get('/api/admin/assessments', (req, res) => {
@@ -103,12 +106,9 @@ app.get('/api/cron/expiring-subscriptions', (req, res) => {
   res.json({ message: "Cron job endpoint" });
 });
 
-// Serve frontend static files
-app.use(express.static(path.join(__dirname, "dist")));
-
-// SPA fallback - must be last
+// Serve index.html for all other routes (SPA)
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "dist", "index.html"));
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
 // 404 handler for API routes
@@ -119,4 +119,5 @@ app.use("/api/*", (req, res) => {
 app.listen(port, () => {
   console.log(`🚀 Assessly running on port ${port}`);
   console.log(`📊 Health check: http://localhost:${port}/api/health`);
+  console.log(`🌐 Frontend: http://localhost:${port}/`);
 });
