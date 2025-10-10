@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { Box, CssBaseline, Toolbar } from '@mui/material';
 import PropTypes from 'prop-types';
-import Navbar from '../components/common/Navbar';
-import Sidebar from '../components/common/Sidebar';
+// FIX: Align imports to use the corrected .jsx file extension
+import Navbar from '../components/common/Navbar.jsx'; 
+import Sidebar from '../components/common/Sidebar.jsx'; // FIX: Align import
 import { useAuth } from '../contexts/AuthContext';
+
+const drawerWidth = 240; // Define drawerWidth constant for calculation consistency
 
 export default function MainLayout({ children }) {
   const { currentUser } = useAuth();
@@ -13,15 +16,22 @@ export default function MainLayout({ children }) {
     setMobileOpen(!mobileOpen);
   };
 
+  // Determine the sidebar width used for margin calculation
+  const sidebarWidth = currentUser ? drawerWidth : 0;
+  // Determine if the sidebar is visible
+  const isSidebarVisible = !!currentUser; 
+
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <CssBaseline />
+      
+      {/* Navbar will always render, but controls visibility of navigation links */}
       <Navbar 
-        showNavigation={!!currentUser}
-        onDrawerToggle={handleDrawerToggle} 
+        showNavigation={!isSidebarVisible} // Show nav links if not logged in
+        onDrawerToggle={handleDrawerToggle} // Used to open mobile sidebar
       />
       
-      {currentUser && (
+      {isSidebarVisible && (
         <Sidebar 
           mobileOpen={mobileOpen} 
           onDrawerToggle={handleDrawerToggle} 
@@ -33,16 +43,23 @@ export default function MainLayout({ children }) {
         sx={{
           flexGrow: 1,
           p: 3,
-          width: '100%',
-          maxWidth: `calc(100vw - ${currentUser ? 240 : 0}px)`,
+          width: { xs: '100%', md: `calc(100% - ${sidebarWidth}px)` }, // Full width on mobile, adjusted on desktop
+          // Use Toolbar as a spacer for the Header, allowing content to start below it
+          pt: { xs: 8, sm: 8 }, 
+          
+          // Desktop margin calculation to make space for the permanent sidebar
+          ml: { 
+            xs: 0, 
+            md: sidebarWidth 
+          },
           transition: (theme) => theme.transitions.create('margin', {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.leavingScreen,
           }),
-          ml: { sm: currentUser ? '240px' : 0 }
         }}
       >
-        <Toolbar /> {/* Spacer for Navbar */}
+        {/* We keep the Toolbar spacer here, but adjust pT in the main Box for better control */}
+        <Toolbar sx={{ display: 'none' }} /> 
         {children}
       </Box>
     </Box>
