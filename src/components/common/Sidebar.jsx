@@ -19,7 +19,7 @@ import {
   ExitToApp as LogoutIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate, useLocation } from 'react-router-dom'; // Added useLocation for active state
+import { useNavigate, useLocation } from 'react-router-dom';
 import Logo from '../brand/logo';
 import PropTypes from 'prop-types';
 
@@ -28,7 +28,7 @@ const drawerWidth = 240;
 export default function Sidebar({ mobileOpen, onDrawerToggle }) {
   const { logout } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation(); // Get current path for active state
+  const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -64,12 +64,11 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
             button 
             key={item.text}
             onClick={() => handleNavigation(item)}
-            selected={location.pathname.startsWith(item.path)} // Check if active
+            selected={location.pathname.startsWith(item.path)}
             sx={{
               '&:hover': {
                 backgroundColor: theme.palette.action.hover
               },
-              // Highlight active link
               ...(location.pathname.startsWith(item.path) && {
                 backgroundColor: theme.palette.primary.main,
                 color: theme.palette.common.white,
@@ -93,12 +92,11 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
             button
             key={item.text}
             onClick={() => handleNavigation(item)}
-            selected={!item.action && location.pathname.startsWith(item.path)} // Only check path for non-logout items
+            selected={!item.action && location.pathname.startsWith(item.path)}
             sx={{
               '&:hover': {
                 backgroundColor: theme.palette.action.hover
               },
-              // Highlight active link
               ...(!item.action && location.pathname.startsWith(item.path) && {
                 backgroundColor: theme.palette.primary.main,
                 color: theme.palette.common.white,
@@ -156,7 +154,7 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
             boxSizing: 'border-box'
           }
         }}
-        open // Drawer is open by default for permanent
+        open
       >
         {drawerContent}
       </Drawer>
@@ -165,6 +163,6 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
 }
 
 Sidebar.propTypes = {
-  mobileOpen: PropTypes.bool.isRequired, // Changed to required as it's passed from parent
-  onDrawerToggle: PropTypes.func.isRequired // Changed to required
+  mobileOpen: PropTypes.bool.isRequired,
+  onDrawerToggle: PropTypes.func.isRequired
 };
