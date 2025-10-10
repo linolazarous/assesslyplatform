@@ -9,13 +9,25 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: false,
+    // Add build optimization
+    minify: 'esbuild',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          mui: ['@mui/material', '@mui/icons-material']
+        }
+      }
+    }
   },
   server: {
     port: 5173,
     open: true,
+    host: true
   },
   preview: {
-    port: 8080,
+    port: process.env.PORT || 4173,
+    host: true
   },
   resolve: {
     alias: {
@@ -28,4 +40,8 @@ export default defineConfig({
     include: /src\/.*\.jsx?$/,
     exclude: [],
   },
+  // Add this for better memory management
+  optimizeDeps: {
+    include: ['react', 'react-dom', '@mui/material', '@mui/icons-material']
+  }
 });
