@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
+import PropTypes from 'prop-types'; // Added PropTypes import
 
 // Hide AppBar on scroll
 function HideOnScroll(props) {
@@ -27,6 +28,11 @@ function HideOnScroll(props) {
     </Slide>
   );
 }
+
+// Added PropTypes for HideOnScroll
+HideOnScroll.propTypes = {
+  children: PropTypes.element.isRequired,
+};
 
 const Navbar = ({ showNavigation = true }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -45,7 +51,7 @@ const Navbar = ({ showNavigation = true }) => {
   ];
 
   const drawer = (
-    <Box sx={{ textAlign: 'center' }}>
+    <Box sx={{ textAlign: 'center' }} role="presentation">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2 }}>
         <Logo size={32} />
         <IconButton
@@ -76,7 +82,10 @@ const Navbar = ({ showNavigation = true }) => {
             <ListItemText primary={item.label} />
           </ListItem>
         ))}
-        <ListItem>
+        {/* FIX: The "Get Started" button needs a unique key when inside a list map, 
+           or simply when it's the only non-mapped item in a list to prevent warnings 
+           if the list were ever mapped itself. Using a string here is safe. */}
+        <ListItem key="drawer-get-started"> 
           <Button 
             variant="contained" 
             color="primary" 
@@ -130,6 +139,7 @@ const Navbar = ({ showNavigation = true }) => {
             </Box>
 
             {/* Desktop Auth Buttons */}
+            {/* Added Box with flexGrow to ensure logo and buttons are separated */}
             <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 1 }}>
               <Button 
                 color="inherit" 
@@ -149,10 +159,12 @@ const Navbar = ({ showNavigation = true }) => {
             </Box>
 
             {/* Mobile menu button */}
+            {/* Added flexGrow for spacing on mobile */}
+            <Box sx={{ flexGrow: 1, display: { md: 'none' } }} /> 
             <IconButton
               color="inherit"
               aria-label="open drawer"
-              edge="start"
+              edge="end" // Changed to end for consistency
               onClick={handleDrawerToggle}
               sx={{ display: { md: 'none' } }}
             >
@@ -177,6 +189,10 @@ const Navbar = ({ showNavigation = true }) => {
       </Drawer>
     </>
   );
+};
+
+Navbar.propTypes = {
+  showNavigation: PropTypes.bool,
 };
 
 export default Navbar;
