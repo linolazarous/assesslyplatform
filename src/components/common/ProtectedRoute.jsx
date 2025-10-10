@@ -18,6 +18,7 @@ export default function ProtectedRoute({
   }
 
   if (!currentUser) {
+    // Redirect to the login page if the user is not authenticated
     return (
       <Navigate 
         to={redirectTo} 
@@ -31,18 +32,21 @@ export default function ProtectedRoute({
   if (roles && roles.length > 0) {
     // Determine if the user has any of the required roles
     const isAuthorized = roles.some(requiredRole => {
-      // Assuming 'claims' contains a 'role' key or a 'roles' array
-      // Common pattern: check claims.role === requiredRole, or claims.roles.includes(requiredRole)
-      const userRole = claims?.role; // Adjust based on actual claims structure
-      
-      // Fallback check assuming a claim structure like 'isadmin: true'
-      const isClaimRole = claims?.[`is${requiredRole.toLowerCase()}`];
+      // Convert required role for safer comparison against claim keys
+      const lowerRequiredRole = requiredRole.toLowerCase();
 
-      return userRole === requiredRole || isClaimRole;
+      // Check 1: Direct role claim (e.g., claims.role === 'admin')
+      const userRoleMatch = claims?.role === lowerRequiredRole;
+      
+      // Check 2: Boolean flag claim (e.g., claims.isadmin === true)
+      const isClaimRole = claims?.[`is${lowerRequiredRole}`];
+
+      return userRoleMatch || isClaimRole;
     });
 
     if (!isAuthorized) {
-      console.warn(`Access Denied: User attempted to access protected route. Required roles: ${roles.join(', ')}`);
+      console.warn(`Access Denied: User role check failed. Required roles: ${roles.join(', ')}.`);
+      // Redirect to the unauthorized page if authorization fails
       return (
         <Navigate 
           to={unauthorizedRedirectTo} 
@@ -54,6 +58,7 @@ export default function ProtectedRoute({
   }
   // --- End Role Authorization Logic ---
 
+  // Render the child route if authenticated and authorized
   return <Outlet />;
 }
 
