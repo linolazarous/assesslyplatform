@@ -9,7 +9,6 @@ import {
   IconButton,
   List,
   ListItem,
-  ListItemText,
   Divider,
   Box,
   CircularProgress,
@@ -33,15 +32,17 @@ const QUESTION_TYPES = [
 export default function CreateAssessment({ organizationId }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  // Added a unique ID for each question to better handle list changes
   const [questions, setQuestions] = useState([
-    { text: '', type: 'text', options: [], required: true }
+    { id: Date.now(), text: '', type: 'text', options: [], required: true }
   ]);
   const [loading, setLoading] = useState(false);
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
 
   const addQuestion = () => {
-    setQuestions([...questions, { text: '', type: 'text', options: [], required: true }]);
+    // Use a unique ID for a stable key prop
+    setQuestions([...questions, { id: Date.now(), text: '', type: 'text', options: [], required: true }]);
   };
 
   const removeQuestion = (index) => {
@@ -56,6 +57,7 @@ export default function CreateAssessment({ organizationId }) {
     const newQuestions = [...questions];
     newQuestions[index][field] = value;
     
+    // Clear options if the type changes away from multiple_choice
     if (field === 'type' && value !== 'multiple_choice') {
       newQuestions[index].options = [];
     }
@@ -65,13 +67,15 @@ export default function CreateAssessment({ organizationId }) {
 
   const addOption = (qIndex) => {
     const newQuestions = [...questions];
-    newQuestions[qIndex].options = [...newQuestions[qIndex].options, ''];
+    // Give options a unique ID too for robust list handling
+    newQuestions[qIndex].options = [...newQuestions[qIndex].options, { id: Date.now(), text: '' }];
     setQuestions(newQuestions);
   };
 
+  // Option structure changed to { id, text }
   const updateOption = (qIndex, oIndex, value) => {
     const newQuestions = [...questions];
-    newQuestions[qIndex].options[oIndex] = value;
+    newQuestions[qIndex].options[oIndex].text = value; // Update the 'text' field
     setQuestions(newQuestions);
   };
 
@@ -92,13 +96,16 @@ export default function CreateAssessment({ organizationId }) {
         enqueueSnackbar(`Question ${i + 1} text is required`, { variant: 'error' });
         return false;
       }
-      if (q.type === 'multiple_choice' && q.options.length < 2) {
-        enqueueSnackbar(`Question ${i + 1} needs at least 2 options`, { variant: 'error' });
-        return false;
-      }
-      if (q.type === 'multiple_choice' && q.options.some(opt => !opt.trim())) {
-        enqueueSnackbar(`Question ${i + 1} has empty options`, { variant: 'error' });
-        return false;
+      if (q.type === 'multiple_choice') {
+        // Validation check for new option structure
+        if (q.options.length < 2) {
+          enqueueSnackbar(`Question ${i + 1} needs at least 2 options`, { variant: 'error' });
+          return false;
+        }
+        if (q.options.some(opt => !opt.text.trim())) {
+          enqueueSnackbar(`Question ${i + 1} has empty options`, { variant: 'error' });
+          return false;
+        }
       }
     }
     return true;
@@ -112,18 +119,27 @@ export default function CreateAssessment({ organizationId }) {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('Authentication token not found');
 
+      // Prepare payload to only include necessary fields
+      const assessmentPayload = {
+        title,
+        description,
+        organizationId,
+        questions: questions.map(q => ({
+          text: q.text,
+          type: q.type,
+          required: q.required,
+          // Map options back to a string array for API, or keep {text} if API expects it
+          options: q.type === 'multiple_choice' ? q.options.map(opt => opt.text) : []
+        }))
+      };
+
       const response = await fetch('/api/assessments/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          title,
-          description,
-          questions,
-          organizationId
-        }),
+        body: JSON.stringify(assessmentPayload),
       });
 
       const data = await response.json();
@@ -150,6 +166,7 @@ export default function CreateAssessment({ organizationId }) {
         Create New Assessment
       </Typography>
       
+      {/* ... Title and Description Grids ... */}
       <Grid container spacing={3}>
         <Grid item xs={12}>
           <TextField
@@ -180,9 +197,10 @@ export default function CreateAssessment({ organizationId }) {
       </Typography>
 
       <List>
+        {/* Use question.id as the key */}
         {questions.map((question, qIndex) => (
           <ListItem 
-            key={`q-${qIndex}`} 
+            key={question.id} // Used unique ID for key
             divider 
             sx={{ 
               p: 2,
@@ -206,6 +224,7 @@ export default function CreateAssessment({ organizationId }) {
                 </IconButton>
               </Box>
 
+              {/* ... Question Text and Type Selects ... */}
               <TextField
                 label="Question Text"
                 fullWidth
@@ -218,8 +237,9 @@ export default function CreateAssessment({ organizationId }) {
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Question Type</InputLabel>
+                    <InputLabel id={`q-type-label-${qIndex}`}>Question Type</InputLabel>
                     <Select
+                      labelId={`q-type-label-${qIndex}`}
                       value={question.type}
                       label="Question Type"
                       onChange={(e) => updateQuestion(qIndex, 'type', e.target.value)}
@@ -235,8 +255,9 @@ export default function CreateAssessment({ organizationId }) {
 
                 <Grid item xs={12} md={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Required</InputLabel>
+                    <InputLabel id={`q-required-label-${qIndex}`}>Required</InputLabel>
                     <Select
+                      labelId={`q-required-label-${qIndex}`}
                       value={question.required}
                       label="Required"
                       onChange={(e) => updateQuestion(qIndex, 'required', e.target.value)}
@@ -254,10 +275,11 @@ export default function CreateAssessment({ organizationId }) {
                     Options
                   </Typography>
                   
+                  {/* FIX: Added key prop to the Box element */}
                   {question.options.map((option, oIndex) => (
-                    <Box key={`opt-${oIndex}`} sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                    <Box key={option.id} sx={{ display: 'flex', gap: 1, mb: 1 }}>
                       <TextField
-                        value={option}
+                        value={option.text} // Use option.text for the value
                         onChange={(e) => updateOption(qIndex, oIndex, e.target.value)}
                         fullWidth
                         size="small"
@@ -303,10 +325,15 @@ export default function CreateAssessment({ organizationId }) {
           variant="contained"
           color="primary"
           onClick={handleSave}
-          startIcon={loading ? <CircularProgress size={20} /> : <Save />}
           disabled={loading}
+          startIcon={!loading && <Save />} // Only show Save icon when not loading
         >
-          {loading ? 'Saving...' : 'Save Assessment'}
+          {loading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={20} color="inherit" />
+              Saving...
+            </Box>
+          ) : 'Save Assessment'}
         </Button>
       </Box>
     </Paper>
