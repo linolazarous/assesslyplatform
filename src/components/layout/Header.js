@@ -13,7 +13,6 @@ import {
   Slide,
   useMediaQuery,
   useTheme,
-  Switch,
   Typography
 } from '@mui/material';
 import { 
@@ -30,6 +29,7 @@ import { useNavigate } from 'react-router-dom';
 import Logo from '../brand/logo';
 import PropTypes from 'prop-types';
 
+// Moved HideOnScroll outside to prevent re-creation on every render
 function HideOnScroll({ children }) {
   const trigger = useScrollTrigger();
   return (
@@ -39,6 +39,10 @@ function HideOnScroll({ children }) {
   );
 }
 
+HideOnScroll.propTypes = {
+  children: PropTypes.element.isRequired,
+};
+
 export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
@@ -46,18 +50,29 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [anchorEl, setAnchorEl] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  // State to control mobile search visibility, separate from searchQuery
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false); 
 
   const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
   const handleMenuClose = () => setAnchorEl(null);
+  
   const handleLogout = () => {
     handleMenuClose();
     logout();
   };
+  
   const handleSearch = (e) => {
     e.preventDefault();
-    navigate(`/search?q=${encodeURIComponent(searchQuery)}`);
+    if (!searchQuery.trim()) return; // Prevent searching empty query
+    
+    navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
     setSearchQuery('');
+    // Close mobile search after submission
+    if (isMobile) setIsMobileSearchOpen(false); 
   };
+  
+  const userDisplayName = currentUser?.displayName || currentUser?.email || 'Profile';
+  const userPhotoURL = currentUser?.photoURL;
 
   return (
     <HideOnScroll>
@@ -85,7 +100,10 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
                 <MenuIcon />
               </IconButton>
             )}
-            <Logo size={isMobile ? 40 : 50} />
+            {/* Logo is now wrapped in a button to navigate home */}
+            <IconButton onClick={() => navigate('/')} sx={{ p: 0 }} aria-label="Home">
+               <Logo size={isMobile ? 40 : 50} />
+            </IconButton>
           </Box>
 
           {/* Middle Section - Search (Desktop) */}
@@ -122,17 +140,17 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
             <IconButton 
               color="inherit" 
               onClick={toggleDarkMode}
-              aria-label="toggle dark mode"
+              aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
             >
               {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
             </IconButton>
 
-            {/* Mobile Search */}
+            {/* Mobile Search Toggle */}
             {isMobile && (
               <IconButton 
                 color="inherit" 
-                aria-label="search"
-                onClick={() => navigate('/search')}
+                aria-label="Toggle search bar"
+                onClick={() => setIsMobileSearchOpen(prev => !prev)}
               >
                 <SearchIcon />
               </IconButton>
@@ -143,16 +161,16 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
               <>
                 <IconButton
                   edge="end"
-                  aria-label="account menu"
+                  aria-label={`Account menu for ${userDisplayName}`}
                   aria-controls="user-menu"
                   aria-haspopup="true"
                   onClick={handleMenuOpen}
                   color="inherit"
                 >
-                  {currentUser.photoURL ? (
+                  {userPhotoURL ? (
                     <Avatar 
-                      src={currentUser.photoURL} 
-                      alt={currentUser.displayName}
+                      src={userPhotoURL} 
+                      alt={userDisplayName}
                       sx={{ width: 32, height: 32 }}
                     />
                   ) : (
@@ -175,6 +193,10 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
                     }
                   }}
                 >
+                  <Typography variant="subtitle2" sx={{ px: 2, py: 1 }}>
+                    {userDisplayName}
+                  </Typography>
+                  <Divider />
                   <MenuItem onClick={() => { navigate('/profile'); handleMenuClose(); }}>
                     <AccountIcon sx={{ mr: 1.5 }} fontSize="small" />
                     Profile
@@ -204,7 +226,7 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
         </Toolbar>
 
         {/* Mobile Search Bar (when activated) */}
-        {isMobile && searchQuery && (
+        {isMobile && isMobileSearchOpen && (
           <Box sx={{ p: 1, borderTop: `1px solid ${theme.palette.divider}` }}>
             <form onSubmit={handleSearch}>
               <InputBase
