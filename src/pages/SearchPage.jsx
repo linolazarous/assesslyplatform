@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -26,13 +26,14 @@ import {
 } from '@mui/icons-material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+// Assuming only debouncedSearch is needed and is stable
 import { 
-  searchAssessments, 
-  searchQuestions,
   debouncedSearch 
-} from '../services/searchService';
+} from '../services/searchService.js'; 
 import PropTypes from 'prop-types';
 
+
+// --- SearchResultItem Component ---
 const SearchResultItem = ({ result, onClick, type = 'assessment' }) => {
   const theme = useTheme();
   
@@ -57,13 +58,13 @@ const SearchResultItem = ({ result, onClick, type = 'assessment' }) => {
         primary={result.title || result.text}
         secondary={
           type === 'question' 
-            ? `From: ${result.assessmentTitle}`
+            ? `Source: ${result.assessmentTitle}` // Better label
             : result.description || 'No description available'
         }
         secondaryTypographyProps={{ noWrap: true }}
       />
       <Chip 
-        label={type === 'question' ? 'Question' : result.type} 
+        label={type === 'question' ? 'Question' : (result.type || 'Assessment')} 
         size="small" 
         variant="outlined"
         sx={{ ml: 2 }}
@@ -78,6 +79,8 @@ SearchResultItem.propTypes = {
   type: PropTypes.oneOf(['assessment', 'question'])
 };
 
+
+// --- SearchTabs Component ---
 const SearchTabs = ({ activeTab, onChange, assessmentCount, questionCount }) => {
   return (
     <Tabs 
@@ -113,6 +116,8 @@ SearchTabs.propTypes = {
   questionCount: PropTypes.number.isRequired
 };
 
+
+// --- SearchPage Component ---
 export default function SearchPage() {
   const theme = useTheme();
   const location = useLocation();
@@ -125,38 +130,50 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Memoize the core search logic using useCallback
+  const executeSearch = useCallback((searchQuery, userId, tab) => {
+    if (!searchQuery || !userId) return;
+
+    setLoading(true);
+    setError(null);
+    
+    // Pass the appropriate setter function based on the active tab
+    const setter = tab === 'assessments' ? setAssessmentResults : setQuestionResults;
+
+    debouncedSearch(
+      searchQuery, 
+      userId,
+      (results, err) => {
+        if (err) {
+          setError(err.message || 'An unknown error occurred during search.');
+        } else {
+          setter(results);
+        }
+        setLoading(false);
+      },
+      tab // Pass the target search tab (assessments or questions)
+    );
+  }, [debouncedSearch]); // Assuming debouncedSearch is stable
+
+  // Effect to pull initial query from URL and trigger search
   useEffect(() => {
     const searchQuery = new URLSearchParams(location.search).get('q') || '';
     setQuery(searchQuery);
-    
-    if (searchQuery && currentUser?.uid) {
-      setLoading(true);
-      debouncedSearch(
-        searchQuery, 
-        currentUser.uid,
-        (results, error) => {
-          if (error) {
-            setError(error);
-          } else {
-            if (activeTab === 'assessments') {
-              setAssessmentResults(results);
-            } else {
-              setQuestionResults(results);
-            }
-          }
-          setLoading(false);
-        },
-        activeTab
-      );
+
+    // Only search if user is logged in and query exists
+    if (searchQuery && currentUser?.id) { 
+      executeSearch(searchQuery, currentUser.id, activeTab);
     } else {
       setAssessmentResults([]);
       setQuestionResults([]);
+      setLoading(false);
     }
-  }, [location.search, currentUser?.uid, activeTab]);
+  }, [location.search, currentUser?.id, activeTab, executeSearch]); // Dependencies are clean
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     if (query.trim()) {
+      // Navigate resets the location.search, which triggers the useEffect
       navigate(`/search?q=${encodeURIComponent(query.trim())}`);
     }
   };
@@ -168,7 +185,8 @@ export default function SearchPage() {
 
   const handleResultClick = (result) => {
     if (activeTab === 'questions') {
-      navigate(`/assessments/${result.assessmentId}?question=${result.id}`);
+      // Navigate to the assessment page, highlighting the question
+      navigate(`/assessments/${result.assessmentId}#question-${result.questionIndex}`);
     } else {
       navigate(`/assessments/${result.id}`);
     }
@@ -221,10 +239,11 @@ export default function SearchPage() {
       </Paper>
 
       {/* Search Tabs */}
-      {query && (
+      {/* Only show tabs if a query exists, even if results haven't loaded */}
+      {query && ( 
         <SearchTabs
           activeTab={activeTab}
-          onChange={(e, newValue) => setActiveTab(newValue)}
+          onChange={(_, newValue) => setActiveTab(newValue)}
           assessmentCount={assessmentResults.length}
           questionCount={questionResults.length}
         />
@@ -255,18 +274,20 @@ export default function SearchPage() {
       ) : currentResults.length > 0 ? (
         <>
           <Typography variant="subtitle1" sx={{ mb: 1 }}>
-            {currentResults.length} {activeTab}{currentResults.length !== 1 ? 's' : ''} for "{query}"
+            {currentResults.length} {activeTab}{currentResults.length !== 1 ? 's' : ''} found for "{query}"
           </Typography>
           <Paper elevation={0} sx={{ borderRadius: 2 }}>
             <List disablePadding>
               {currentResults.map((result, index) => (
-                <React.Fragment key={result.id || `${result.assessmentId}-${result.id}`}>
+                // Use a single, stable key for the ListItem
+                <React.Fragment key={result.id || `${result.assessmentId}-${index}`}>
                   <SearchResultItem 
                     result={result} 
                     onClick={() => handleResultClick(result)}
                     type={activeTab === 'questions' ? 'question' : 'assessment'}
                   />
-                  {index < currentResults.length - 1 && <Divider />}
+                  {/* FIX: Ensure Divider placement is correct */}
+                  {index < currentResults.length - 1 && <Divider component="li" />}
                 </React.Fragment>
               ))}
             </List>
