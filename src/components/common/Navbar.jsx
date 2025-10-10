@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import Logo from '../brand/logo';
+// Assuming Logo is correctly imported from '../brand/logo'
+import Logo from '../brand/logo'; 
 import { 
   AppBar, 
   Toolbar, 
@@ -16,9 +17,9 @@ import {
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
-import PropTypes from 'prop-types'; // Added PropTypes import
+import PropTypes from 'prop-types';
 
-// Hide AppBar on scroll
+// Hide AppBar on scroll (Correct JSX structure)
 function HideOnScroll(props) {
   const { children } = props;
   const trigger = useScrollTrigger();
@@ -29,7 +30,6 @@ function HideOnScroll(props) {
   );
 }
 
-// Added PropTypes for HideOnScroll
 HideOnScroll.propTypes = {
   children: PropTypes.element.isRequired,
 };
@@ -82,9 +82,7 @@ const Navbar = ({ showNavigation = true }) => {
             <ListItemText primary={item.label} />
           </ListItem>
         ))}
-        {/* FIX: The "Get Started" button needs a unique key when inside a list map, 
-           or simply when it's the only non-mapped item in a list to prevent warnings 
-           if the list were ever mapped itself. Using a string here is safe. */}
+        {/* Ensured the key is present here */}
         <ListItem key="drawer-get-started"> 
           <Button 
             variant="contained" 
@@ -139,7 +137,6 @@ const Navbar = ({ showNavigation = true }) => {
             </Box>
 
             {/* Desktop Auth Buttons */}
-            {/* Added Box with flexGrow to ensure logo and buttons are separated */}
             <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 1 }}>
               <Button 
                 color="inherit" 
@@ -159,12 +156,11 @@ const Navbar = ({ showNavigation = true }) => {
             </Box>
 
             {/* Mobile menu button */}
-            {/* Added flexGrow for spacing on mobile */}
             <Box sx={{ flexGrow: 1, display: { md: 'none' } }} /> 
             <IconButton
               color="inherit"
               aria-label="open drawer"
-              edge="end" // Changed to end for consistency
+              edge="end"
               onClick={handleDrawerToggle}
               sx={{ display: { md: 'none' } }}
             >
