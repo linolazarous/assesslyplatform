@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import cors from "cors";
+import fs from "fs";
 
 dotenv.config();
 
@@ -16,36 +17,48 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Check if we have built files
+const distPath = path.join(__dirname, "dist");
+const hasDist = fs.existsSync(distPath) && fs.existsSync(path.join(distPath, "index.html"));
+
+if (hasDist) {
+  // Production: Serve from dist directory
+  console.log('✅ Serving built React app from dist/');
+  app.use(express.static(distPath));
+  app.use('/assets', express.static(path.join(distPath, 'assets')));
+} else {
+  // Development: Serve from root and src directory
+  console.log('⚠️ No built files found, serving source files');
+  app.use(express.static(__dirname));
+  app.use('/src', express.static(path.join(__dirname, 'src')));
+  app.use('/public', express.static(path.join(__dirname, 'public')));
+}
+
 // Request logging
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
-// Serve static files from root directory
-app.use(express.static(__dirname));
-
 // Health check endpoint
 app.get("/api/health", (req, res) => {
   res.json({ 
     status: "OK", 
     message: "Server running successfully",
+    mode: hasDist ? "production" : "development",
     timestamp: new Date().toISOString()
   });
 });
 
 // ===== BASIC API ROUTES =====
-
-// Auth routes
 app.post('/api/auth/register', (req, res) => {
-  res.json({ message: "Register endpoint - implement later" });
+  res.json({ message: "Register endpoint" });
 });
 
 app.post('/api/auth/login', (req, res) => {
-  res.json({ message: "Login endpoint - implement later" });
+  res.json({ message: "Login endpoint" });
 });
 
-// User profile route
 app.get('/api/user/profile', (req, res) => {
   res.json({ 
     user: { 
@@ -57,17 +70,15 @@ app.get('/api/user/profile', (req, res) => {
   });
 });
 
-// Search route
 app.get('/api/search', (req, res) => {
   const { q } = req.query;
   res.json({ 
     results: [],
     query: q,
-    message: "Search functionality - implement later"
+    message: "Search functionality"
   });
 });
 
-// Organizations route
 app.get('/api/organizations/:orgId', (req, res) => {
   res.json({ 
     organization: {
@@ -77,47 +88,46 @@ app.get('/api/organizations/:orgId', (req, res) => {
   });
 });
 
-// ===== PROTECTED ROUTES =====
-
 // Admin routes
 app.get('/api/admin/assessments', (req, res) => {
-  res.json({ assessments: [], message: "Admin assessments - add auth later" });
+  res.json({ assessments: [] });
 });
 
 app.get('/api/admin/stats', (req, res) => {
-  res.json({ stats: {}, message: "Admin stats - add auth later" });
+  res.json({ stats: {} });
 });
 
 app.get('/api/admin/user-activity', (req, res) => {
-  res.json({ activity: [], message: "User activity - add auth later" });
+  res.json({ activity: [] });
 });
 
 // Billing routes
 app.post('/api/billing/checkout-session', (req, res) => {
-  res.json({ session: null, message: "Billing - implement later" });
+  res.json({ session: null });
 });
 
 app.post('/api/billing/webhook', (req, res) => {
   res.json({ received: true });
 });
 
-// Cron route
 app.get('/api/cron/expiring-subscriptions', (req, res) => {
-  res.json({ message: "Cron job endpoint" });
+  res.json({ message: "Cron job" });
 });
 
-// Serve index.html for all other routes (SPA)
+// Serve appropriate file
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
-
-// 404 handler for API routes
-app.use("/api/*", (req, res) => {
-  res.status(404).json({ error: "API endpoint not found" });
+  if (hasDist) {
+    res.sendFile(path.join(distPath, "index.html"));
+  } else {
+    res.sendFile(path.join(__dirname, "index.html"));
+  }
 });
 
 app.listen(port, () => {
   console.log(`🚀 Assessly running on port ${port}`);
   console.log(`📊 Health check: http://localhost:${port}/api/health`);
   console.log(`🌐 Frontend: http://localhost:${port}/`);
+  if (!hasDist) {
+    console.log(`⚠️ Running in development mode - build the app with 'npm run build' for production`);
+  }
 });
