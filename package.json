@@ -3,13 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Assessly - Modern AI-Powered Assessment Platform for managing and creating online assessments, quizzes, and analytics.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "serve": "node server.js",
-    "start": "npm run build && npm run serve"
+    "start": "node server.js"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.0",
@@ -49,15 +48,5 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "keywords": [
-    "assessly",
-    "assessment",
-    "education",
-    "ai",
-    "react",
-    "vite",
-    "platform"
-  ],
-  "license": "MIT"
+  }
 }
