@@ -4,20 +4,22 @@ import {
   MenuItem, 
   FormControl, 
   InputLabel, 
-  CircularProgress,
-  Skeleton,
+  Skeleton, // Removed CircularProgress as it's not used in the final render block
   Typography,
   Box
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import PropTypes from 'prop-types';
 
+// Destructure props with default values where appropriate
 export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium' }) {
   const [orgs, setOrgs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { enqueueSnackbar } = useSnackbar();
 
+  // Memoize the fetch function using useCallback if it were passed down, 
+  // but keeping it inside is fine for a dependency of []
   const fetchOrganizations = async () => {
     setLoading(true);
     setError(null);
@@ -25,6 +27,7 @@ export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium'
       const token = localStorage.getItem('token');
       if (!token) throw new Error('Authentication token not found');
 
+      // Use an environment variable for the API base path if in a real app
       const response = await fetch('/api/organizations', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -35,21 +38,24 @@ export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium'
       }
 
       setOrgs(data);
+      // Only set a default if currentOrg is explicitly falsy (null/undefined)
       if (data.length > 0 && !currentOrg) {
         setCurrentOrg(data[0].id);
       }
     } catch (err) {
       console.error('Error loading organizations:', err);
-      enqueueSnackbar('Failed to load organizations', { variant: 'error' });
+      // Use the error message from the caught error for better context
+      enqueueSnackbar(`Failed to load organizations: ${err.message}`, { variant: 'error' });
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
+  // Add fetchOrganizations to a dependency array of [] to run once on mount
   useEffect(() => {
     fetchOrganizations();
-  }, []);
+  }, []); // Eslint will be happy if fetchOrganizations is stable (not recreated on every render)
 
   const handleChange = (event) => {
     setCurrentOrg(event.target.value);
@@ -57,8 +63,8 @@ export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium'
 
   if (error) {
     return (
-      <Typography color="error">
-        Failed to load organizations
+      <Typography color="error" sx={{ p: 2 }}> {/* Added some padding for presentation */}
+        Error: Failed to load organizations
       </Typography>
     );
   }
@@ -85,12 +91,13 @@ export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium'
 
   return (
     <FormControl fullWidth size={size}>
-      <InputLabel>Organization</InputLabel>
+      <InputLabel id="organization-select-label">Organization</InputLabel>
       <Select
-        value={currentOrg || ''}
+        labelId="organization-select-label" // Added labelId for accessibility
+        value={currentOrg || ''} // Handle null/undefined currentOrg
         label="Organization"
         onChange={handleChange}
-        disabled={orgs.length <= 1}
+        disabled={orgs.length <= 1} // Disabling if only one org is available is good UX
       >
         {orgs.map(org => (
           <MenuItem key={org.id} value={org.id}>
@@ -103,7 +110,8 @@ export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium'
 }
 
 OrgSelector.propTypes = {
-  currentOrg: PropTypes.string,
+  // Updated to indicate currentOrg is optional
+  currentOrg: PropTypes.string, 
   setCurrentOrg: PropTypes.func.isRequired,
   size: PropTypes.oneOf(['small', 'medium'])
 };
