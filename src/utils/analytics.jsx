@@ -1,30 +1,55 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { getAnalytics, logEvent } from 'firebase/analytics';
-// Assuming this path is correct for your Firebase initialization
-import { app } from '../firebase/firebase.js'; 
 
-// Initialize analytics conditionally only once in the browser environment
-const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
+// NOTE: All Firebase/Google Analytics imports and configuration removed.
+// The service now relies on internal console logging or a generic tracking function.
+
+// ----------------------------------------------------------------------
+// Mock/Generic Tracker Function
+// In production, this function would send data to a service like Amplitude,
+// PostHog, or a custom backend endpoint.
+// ----------------------------------------------------------------------
+const genericTracker = {
+    // Mock initialization: checks if tracking is allowed (e.g., based on user consent)
+    isInitialized: typeof window !== 'undefined', 
+
+    sendEvent: (name, params) => {
+        if (!genericTracker.isInitialized) {
+            console.warn(`[Analytics] Attempted to track event '${name}' before initialization.`);
+            return;
+        }
+        
+        // Log the event payload to the console for monitoring in development/production
+        const payload = {
+            eventName: name,
+            ...params,
+            timestamp: new Date().toISOString(),
+            app_version: import.meta.env.VITE_APP_VERSION || '1.0.0',
+        };
+        console.log('[Analytics Event Fired]', payload);
+    },
+    
+    setUserId: (userId) => {
+        if (!genericTracker.isInitialized) return;
+        console.log(`[Analytics] User ID set: ${userId}`);
+        // Here you would call trackingService.identify(userId)
+    },
+
+    setUserProperties: (properties) => {
+        if (!genericTracker.isInitialized) return;
+        console.log('[Analytics] User properties set:', properties);
+    }
+};
+// ----------------------------------------------------------------------
 
 /**
- * Tracks a custom event in Google Analytics.
- * @param {string} name - Event name.
+ * Tracks a custom event using the generic tracking mechanism.
+ * @param {string} name - Event name (e.g., 'button_click', 'assessment_submit').
  * @param {Object} [params={}] - Event parameters.
  */
 export const trackEvent = (name, params = {}) => {
-  if (!analytics) return;
-  
-  try {
-    logEvent(analytics, name, {
-      ...params,
-      // Ensure environment variables are correctly accessed (Vite uses import.meta.env)
-      app_version: import.meta.env.VITE_APP_VERSION || '1.0.0', 
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Analytics error:', error);
-  }
+  // Use the generic tracker instead of logEvent
+  genericTracker.sendEvent(name, params);
 };
 
 /**
@@ -39,44 +64,46 @@ export const trackPageView = (path) => {
 };
 
 /**
- * Tracks an error event.
- * @param {Error} error - The error object.
+ * Tracks an error or exception event.
+ * @param {Error | string} error - The error or error message.
  * @param {Object} [context={}] - Additional context for the error.
  */
 export const trackError = (error, context = {}) => {
+  const errorMessage = typeof error === 'string' ? error : error.message;
   trackEvent('exception', {
-    description: error.message,
-    fatal: false,
+    description: errorMessage,
+    fatal: false, // Assume non-fatal unless explicitly marked
     ...context
   });
 };
 
 /**
  * Hook to automatically track page views on route changes.
+ * Recommended use: Import and call this hook in your main App component.
  */
 export const usePageTracking = () => {
   const location = useLocation();
 
   useEffect(() => {
-    // Debounce or throttle this in a real app to prevent excessive events on fast navigation
+    // Note: In production apps, you might want to debounce or throttle 
+    // this call if navigation is extremely rapid.
     trackPageView(location.pathname); 
-  }, [location.pathname]); // Dependency on location.pathname is correct
+  }, [location.pathname]);
 };
 
 /**
- * Initializes user properties in Google Analytics.
+ * Initializes user properties for tracking.
  * @param {string} userId - The unique user ID.
  */
 export const initAnalytics = (userId) => {
-  if (analytics && userId) {
-    // Set user ID for analytics
-    analytics.setUserId(userId);
+  if (userId) {
+    genericTracker.setUserId(userId);
     
-    // Set user properties
-    analytics.setUserProperties({
-      // Use dynamic values from your auth/claims if possible
+    // Set default user properties based on app logic
+    genericTracker.setUserProperties({
       sign_up_method: 'email', 
-      account_type: 'free_trial'
+      account_type: 'authenticated',
+      role: 'unknown' // Role should be updated using claims from AuthContext
     });
   }
 };
