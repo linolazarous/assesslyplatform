@@ -6,10 +6,8 @@ import { PictureAsPdf } from '@mui/icons-material';
 import PropTypes from 'prop-types';
 
 export default function PdfReport({ assessment, answers, responses }) {
-  // FIX: Renamed state to follow convention
   const [isGenerating, setIsGenerating] = useState(false); 
 
-  // FIX: Use useCallback to memoize the generation function
   const generatePdf = useCallback(async () => {
     setIsGenerating(true);
     let logoUrl = null;
@@ -28,14 +26,11 @@ export default function PdfReport({ assessment, answers, responses }) {
           console.warn('Could not load logo: Response not OK');
         }
       } catch (e) {
-        // Handle network errors for logo gracefully
         console.warn('Could not load logo (fetch error):', e.message);
       } finally {
-        // FIX: Clean up the object URL immediately after doc.addImage is done, 
-        // which is safer than relying on setTimeout. jsPDF makes a copy.
         if (logoUrl) {
           URL.revokeObjectURL(logoUrl);
-          logoUrl = null; // Clear reference
+          logoUrl = null;
         }
       }
 
@@ -53,14 +48,12 @@ export default function PdfReport({ assessment, answers, responses }) {
         doc.setFontSize(12);
         doc.setTextColor(60);
         const splitDesc = doc.splitTextToSize(assessment.description, 180);
-        // FIX: Adjust starting Y position based on logo presence and description
         const startY = assessment.description ? 40 : 35;
         doc.text(splitDesc, 15, startY);
       }
       
       // Questions table
       const tableData = assessment.questions.map((q, i) => {
-        // Robustly determine the answer
         let answer = 'Not answered';
 
         if (Array.isArray(answers) && answers[i] !== undefined) {
@@ -68,7 +61,6 @@ export default function PdfReport({ assessment, answers, responses }) {
         } else if (Array.isArray(responses) && responses[i]?.answer !== undefined) {
           answer = responses[i].answer;
         } else if (answers?.[i] !== undefined) {
-          // Fallback for object-style access
           answer = answers[i];
         }
 
@@ -77,12 +69,11 @@ export default function PdfReport({ assessment, answers, responses }) {
         return [
           `Q${i+1}`,
           q.text,
-          String(answer).substring(0, 100) // Truncate long answers
+          String(answer).substring(0, 100)
         ];
       });
 
       doc.autoTable({
-        // Calculate startY after description
         startY: doc.lastAutoTable.finalY + 10 || (assessment.description ? 65 : 50),
         head: [['#', 'Question', 'Answer']],
         body: tableData,
@@ -103,7 +94,6 @@ export default function PdfReport({ assessment, answers, responses }) {
           overflow: 'linebreak'
         },
         didDrawPage: (data) => {
-          // Footer on each page
           doc.setFontSize(8);
           doc.setTextColor(150);
           doc.text(
@@ -118,11 +108,10 @@ export default function PdfReport({ assessment, answers, responses }) {
       doc.save(`${assessment.title.replace(/[^a-z0-9]/gi, '_')}_report.pdf`);
     } catch (error) {
       console.error('PDF generation failed:', error);
-      // Optional: Add a snackbar notification here
     } finally {
       setIsGenerating(false);
     }
-  }, [assessment, answers, responses]); // Dependencies added
+  }, [assessment, answers, responses]);
 
   return (
     <Button
@@ -148,7 +137,6 @@ PdfReport.propTypes = {
       type: PropTypes.string
     })).isRequired
   }).isRequired,
-  // FIX: Changed answers to PropTypes.oneOfType to allow for arrays/objects
   answers: PropTypes.oneOfType([
     PropTypes.object, 
     PropTypes.array
