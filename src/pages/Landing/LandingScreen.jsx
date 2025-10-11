@@ -5,30 +5,32 @@ import {
   useTheme,
   useMediaQuery
 } from '@mui/material';
-import PropTypes from 'prop-types'; // Import PropTypes if needed later
+import PropTypes from 'prop-types'; 
 
-// NOTE: Assuming these sub-components are located in a child directory (LandingScreen/components)
-// and have been renamed to .jsx (or were already .jsx).
-import HeroSection from './components/HeroSection.jsx';
-import FeaturesSection from './components/FeaturesSection.jsx';
-import Testimonials from './components/Testimonials.jsx';
-import CallToAction from './components/CallToAction.jsx';
-// NOTE: Assuming Footer is located in the common directory and has been renamed to .jsx
+// FIX: Corrected relative paths to access components/layout/ from pages/Landing/
+import HeroSection from '../../components/layout/HeroSection.jsx';
+import FeaturesSection from '../../components/layout/FeaturesSection.jsx';
+import Testimonials from '../../components/layout/Testimonials.jsx';
+import CallToAction from '../../components/layout/CallToAction.jsx';
+// Correct path for common components
 import Footer from '../../components/common/Footer.jsx'; 
 
 const LandingScreen = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
+  // Ensure scroll-smooth behavior is enabled globally (usually in global.css or theme)
+  // For robustness, we will set a top ID for the "Back to Top" functionality.
+  
   return (
     <Box 
-      component="div" // Use a semantic component if possible, or keep as div
+      component="div"
+      id="top" // Anchor for scroll-to-top feature
       sx={{ 
         display: 'flex',
         flexDirection: 'column',
         minHeight: '100vh',
         backgroundColor: theme.palette.background.default,
-        // Ensure there are no overflow issues
         overflowX: 'hidden' 
       }}
     >
@@ -47,7 +49,7 @@ const LandingScreen = () => {
         <CallToAction />
       </Container>
 
-      {/* Footer is rendered outside the main Container but within the Box */}
+      {/* Footer is rendered outside the main Container */}
       <Footer />
     </Box>
   );
