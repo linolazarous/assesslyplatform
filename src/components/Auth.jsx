@@ -37,7 +37,6 @@ export default function Auth({ disableSignup = false }) {
       enqueueSnackbar('Please enter a valid email', { variant: 'error' });
       return false;
     }
-    // Simple password validation for demonstration
     if (!password || password.length < 6) {
       enqueueSnackbar('Password must be at least 6 characters', { variant: 'error' });
       return false;
@@ -55,7 +54,6 @@ export default function Auth({ disableSignup = false }) {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Only include role in the body if registering
         body: JSON.stringify({ email, password, role: isLogin ? undefined : role }), 
       });
 
@@ -134,7 +132,6 @@ export default function Auth({ disableSignup = false }) {
           }}
         />
 
-        {/* Use FormControl for Select for better accessibility and styling */}
         {!isLogin && !disableSignup && (
           <Box sx={{ mt: 2 }}>
             <Select
