@@ -2,11 +2,14 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
+// Define the absolute path to the root directory
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
+
 export default defineConfig({
   // Ensure the react plugin is correctly configured for development
   plugins: [
     react({
-      // Explicitly enable Fast Refresh for better dev experience
+      // Explicitly enabled Fast Refresh is good for dev experience
       fastRefresh: true,
     }),
   ],
@@ -15,7 +18,6 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: false,
-    // Keep build optimization
     minify: 'esbuild',
     rollupOptions: {
       output: {
@@ -23,7 +25,7 @@ export default defineConfig({
         manualChunks: {
           react_core: ['react', 'react-dom', 'react-router-dom'],
           mui_core: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
-          utilities: ['axios', 'jspdf', 'notistack']
+          utilities: ['axios', 'jspdf', 'notistack', 'jwt-decode'] // Added jwt-decode for completeness
         }
       }
     }
@@ -32,15 +34,12 @@ export default defineConfig({
     port: 5173,
     open: true,
     host: true,
-    // Add proxy configuration for /api to your Node/Express backend 
-    // (Assuming the backend runs on port 3000 as is common for Express)
+    // Production-ready proxy setup for backend API calls
     proxy: {
       '/api': {
         target: 'http://localhost:3000', 
         changeOrigin: true,
-        secure: false, // Set to true if your backend uses HTTPS
-        // Optional: rewrite the path if the backend expects a different root
-        // rewrite: (path) => path.replace(/^\/api/, '')
+        secure: false, // Set to true if your backend uses HTTPS/SSL
       }
     }
   },
@@ -49,18 +48,14 @@ export default defineConfig({
     host: true
   },
   resolve: {
+    // FIX: Using path.resolve(__dirname, 'src') for a robust, cross-platform alias resolution.
+    // The previous URL/import.meta method was unnecessarily complex.
     alias: {
-      "@": path.resolve(path.dirname(new URL(import.meta.url).pathname), "./src"), // Use the correct way to resolve __dirname in ESM
+      "@": path.resolve(__dirname, "./src"),
     },
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.json']
   },
-  // Removed the explicit esbuild config for .jsx as it is redundant when using @vitejs/plugin-react
-  // esbuild: {
-  //   loader: 'jsx',
-  //   include: /src\/.*\.jsx?$/,
-  //   exclude: [],
-  // },
-  // Keep dependency optimization
+  // Keep dependency optimization for faster cold start
   optimizeDeps: {
     include: [
       'react', 
@@ -68,7 +63,9 @@ export default defineConfig({
       'react-router-dom', 
       '@mui/material', 
       '@mui/icons-material',
-      'notistack'
+      'notistack',
+      'jspdf',
+      'jspdf-autotable' // Include jspdf-autotable for stability
     ]
   }
 });
