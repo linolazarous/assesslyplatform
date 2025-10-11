@@ -2,17 +2,19 @@ import React from 'react';
 import { Box } from '@mui/material';
 import PropTypes from 'prop-types';
 import { motion } from 'framer-motion';
-// Ensure this import uses the correct path (assuming brand/index.jsx)
+// FIX: Using the correct relative path for components/brand 
 import { Logo } from '../components/brand'; 
 
 export default function AuthLayout({ children }) {
   return (
     <Box
+      // Main container for full screen centering
       sx={{
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
         minHeight: '100vh',
+        // Using a fixed light gradient background for high contrast with the white paper box
         background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
         p: 2
       }}
@@ -28,16 +30,17 @@ export default function AuthLayout({ children }) {
         }}
       >
         <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-          {/* Always show the logo for branding, using a fixed light mode for contrast */}
-          <Logo size={80} darkMode={false} /> 
+          {/* Logo is typically rendered in light mode on the Auth screen for visibility */}
+          <Logo size={80} darkMode={false} withText={true} /> 
         </Box>
         <Box
+          // Inner container for the actual login/signup form
           sx={{
             width: '100%',
             maxWidth: 450,
             p: { xs: 3, sm: 4 },
             borderRadius: 2,
-            boxShadow: 3,
+            boxShadow: 3, // Strong shadow to lift the card off the background
             backgroundColor: 'background.paper'
           }}
         >
@@ -51,4 +54,3 @@ export default function AuthLayout({ children }) {
 AuthLayout.propTypes = {
   children: PropTypes.node.isRequired
 };
-
