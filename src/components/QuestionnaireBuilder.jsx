@@ -34,17 +34,20 @@ export default function QuestionnaireBuilder({ organizationId }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isTemplate, setIsTemplate] = useState(false);
-  // Use a unique ID for questions to ensure stable keys
+  
+  // Use a unique ID for questions and initialize with a text question
   const [questions, setQuestions] = useState([
-    { id: Date.now(), text: '', type: 'text', options: [{id: Date.now() + 1, text: ''}], required: true }
+    { id: Date.now(), text: '', type: 'text', options: [], required: true }
   ]);
   const [loading, setLoading] = useState(false);
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
 
+  // --- Question Management Handlers ---
+
   const addQuestion = () => {
     if (questions.length >= 50) {
-      enqueueSnackbar('Maximum 50 questions allowed', { variant: 'warning' });
+      enqueueSnackbar('Maximum 50 questions allowed.', { variant: 'warning' });
       return;
     }
     setQuestions([...questions, { 
@@ -58,69 +61,80 @@ export default function QuestionnaireBuilder({ organizationId }) {
 
   const removeQuestion = (index) => {
     if (questions.length <= 1) {
-      enqueueSnackbar('Questionnaire must have at least one question', { variant: 'warning' });
+      enqueueSnackbar('Questionnaire must have at least one question.', { variant: 'warning' });
       return;
     }
     setQuestions(questions.filter((_, i) => i !== index));
   };
 
   const updateQuestion = (index, field, value) => {
-    const newQuestions = [...questions];
-    newQuestions[index][field] = value;
-    
-    // Convert to a structure with unique IDs for options to ensure proper keying
-    if (field === 'type' && value !== 'multiple_choice') {
-      newQuestions[index].options = [];
-    } else if (field === 'type' && value === 'multiple_choice' && newQuestions[index].options.length === 0) {
-       // Initialize with one empty option if switching to MC
-       newQuestions[index].options = [{ id: Date.now(), text: '' }];
-    }
-
-    setQuestions(newQuestions);
+    setQuestions(prevQuestions => {
+      const newQuestions = [...prevQuestions];
+      newQuestions[index][field] = value;
+      
+      if (field === 'type' && value !== 'multiple_choice') {
+        newQuestions[index].options = [];
+      } else if (field === 'type' && value === 'multiple_choice' && newQuestions[index].options.length === 0) {
+         // Initialize with two empty options when switching to MC for immediate validation
+         newQuestions[index].options = [
+            { id: Date.now(), text: '' },
+            { id: Date.now() + 1, text: '' }
+         ];
+      }
+      return newQuestions;
+    });
   };
 
+  // --- Option Management Handlers ---
+
   const addOption = (qIndex) => {
-    const newQuestions = [...questions];
-    if (newQuestions[qIndex].options.length >= 10) {
-      enqueueSnackbar('Maximum 10 options per question', { variant: 'warning' });
-      return;
-    }
-    // FIX: Options should be objects with IDs for stable keying
-    newQuestions[qIndex].options = [...newQuestions[qIndex].options, { id: Date.now(), text: '' }];
-    setQuestions(newQuestions);
+    setQuestions(prevQuestions => {
+        const newQuestions = [...prevQuestions];
+        if (newQuestions[qIndex].options.length >= 10) {
+            enqueueSnackbar('Maximum 10 options per question.', { variant: 'warning' });
+            return prevQuestions;
+        }
+        newQuestions[qIndex].options = [...newQuestions[qIndex].options, { id: Date.now(), text: '' }];
+        return newQuestions;
+    });
   };
 
   const updateOption = (qIndex, oIndex, value) => {
-    const newQuestions = [...questions];
-    newQuestions[qIndex].options[oIndex].text = value; // Update the text property
-    setQuestions(newQuestions);
+    setQuestions(prevQuestions => {
+        const newQuestions = [...prevQuestions];
+        newQuestions[qIndex].options[oIndex].text = value;
+        return newQuestions;
+    });
   };
 
   const removeOption = (qIndex, oIndex) => {
-    const newQuestions = [...questions];
-    newQuestions[qIndex].options.splice(oIndex, 1);
-    setQuestions(newQuestions);
+    setQuestions(prevQuestions => {
+        const newQuestions = [...prevQuestions];
+        newQuestions[qIndex].options.splice(oIndex, 1);
+        return newQuestions;
+    });
   };
+
+  // --- Validation and Save ---
 
   const validateQuestionnaire = () => {
     if (!title.trim()) {
-      enqueueSnackbar('Title is required', { variant: 'error' });
+      enqueueSnackbar('Assessment Title is required.', { variant: 'error' });
       return false;
     }
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       if (!q.text.trim()) {
-        enqueueSnackbar(`Question ${i + 1} text is required`, { variant: 'error' });
+        enqueueSnackbar(`Question ${i + 1} text is required.`, { variant: 'error' });
         return false;
       }
       if (q.type === 'multiple_choice') {
-        // Validation check for new option structure
         if (q.options.length < 2) {
-          enqueueSnackbar(`Question ${i + 1} needs at least 2 options`, { variant: 'error' });
+          enqueueSnackbar(`Question ${i + 1} needs at least 2 options.`, { variant: 'error' });
           return false;
         }
-        if (q.options.some(opt => !opt.text.trim())) { // Check the 'text' property
-          enqueueSnackbar(`Question ${i + 1} has empty options`, { variant: 'error' });
+        if (q.options.some(opt => !opt.text.trim())) {
+          enqueueSnackbar(`Question ${i + 1} has empty options.`, { variant: 'error' });
           return false;
         }
       }
@@ -138,11 +152,11 @@ export default function QuestionnaireBuilder({ organizationId }) {
 
       const endpoint = isTemplate ? '/api/templates/create' : '/api/assessments/create';
       
-      // Map questions to API format, converting options back to string array
       const questionsPayload = questions.map(q => ({
         text: q.text,
         type: q.type,
         required: q.required,
+        // Map options back to a string array for the API
         options: q.type === 'multiple_choice' ? q.options.map(opt => opt.text) : []
       }));
 
@@ -157,20 +171,21 @@ export default function QuestionnaireBuilder({ organizationId }) {
           description,
           questions: questionsPayload,
           organizationId,
-          isTemplate // This might be ignored by one endpoint, but included for completeness
+          isTemplate
         }),
       });
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to save');
+        throw new Error(data.message || 'Failed to save the questionnaire/template.');
       }
       
       enqueueSnackbar(
         `${isTemplate ? 'Template' : 'Questionnaire'} saved successfully!`, 
         { variant: 'success' }
       );
-      navigate(isTemplate ? '/templates' : '/questionnaires');
+      // Navigate to the list page for templates or assessments
+      navigate(isTemplate ? '/templates' : '/assessments'); 
     } catch (err) {
       console.error('Save error:', err);
       enqueueSnackbar(`Failed to save: ${err.message}`, { 
@@ -196,16 +211,18 @@ export default function QuestionnaireBuilder({ organizationId }) {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
+            helperText="Enter a descriptive title for your assessment or template."
           />
         </Grid>
         
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={4} sx={{ display: 'flex', alignItems: 'center' }}>
           <FormControlLabel
             control={
               <Switch
                 checked={isTemplate}
                 onChange={(e) => setIsTemplate(e.target.checked)}
                 color="primary"
+                aria-label="Toggle save as template"
               />
             }
             label="Save as Template"
@@ -220,6 +237,7 @@ export default function QuestionnaireBuilder({ organizationId }) {
             rows={3}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            helperText="Provide detailed instructions or context for the assessment."
           />
         </Grid>
       </Grid>
@@ -227,13 +245,13 @@ export default function QuestionnaireBuilder({ organizationId }) {
       <Divider sx={{ my: 3 }} />
 
       <Typography variant="h6" gutterBottom>
-        Questions
+        Questions ({questions.length})
       </Typography>
 
       <List>
         {questions.map((question, qIndex) => (
           <ListItem 
-            key={question.id} // FIX: Use stable question ID for key
+            key={question.id}
             divider 
             sx={{ 
               p: 3,
@@ -252,7 +270,7 @@ export default function QuestionnaireBuilder({ organizationId }) {
                   color="error" 
                   onClick={() => removeQuestion(qIndex)}
                   disabled={questions.length <= 1}
-                  aria-label={`remove question ${qIndex + 1}`}
+                  aria-label={`Remove question ${qIndex + 1}`}
                 >
                   <Delete />
                 </IconButton>
@@ -269,7 +287,7 @@ export default function QuestionnaireBuilder({ organizationId }) {
 
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
-                  <FormControl fullWidth>
+                  <FormControl fullWidth required>
                     <InputLabel id={`q-type-label-${qIndex}`}>Question Type</InputLabel>
                     <Select
                       labelId={`q-type-label-${qIndex}`}
@@ -293,6 +311,7 @@ export default function QuestionnaireBuilder({ organizationId }) {
                         checked={question.required}
                         onChange={(e) => updateQuestion(qIndex, 'required', e.target.checked)}
                         color="primary"
+                        aria-label="Toggle required status"
                       />
                     }
                     label="Required"
@@ -301,20 +320,20 @@ export default function QuestionnaireBuilder({ organizationId }) {
               </Grid>
 
               {question.type === 'multiple_choice' && (
-                <Box sx={{ mt: 2 }}>
+                <Box sx={{ mt: 2, p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
                   <Typography variant="subtitle2" gutterBottom>
-                    Options
+                    Options (Min: 2, Max: 10)
                   </Typography>
                   
                   {question.options.map((option, oIndex) => (
-                    // FIX: Use stable option ID for key
                     <Box key={option.id} sx={{ display: 'flex', gap: 1, mb: 1 }}> 
                       <TextField
-                        value={option.text} // Use the text property
+                        value={option.text}
                         onChange={(e) => updateOption(qIndex, oIndex, e.target.value)}
                         fullWidth
                         size="small"
                         required
+                        label={`Option ${oIndex + 1}`}
                       />
                       <IconButton
                         color="error"
@@ -333,6 +352,7 @@ export default function QuestionnaireBuilder({ organizationId }) {
                     onClick={() => addOption(qIndex)}
                     startIcon={<Add />}
                     disabled={question.options.length >= 10}
+                    sx={{ mt: 1 }}
                   >
                     Add Option
                   </Button>
@@ -357,11 +377,20 @@ export default function QuestionnaireBuilder({ organizationId }) {
           variant="contained"
           color="primary"
           onClick={handleSave}
-          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <Save />}
           disabled={loading}
           sx={{ minWidth: 150 }}
         >
-          {loading ? 'Saving...' : 'Save'}
+          {loading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={20} color="inherit" />
+              Saving...
+            </Box>
+          ) : (
+            <>
+              <Save sx={{ mr: 1 }} />
+              Save
+            </>
+          )}
         </Button>
       </Box>
     </Paper>
