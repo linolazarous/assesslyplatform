@@ -8,7 +8,7 @@ import {
   LinearProgress,
   useMediaQuery,
   useTheme,
-  Button // FIX: Imported missing Button component
+  Button
 } from '@mui/material';
 import { 
   Assessment as AssessmentIcon,
@@ -16,17 +16,17 @@ import {
   Business as BusinessIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/AuthContext.jsx'; // Corrected extension
 import { useSnackbar } from 'notistack';
 import PropTypes from 'prop-types';
-// Assuming these two components are correctly defined in their paths
-import AssessmentChart from '../../components/admin/AssessmentChart';
-import UserActivityWidget from '../../components/admin/UserActivityWidget';
+// FIX: Using correct .jsx extension for imports
+import AssessmentChart from '../../components/admin/AssessmentChart.jsx';
+import UserActivityWidget from '../../components/admin/UserActivityWidget.jsx';
 import IconButton from '@mui/material/IconButton';
 
 
-// NOTE: Moved StatCard outside the main component to improve performance and clarity.
-// This is the same function defined at the bottom of the original code.
+// --- StatCard Component ---
+// NOTE: This component is moved outside the main function for optimization
 function StatCard({ title, value, icon, loading, trend }) {
   const theme = useTheme();
   const trendColors = {
@@ -104,7 +104,6 @@ export default function AdminDashboard() {
   });
   const [assessments, setAssessments] = useState([]);
 
-  // Memoize token retrieval to avoid recreating the dependency in fetchDashboardData
   const token = claims ? localStorage.getItem('token') : null;
   const isAdmin = claims?.role === 'admin';
 
@@ -132,7 +131,6 @@ export default function AdminDashboard() {
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      // Only show error snackbar if token is found, otherwise it clutters the console/UI
       if (token) {
         enqueueSnackbar('Failed to load dashboard data: ' + (error.message || 'Network error'), { 
           variant: 'error',
@@ -142,17 +140,14 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [token, enqueueSnackbar]); // Dependencies are clean and stable
+  }, [token, enqueueSnackbar]);
 
-  // Use the effect to fetch data only if the user is confirmed admin
   useEffect(() => {
     if (isAdmin) {
       fetchDashboardData();
     }
   }, [isAdmin, fetchDashboardData]);
 
-  // FIX: The original permission check had a critical error: `!claims?.role === 'admin'` 
-  // which evaluates as `(!claims?.role) === 'admin'`, always resulting in false or an incorrect check.
   if (!isAdmin) {
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
@@ -186,42 +181,18 @@ export default function AdminDashboard() {
       {loading && <LinearProgress sx={{ mb: 3 }} />}
 
       <Grid container spacing={isMobile ? 1 : 3} sx={{ mb: 3 }}>
-        {/* Stat Cards */}
+        {/* Stat Cards (Implementation remains in this file scope) */}
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Total Assessments"
-            value={stats.assessments}
-            icon={<AssessmentIcon color="primary" />}
-            loading={loading}
-            trend="up"
-          />
+          <StatCard title="Total Assessments" value={stats.assessments} icon={<AssessmentIcon color="primary" />} loading={loading} trend="up" />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Active Users"
-            value={stats.activeUsers}
-            icon={<PeopleIcon color="secondary" />}
-            loading={loading}
-            trend="up"
-          />
+          <StatCard title="Active Users" value={stats.activeUsers} icon={<PeopleIcon color="secondary" />} loading={loading} trend="up" />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Organizations"
-            value={stats.organizations}
-            icon={<BusinessIcon color="success" />}
-            loading={loading}
-            trend="neutral"
-          />
+          <StatCard title="Organizations" value={stats.organizations} icon={<BusinessIcon color="success" />} loading={loading} trend="neutral" />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Completions"
-            value={stats.completions}
-            icon={<AssessmentIcon color="info" />}
-            loading={loading}
-            trend="up"
-          />
+          <StatCard title="Completions" value={stats.completions} icon={<AssessmentIcon color="info" />} loading={loading} trend="up" />
         </Grid>
       </Grid>
 
@@ -240,7 +211,6 @@ export default function AdminDashboard() {
                 <CircularProgress />
               </Box>
             ) : (
-              // Ensure AssessmentChart handles an empty array gracefully
               <AssessmentChart data={assessments} /> 
             )}
           </Paper>
@@ -261,3 +231,4 @@ export default function AdminDashboard() {
     </Box>
   );
 }
+
