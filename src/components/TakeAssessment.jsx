@@ -1,6 +1,149 @@
-// ... (imports and component setup are correct)
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Box,
+  Typography,
+  Button,
+  Paper,
+  Divider,
+  CircularProgress,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  TextField,
+  Rating,
+  Alert,
+  LinearProgress
+} from '@mui/material';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useSnackbar } from 'notistack';
+import PropTypes from 'prop-types';
 
-// ... (fetchAssessment and handleSubmit are correct and memoized)
+export default function TakeAssessment() {
+  const { assessmentId } = useParams();
+  const [assessment, setAssessment] = useState(null);
+  const [answers, setAnswers] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(null);
+  const { enqueueSnackbar } = useSnackbar();
+  const navigate = useNavigate();
+  const timerRef = useRef(null);
+  
+  const handleSubmit = useCallback(async () => {
+    if (submitting) return;
+
+    const requiredQuestions = assessment.questions
+      .map((q, i) => (q.required ? i : null))
+      .filter(i => i !== null);
+    
+    const missingAnswers = requiredQuestions.filter(i => 
+      answers[i] === undefined || 
+      answers[i] === '' || 
+      (Array.isArray(answers[i]) && answers[i].length === 0)
+    );
+    
+    if (missingAnswers.length > 0 && timeRemaining > 1) {
+      enqueueSnackbar(
+        `Please answer all required questions (${missingAnswers.map(i => i + 1).join(', ')})`, 
+        { variant: 'error' }
+      );
+      return;
+    }
+
+    setSubmitting(true);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found');
+
+      const durationSeconds = assessment.timeLimitMinutes * 60 - timeRemaining;
+      
+      const response = await fetch(`/api/assessments/${assessmentId}/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          answers,
+          durationMinutes: assessment.timeLimitMinutes 
+            ? Math.floor(durationSeconds / 60)
+            : null
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to submit');
+      }
+      
+      enqueueSnackbar('Assessment submitted successfully!', { variant: 'success' });
+      navigate(`/assessments/${assessmentId}/results`);
+    } catch (err) {
+      console.error('Submission error:', err);
+      enqueueSnackbar(`Failed to submit: ${err.message}`, { 
+        variant: 'error',
+        autoHideDuration: 5000
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }, [submitting, assessment, answers, timeRemaining, assessmentId, enqueueSnackbar, navigate]);
+  
+  const fetchAssessment = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found');
+
+      const response = await fetch(`/api/assessments/${assessmentId}`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Assessment not found');
+      }
+
+      setAssessment(data);
+      if (data.timeLimitMinutes) {
+        const startedAt = new Date(data.startedAt);
+        const endTime = new Date(startedAt.getTime() + data.timeLimitMinutes * 60000);
+        setTimeRemaining(Math.max(0, Math.floor((endTime - new Date()) / 1000)));
+      }
+    } catch (err) {
+      console.error('Error loading assessment:', err);
+      enqueueSnackbar('Failed to load assessment', { variant: 'error' });
+      navigate('/assessments');
+    } finally {
+      setLoading(false);
+    }
+  }, [assessmentId, enqueueSnackbar, navigate]);
+
+  useEffect(() => {
+    fetchAssessment();
+  }, [fetchAssessment]);
+
+  useEffect(() => {
+    if (timeRemaining === null || submitting) return;
+
+    timerRef.current = timeRemaining > 0 && setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          handleSubmit();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timerRef.current);
+  }, [timeRemaining, handleSubmit, submitting]);
 
   const handleAnswerChange = (questionIndex, value) => {
     setAnswers(prev => ({
@@ -9,20 +152,85 @@
     }));
   };
 
-// ... (useEffect for timer is correct)
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
 
-// ... (loading and error screens are correct)
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!assessment) {
+    return (
+      <Alert severity="error" sx={{ m: 2 }}>
+        Assessment not found
+      </Alert>
+    );
+  }
+
+  const totalDuration = assessment.timeLimitMinutes * 60;
+  const progressValue = totalDuration > 0 
+    ? 100 - (timeRemaining / totalDuration * 100) 
+    : 0;
 
   return (
     <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-      {/* ... (Header, timer, progress bar are correct) ... */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+        <Typography variant="h4" fontWeight="bold">
+          {assessment.title}
+        </Typography>
+        
+        {timeRemaining !== null && (
+          <Typography variant="h6" color={timeRemaining < 60 ? 'error' : 'textPrimary'}>
+            Time Remaining: {formatTime(timeRemaining)}
+          </Typography>
+        )}
+      </Box>
+
+      <Typography variant="body1" paragraph>
+        {assessment.description}
+      </Typography>
+
+      {timeRemaining !== null && (
+        <LinearProgress 
+          variant="determinate" 
+          value={progressValue}
+          color={timeRemaining < 60 ? 'error' : 'primary'}
+          sx={{ mb: 3, height: 8 }}
+        />
+      )}
 
       <Divider sx={{ my: 3 }} />
 
       {assessment.questions.map((question, qIndex) => (
         <Box key={`q-${qIndex}`} sx={{ mb: 4 }}>
-          {/* ... (Question text, checkbox, text field are correct) ... */}
-          
+          <Typography variant="h6" gutterBottom>
+            {qIndex + 1}. {question.text}
+            {question.required && (
+              <Typography component="span" color="error" sx={{ ml: 1 }}>
+                *
+              </Typography>
+            )}
+          </Typography>
+
+          {question.type === 'text' && (
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              variant="outlined"
+              value={answers[qIndex] || ''}
+              onChange={(e) => handleAnswerChange(qIndex, e.target.value)}
+              placeholder="Type your answer here..."
+            />
+          )}
+
           {question.type === 'multiple_choice' && (
             <RadioGroup
               value={answers[qIndex] || ''}
@@ -43,8 +251,7 @@
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Rating
                 value={Number(answers[qIndex]) || 0}
-                // FIX: Cleaner onChange using event and newValue
-                onChange={(event, newValue) => handleAnswerChange(qIndex, newValue)} 
+                onChange={(event, newValue) => handleAnswerChange(qIndex, newValue)}
                 precision={1}
                 max={5}
               />
@@ -54,11 +261,37 @@
             </Box>
           )}
           
-          {/* ... (file upload and submit buttons are correct) ... */}
+          {question.type === 'file' && (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              File upload logic needs a dedicated API endpoint (e.g., S3 or Vercel Blob)
+            </Alert>
+          )}
         </Box>
       ))}
-      
-      {/* ... (Submit button is correct) ... */}
+
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
+        <Button
+          variant="contained"
+          color="primary"
+          size="large"
+          onClick={handleSubmit}
+          disabled={submitting || (timeRemaining !== null && timeRemaining <= 0)}
+          sx={{ minWidth: 180 }}
+        >
+          {submitting ? (
+            <>
+              <CircularProgress size={24} sx={{ mr: 1 }} color="inherit" />
+              Submitting...
+            </>
+          ) : (
+            'Submit Assessment'
+          )}
+        </Button>
+      </Box>
     </Paper>
   );
 }
+
+TakeAssessment.propTypes = {
+  // PropTypes for TakeAssessment are minimal since it uses useParams
+};
