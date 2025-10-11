@@ -7,7 +7,6 @@ import {
   ListItemText,
   Button,
   Chip,
-  Divider, // Divider is imported but not used, keeping for completeness
   CircularProgress,
   Box,
   TablePagination,
@@ -35,8 +34,6 @@ export default function AssessmentDashboard() {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const { enqueueSnackbar } = useSnackbar();
 
-  // FIX: Use useCallback to memoize the fetch function and avoid recreating it.
-  // This makes the function stable and safe to be a dependency.
   const fetchAssessments = useCallback(async () => {
     setLoading(true);
     try {
@@ -53,7 +50,6 @@ export default function AssessmentDashboard() {
         throw new Error(data.message || 'Failed to fetch assessments');
       }
       
-      // Ensure data.assessments exists and is an array
       setAssessments(Array.isArray(data.assessments) ? data.assessments : data);
     } catch (error) {
       console.error('Error fetching assessments:', error);
@@ -61,10 +57,8 @@ export default function AssessmentDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, enqueueSnackbar]); // Dependencies added
+  }, [activeTab, enqueueSnackbar]);
 
-  // FIX: Add fetchAssessments as a dependency. Now that it's wrapped in useCallback, 
-  // it only changes when activeTab or enqueueSnackbar changes.
   useEffect(() => {
     fetchAssessments();
   }, [fetchAssessments]); 
@@ -82,13 +76,13 @@ export default function AssessmentDashboard() {
         },
       });
 
-      const data = await response.json();
       if (!response.ok) {
+        const data = await response.json();
         throw new Error(data.message || 'Failed to start assessment');
       }
 
       enqueueSnackbar('Assessment started', { variant: 'success' });
-      fetchAssessments(); // Refresh the list - fetchAssessments is now stable
+      fetchAssessments();
     } catch (err) {
       console.error('Error starting assessment:', err);
       enqueueSnackbar(`Failed to start assessment: ${err.message}`, { 
@@ -97,13 +91,6 @@ export default function AssessmentDashboard() {
       });
     }
   };
-  
-  // NOTE: The backend API request already filters by status based on `activeTab`. 
-  // We can simplify `filteredAssessments` or remove it if the backend does all the work.
-  // Keeping it as a filter just in case the API returns all, but the initial code suggests pre-filtering.
-  // If the API returns ONLY the activeTab data, this filter is redundant and should be removed.
-  // For safety, let's assume the API pre-filters and remove the client-side filter.
-  // const filteredAssessments = assessments; // Simplified, assuming API filters
 
   return (
     <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
@@ -113,14 +100,13 @@ export default function AssessmentDashboard() {
         </Typography>
         
         <Box sx={{ display: 'flex', gap: 1 }}>
-          {/* Use consistent status values */}
           {Object.keys(statusConfig).map((tab) => (
             <Chip
               key={tab}
               label={tab.replace('_', ' ')}
               onClick={() => {
                 setActiveTab(tab);
-                setPage(0); // Reset page on tab change for better UX
+                setPage(0);
               }}
               color={activeTab === tab ? 'primary' : 'default'}
               variant={activeTab === tab ? 'filled' : 'outlined'}
@@ -141,63 +127,64 @@ export default function AssessmentDashboard() {
       ) : (
         <>
           <List sx={{ mb: 2 }}>
-            {assessments // Use assessments directly
+            {assessments
               .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-              .map((assessment) => (
-                <ListItem 
-                  key={assessment.id} 
-                  divider
-                  secondaryAction={
-                    <Button
-                      variant="contained"
-                      size="small"
-                      // Ensure assessment.status exists in statusConfig before accessing icon
-                      startIcon={statusConfig[assessment.status]?.icon}
-                      onClick={() => handleStartAssessment(assessment.id)}
-                      disabled={assessment.status === 'completed'}
-                      sx={{ textTransform: 'capitalize' }}
-                    >
-                      {assessment.status === 'active' ? 'Start' : 
-                       assessment.status === 'in_progress' ? 'Continue' : 'Completed'}
-                    </Button>
-                  }
-                >
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Badge
-                          // Ensure assessment.status exists in statusConfig before accessing color
-                          color={statusConfig[assessment.status]?.color || 'default'}
-                          variant="dot"
-                          overlap="circular"
-                        >
-                          <Typography fontWeight="medium">
-                            {assessment.title}
-                          </Typography>
-                        </Badge>
-                      </Box>
+              .map((assessment) => {
+                const config = statusConfig[assessment.status] || statusConfig.active;
+                return (
+                  <ListItem 
+                    key={assessment.id} 
+                    divider
+                    secondaryAction={
+                      <Button
+                        variant="contained"
+                        size="small"
+                        startIcon={config.icon}
+                        onClick={() => handleStartAssessment(assessment.id)}
+                        disabled={assessment.status === 'completed'}
+                        sx={{ textTransform: 'capitalize' }}
+                      >
+                        {assessment.status === 'active' ? 'Start' : 
+                        assessment.status === 'in_progress' ? 'Continue' : 'Completed'}
+                      </Button>
                     }
-                    secondary={
-                      <>
-                        <Typography variant="body2" component="span" display="block">
-                          Created: {new Date(assessment.createdAt).toLocaleDateString()} {/* Added formatting */}
-                        </Typography>
-                        {assessment.dueDate && (
+                  >
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Badge
+                            color={config.color}
+                            variant="dot"
+                            overlap="circular"
+                          >
+                            <Typography fontWeight="medium">
+                              {assessment.title}
+                            </Typography>
+                          </Badge>
+                        </Box>
+                      }
+                      secondary={
+                        <>
                           <Typography variant="body2" component="span" display="block">
-                            Due: {new Date(assessment.dueDate).toLocaleString()}
+                            Created: {new Date(assessment.createdAt).toLocaleDateString()}
                           </Typography>
-                        )}
-                      </>
-                    }
-                  />
-                </ListItem>
-              ))}
+                          {assessment.dueDate && (
+                            <Typography variant="body2" component="span" display="block">
+                              Due: {new Date(assessment.dueDate).toLocaleString()}
+                            </Typography>
+                          )}
+                        </>
+                      }
+                    />
+                  </ListItem>
+                );
+              })}
           </List>
 
           <TablePagination
             rowsPerPageOptions={[5, 10, 25]}
             component="div"
-            count={assessments.length} // Use assessments.length directly
+            count={assessments.length}
             rowsPerPage={rowsPerPage}
             page={page}
             onPageChange={(_, newPage) => setPage(newPage)}
