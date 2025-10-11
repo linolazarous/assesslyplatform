@@ -13,7 +13,8 @@ import {
   Slide,
   useMediaQuery,
   useTheme,
-  Typography
+  Typography,
+  Button
 } from '@mui/material';
 import { 
   Menu as MenuIcon,
@@ -22,14 +23,15 @@ import {
   Brightness7 as LightModeIcon,
   AccountCircle as AccountIcon,
   Settings as SettingsIcon,
-  ExitToApp as LogoutIcon
+  ExitToApp as LogoutIcon,
+  ArrowUpward as ArrowUpwardIcon
 } from '@mui/icons-material';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/AuthContext.jsx'; // Using .jsx
 import { useNavigate } from 'react-router-dom';
-import Logo from '../brand/logo';
+import { Logo } from '../brand'; // Importing from index.jsx
 import PropTypes from 'prop-types';
 
-// Moved HideOnScroll outside to prevent re-creation on every render
+// Hide AppBar on scroll
 function HideOnScroll({ children }) {
   const trigger = useScrollTrigger();
   return (
@@ -50,7 +52,6 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [anchorEl, setAnchorEl] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  // State to control mobile search visibility, separate from searchQuery
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false); 
 
   const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
@@ -59,15 +60,15 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
   const handleLogout = () => {
     handleMenuClose();
     logout();
+    navigate('/login');
   };
   
   const handleSearch = (e) => {
     e.preventDefault();
-    if (!searchQuery.trim()) return; // Prevent searching empty query
+    if (!searchQuery.trim()) return;
     
     navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
     setSearchQuery('');
-    // Close mobile search after submission
     if (isMobile) setIsMobileSearchOpen(false); 
   };
   
@@ -84,13 +85,14 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
           color: theme.palette.text.primary,
           boxShadow: 'none',
           borderBottom: `1px solid ${theme.palette.divider}`,
-          backdropFilter: 'blur(8px)',
+          // Fix: Use theme colors defined in theme.jsx
+          bgcolor: theme.palette.background.paper, 
         }}
       >
         <Toolbar sx={{ justifyContent: 'space-between', gap: 2 }}>
           {/* Left Section - Logo & Mobile Menu */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            {isMobile && (
+            {isMobile && currentUser && ( // Only show drawer icon if logged in
               <IconButton
                 color="inherit"
                 aria-label="open drawer"
@@ -100,14 +102,13 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
                 <MenuIcon />
               </IconButton>
             )}
-            {/* Logo is now wrapped in a button to navigate home */}
             <IconButton onClick={() => navigate('/')} sx={{ p: 0 }} aria-label="Home">
-               <Logo size={isMobile ? 40 : 50} />
+               <Logo size={isMobile ? 32 : 40} />
             </IconButton>
           </Box>
 
           {/* Middle Section - Search (Desktop) */}
-          {!isMobile && (
+          {currentUser && !isMobile && ( // Only show search if logged in and desktop
             <Box 
               component="form" 
               onSubmit={handleSearch}
@@ -146,7 +147,7 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
             </IconButton>
 
             {/* Mobile Search Toggle */}
-            {isMobile && (
+            {isMobile && currentUser && (
               <IconButton 
                 color="inherit" 
                 aria-label="Toggle search bar"
@@ -156,7 +157,7 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
               </IconButton>
             )}
 
-            {/* User Menu */}
+            {/* User Menu / Login Button */}
             {currentUser ? (
               <>
                 <IconButton
@@ -183,39 +184,26 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
                   keepMounted
                   open={Boolean(anchorEl)}
                   onClose={handleMenuClose}
-                  PaperProps={{
-                    elevation: 0,
-                    sx: {
-                      mt: 1,
-                      minWidth: 200,
-                      borderRadius: 2,
-                      boxShadow: 3
-                    }
-                  }}
+                  PaperProps={{ elevation: 0, sx: { mt: 1, minWidth: 200, borderRadius: 2, boxShadow: 3 } }}
                 >
-                  <Typography variant="subtitle2" sx={{ px: 2, py: 1 }}>
-                    {userDisplayName}
-                  </Typography>
+                  <Typography variant="subtitle2" sx={{ px: 2, py: 1 }}>{userDisplayName}</Typography>
                   <Divider />
                   <MenuItem onClick={() => { navigate('/profile'); handleMenuClose(); }}>
-                    <AccountIcon sx={{ mr: 1.5 }} fontSize="small" />
-                    Profile
+                    <AccountIcon sx={{ mr: 1.5 }} fontSize="small" /> Profile
                   </MenuItem>
                   <MenuItem onClick={() => { navigate('/settings'); handleMenuClose(); }}>
-                    <SettingsIcon sx={{ mr: 1.5 }} fontSize="small" />
-                    Settings
+                    <SettingsIcon sx={{ mr: 1.5 }} fontSize="small" /> Settings
                   </MenuItem>
                   <Divider />
                   <MenuItem onClick={handleLogout}>
-                    <LogoutIcon sx={{ mr: 1.5 }} fontSize="small" />
-                    Logout
+                    <LogoutIcon sx={{ mr: 1.5 }} fontSize="small" /> Logout
                   </MenuItem>
                 </Menu>
               </>
             ) : (
               <Button 
                 variant="outlined" 
-                color="inherit"
+                color="primary"
                 onClick={() => navigate('/login')}
                 sx={{ ml: 1 }}
               >
@@ -226,7 +214,7 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
         </Toolbar>
 
         {/* Mobile Search Bar (when activated) */}
-        {isMobile && isMobileSearchOpen && (
+        {isMobile && currentUser && isMobileSearchOpen && (
           <Box sx={{ p: 1, borderTop: `1px solid ${theme.palette.divider}` }}>
             <form onSubmit={handleSearch}>
               <InputBase
@@ -236,13 +224,7 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 startAdornment={<SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />}
-                sx={{ 
-                  color: 'text.primary',
-                  backgroundColor: theme.palette.action.hover,
-                  borderRadius: 1,
-                  px: 2,
-                  py: 1
-                }}
+                sx={{ bgcolor: theme.palette.action.hover, borderRadius: 1, px: 2, py: 1 }}
               />
             </form>
           </Box>
