@@ -13,9 +13,12 @@ import {
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import PropTypes from 'prop-types';
-// FIX: Ensure imports use the .jsx extension if you renamed them
+// FIX: Corrected imports using the final .jsx extension and relative path
 import BillingHistory from '../../components/billing/BillingHistory.jsx'; 
 import PaymentMethods from '../../components/billing/PaymentMethods.jsx'; 
+// NOTE: BillingPortalButton and PricingCards are generally used on separate pages,
+// but we include the imports here if they were required later.
+// import PricingCards from '../../components/billing/PricingCards.jsx'; 
 
 export default function Billing({ orgId }) {
   const [orgData, setOrgData] = useState(null);
@@ -23,15 +26,14 @@ export default function Billing({ orgId }) {
   const [error, setError] = useState(null);
   const { enqueueSnackbar } = useSnackbar();
 
-  // Memoize handleUpgrade since it relies on orgId and enqueueSnackbar
+  // Memoize handleUpgrade
   const handleUpgrade = useCallback(async (priceId) => {
-    // Only set loading for the upgrade process itself, not the whole page
-    // (A more advanced implementation would use a separate loading state)
-    // setLoading(true); 
+    // We only wrap the API call in try/catch here, the `finally` is handled by the higher loading state
     try {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('Authentication token not found');
 
+      // Optimistically redirect to the checkout session API endpoint
       const response = await fetch('/api/billing/checkout-session', {
         method: 'POST',
         headers: {
@@ -41,7 +43,7 @@ export default function Billing({ orgId }) {
         body: JSON.stringify({
           orgId,
           priceId,
-          // Use a robust return URL construction
+          // Robust return URL construction using window.location.origin
           successUrl: `${window.location.origin}/organization/${orgId}/billing?success=true`,
           cancelUrl: `${window.location.origin}/organization/${orgId}/billing?canceled=true`
         })
@@ -61,10 +63,12 @@ export default function Billing({ orgId }) {
         autoHideDuration: 5000,
         anchorOrigin: { vertical: 'top', horizontal: 'right' }
       });
-    } // finally { setLoading(false); }
-  }, [orgId, enqueueSnackbar]); // Dependencies added
+      // Crucial: Manually trigger loading stop here if the redirect fails before leaving the page
+      setLoading(false);
+    } 
+  }, [orgId, enqueueSnackbar]); 
 
-  // Memoize fetchOrgData since it relies on orgId
+  // Memoize fetchOrgData
   const fetchOrgData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -93,11 +97,11 @@ export default function Billing({ orgId }) {
     } finally {
       setLoading(false);
     }
-  }, [orgId]); // Dependency added
+  }, [orgId]);
 
   useEffect(() => {
     fetchOrgData();
-  }, [fetchOrgData]); // Use memoized function as dependency
+  }, [fetchOrgData]); // Dependency on memoized function
 
   if (error) {
     return (
@@ -168,8 +172,9 @@ export default function Billing({ orgId }) {
                 <Button
                   variant="contained"
                   color="primary"
-                  onClick={() => handleUpgrade('price_premium')}
-                  disabled={loading || isActive} // Disable if already active
+                  // NOTE: Use the actual price IDs when available
+                  onClick={() => handleUpgrade('price_premium_id_placeholder')}
+                  disabled={loading || isActive}
                   sx={{ minWidth: 180 }}
                 >
                   Upgrade to Premium
@@ -178,7 +183,7 @@ export default function Billing({ orgId }) {
                 <Button
                   variant="outlined"
                   color="primary"
-                  onClick={() => handleUpgrade('price_enterprise')}
+                  onClick={() => handleUpgrade('price_enterprise_id_placeholder')}
                   disabled={loading}
                   sx={{ minWidth: 180 }}
                 >
@@ -189,11 +194,13 @@ export default function Billing({ orgId }) {
           </Card>
 
           <Box sx={{ mt: 3 }}>
+            {/* Component to show past invoices/transactions */}
             <BillingHistory orgId={orgId} />
           </Box>
         </Grid>
 
         <Grid item xs={12} md={4}>
+          {/* Component to manage payment methods via portal button */}
           <PaymentMethods orgId={orgId} />
         </Grid>
       </Grid>
