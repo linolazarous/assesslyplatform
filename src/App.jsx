@@ -1,54 +1,65 @@
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useState, useMemo } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { ThemeProvider } from "@mui/material/styles"; // Import ThemeProvider
+import { ThemeProvider } from "@mui/material/styles";
 
 // Contexts & Layouts
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import MainLayout from "./layouts/MainLayout.jsx";
 import AuthLayout from "./layouts/AuthLayout.jsx";
-import { getAppTheme } from "./styles/theme.jsx"; // Import theme factory
-import LoadingScreen from "./components/ui/LoadingScreen.jsx"; // Assuming path and name
-import ProtectedRoute from "./components/common/ProtectedRoute.jsx"; // FIX: Alias path
+import { getAppTheme } from "./styles/theme.jsx"; 
+import LoadingScreen from "./components/ui/LoadingScreen.jsx"; 
+import ProtectedRoute from "./components/common/ProtectedRoute.jsx";
 
-// Lazy-loaded components (MUST use relative paths or defined aliases)
-// Assuming root alias `@` is defined in vite.config.js as "@/src"
+// Lazy-loaded components (All imports MUST use .jsx extension)
 const AssessmentDashboard = lazy(() => import("./components/AssessmentDashboard.jsx"));
 const CreateAssessment = lazy(() => import("./components/CreateAssessment.jsx"));
 const TakeAssessment = lazy(() => import("./components/TakeAssessment.jsx"));
 const PdfReport = lazy(() => import("./components/PdfReport.jsx"));
-const AuthPage = lazy(() => import("./pages/Auth.jsx")); // Renamed to AuthPage to avoid conflict
-const LandingScreen = lazy(() => import("./pages/Landing/LandingScreen.jsx")); // Assuming correct path
+const AuthPage = lazy(() => import("./pages/Auth.jsx"));
+const LandingScreen = lazy(() => import("./pages/Landing/LandingScreen.jsx"));
 const BillingPage = lazy(() => import("./pages/Billing.jsx"));
 const AdminDashboard = lazy(() => import("./pages/Admin/Dashboard.jsx"));
 
+// --- Custom Hook to manage theme state safely ---
+const useThemeMode = () => {
+  const [darkMode, setDarkMode] = useState(false);
+  const toggleDarkMode = () => setDarkMode(prev => !prev);
+  
+  // Memoize the theme object creation to avoid recalculation on every render
+  const theme = useMemo(() => {
+    return getAppTheme(darkMode ? 'dark' : 'light');
+  }, [darkMode]);
 
-// State to manage dark mode (usually handled by a custom hook/context)
-const [darkMode, setDarkMode] = React.useState(false);
-const toggleDarkMode = () => setDarkMode(prev => !prev);
-const theme = getAppTheme(darkMode ? 'dark' : 'light');
+  return { theme, darkMode, toggleDarkMode };
+};
 
+// --- Main Application Component ---
 function App() {
+  // FIX: Theme state initialization moved inside the function body
+  const { theme, darkMode, toggleDarkMode } = useThemeMode();
+
   return (
     <Router>
-      {/* 1. Theme Provider must wrap the entire app */}
       <ThemeProvider theme={theme}>
-        {/* 2. Auth Provider provides global user state */}
         <AuthProvider>
-          {/* 3. Suspense for handling lazy loading fallback */}
           <Suspense fallback={<LoadingScreen fullScreen />}>
             <Routes>
 
-              {/* Public/Landing Route - Uses MainLayout but without Sidebar */}
-              <Route path="/" element={<MainLayout><LandingScreen /></MainLayout>} />
-              
-              {/* Auth Route - Uses AuthLayout (Centered Box) */}
+              {/* Public Routes using AuthLayout */}
               <Route path="/auth" element={<AuthLayout><AuthPage /></AuthLayout>} />
               <Route path="/login" element={<AuthLayout><AuthPage /></AuthLayout>} />
 
-              {/* Protected Routes that use the standard Dashboard Layout (Header + Sidebar) */}
-              <Route element={<MainLayout toggleDarkMode={toggleDarkMode} />}>
-                
-                {/* Standard User Routes */}
+              {/* General Layout for Dashboard and Landing */}
+              <Route 
+                element={
+                  // Pass theme toggles to MainLayout (which contains the Header/Navbar)
+                  <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
+                }
+              >
+                {/* Landing/Home Route (Public, but uses MainLayout structure) */}
+                <Route path="/" element={<LandingScreen />} />
+
+                {/* --- Protected Routes --- */}
                 <Route
                   path="/dashboard"
                   element={<ProtectedRoute><AssessmentDashboard /></ProtectedRoute>}
@@ -70,7 +81,7 @@ function App() {
                   element={<ProtectedRoute><BillingPage /></ProtectedRoute>}
                 />
                 
-                {/* Admin Routes */}
+                {/* Admin Route (Role-based access) */}
                 <Route
                   path="/admin"
                   element={<ProtectedRoute roles={['admin']}><AdminDashboard /></ProtectedRoute>}
