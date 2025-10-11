@@ -17,7 +17,7 @@ const HeroSection = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   // Video URL is relative to the root public folder
-  const videoUrl = 'assesslyplatform/assessly.webp'; 
+  const videoUrl = 'assesslyplatform/Assessly.mp4'; 
 
   return (
     <Box 
