@@ -6,9 +6,9 @@
 
 A modern assessment SaaS platform enabling organizations to create, deliver, and analyze assessments with enterprise-grade reliability.
 
-## âœ¨ Key Features
+## Key Features
 
-### ðŸŽ¯ Core Capabilities
+### Core Capabilities
 | Feature | Description |
 |---------|-------------|
 | **Multi-role System** | Admin, Assessor, and Candidate roles with granular permissions |
@@ -16,18 +16,19 @@ A modern assessment SaaS platform enabling organizations to create, deliver, and
 | **Smart Analytics** | Real-time dashboards with actionable insights |
 | **Offline Mode** | Work without internet with automatic sync |
 
-### ðŸ“Š Assessment Types
+### Assessment Types
 - **Exams & Quizzes**
 - **Employee Evaluations**
 - **360Â° Feedback**
 - **Surveys & Questionnaires**
 - **Certification Tests**
 
-### ðŸ›  Platform Highlights
+###  Platform Highlights
 ```mermaid
 graph TD
   A[Create Assessment] --> B[Distribute]
   B --> C[Collect Responses]
   C --> D[Generate Reports]
   D --> E[Analyze Insights]
+
 
