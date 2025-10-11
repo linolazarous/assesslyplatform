@@ -32,7 +32,7 @@ export const Logo = ({ size = 40, withText = true, darkMode = false, sx }) => {
           strokeWidth="8" 
           strokeLinecap="round"
         />
-        {/* Gradient Definition - Only needed once */}
+        {/* Gradient Definition */}
         <defs>
           <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#3f51b5" />
@@ -48,6 +48,7 @@ export const Logo = ({ size = 40, withText = true, darkMode = false, sx }) => {
             fontWeight: 700,
             fontSize: size * 0.5,
             background: textColor,
+            // Vendor prefixes for text gradient effect
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent'
           }}
@@ -60,11 +61,11 @@ export const Logo = ({ size = 40, withText = true, darkMode = false, sx }) => {
 };
 
 Logo.propTypes = {
-  // size can be a number or a string (e.g., '100%') for responsiveness
+  // Size can be flexible to support numbers (pixels) or strings (e.g., '100%')
   size: PropTypes.oneOfType([PropTypes.number, PropTypes.string]), 
   withText: PropTypes.bool,
   darkMode: PropTypes.bool,
-  // PropTypes for the MUI sx prop
+  // Standard PropTypes for MUI sx prop
   sx: PropTypes.oneOfType([
     PropTypes.arrayOf(PropTypes.oneOfType([PropTypes.object, PropTypes.bool])),
     PropTypes.func,
