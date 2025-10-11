@@ -3,14 +3,15 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@mui/material/styles";
 
 // Contexts & Layouts
-import { AuthProvider } from "./contexts/AuthContext.jsx";
+// FIX: Using alias '@' for the most robust path resolution (assuming vite.config.js alias to src/)
+import { AuthProvider } from "@/contexts/AuthContext.jsx"; 
 import MainLayout from "./layouts/MainLayout.jsx";
 import AuthLayout from "./layouts/AuthLayout.jsx";
 import { getAppTheme } from "./styles/theme.jsx"; 
 import LoadingScreen from "./components/ui/LoadingScreen.jsx"; 
 import ProtectedRoute from "./components/common/ProtectedRoute.jsx";
 
-// Lazy-loaded components (All imports MUST use .jsx extension)
+// Lazy-loaded components (Ensure all aliases/paths match the correct file extension)
 const AssessmentDashboard = lazy(() => import("./components/AssessmentDashboard.jsx"));
 const CreateAssessment = lazy(() => import("./components/CreateAssessment.jsx"));
 const TakeAssessment = lazy(() => import("./components/TakeAssessment.jsx"));
@@ -25,7 +26,6 @@ const useThemeMode = () => {
   const [darkMode, setDarkMode] = useState(false);
   const toggleDarkMode = () => setDarkMode(prev => !prev);
   
-  // Memoize the theme object creation to avoid recalculation on every render
   const theme = useMemo(() => {
     return getAppTheme(darkMode ? 'dark' : 'light');
   }, [darkMode]);
@@ -35,7 +35,6 @@ const useThemeMode = () => {
 
 // --- Main Application Component ---
 function App() {
-  // FIX: Theme state initialization moved inside the function body
   const { theme, darkMode, toggleDarkMode } = useThemeMode();
 
   return (
@@ -52,7 +51,6 @@ function App() {
               {/* General Layout for Dashboard and Landing */}
               <Route 
                 element={
-                  // Pass theme toggles to MainLayout (which contains the Header/Navbar)
                   <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
                 }
               >
