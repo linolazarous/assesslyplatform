@@ -14,8 +14,8 @@ import {
 import { useSnackbar } from 'notistack';
 import PropTypes from 'prop-types';
 // FIX: Corrected imports using the final .jsx extension and relative path
-import BillingHistory from '../../components/billing/BillingHistory.jsx'; 
-import PaymentMethods from '../../components/billing/PaymentMethods.jsx'; 
+import BillingHistory from '../components/billing/BillingHistory.jsx'; 
+import PaymentMethods from '../components/billing/PaymentMethods.jsx'; 
 // NOTE: BillingPortalButton and PricingCards are generally used on separate pages,
 // but we include the imports here if they were required later.
 // import PricingCards from '../../components/billing/PricingCards.jsx'; 
@@ -211,3 +211,4 @@ export default function Billing({ orgId }) {
 Billing.propTypes = {
   orgId: PropTypes.string.isRequired
 };
+
