@@ -1,14 +1,11 @@
-import { httpsCallable } from 'firebase/functions';
-// Assuming this path is correct for your Firebase initialization
-import { functions } from '../firebase/firebase.js'; 
-// FIX: Removed unused import. Service functions should be pure.
-// import { useSnackbar } from 'notistack'; 
+import React from 'react'; // Retained React import just in case, though technically unnecessary for pure JS utility
 
 // Cache for similar responses to reduce API calls
 const scoringCache = new Map();
+const AI_SCORING_ENDPOINT = '/api/assessments/ai-score'; // New standardized API endpoint
 
 /**
- * Analyzes a text response using a Firebase Cloud Function (AI) or falls back to basic scoring.
+ * Analyzes a text response using a standard API endpoint or falls back to basic scoring.
  * @param {string} text - The candidate's response text.
  * @param {string} questionId - ID of the question.
  * @param {string} assessmentId - ID of the assessment.
@@ -22,19 +19,33 @@ export const analyzeTextResponse = async (text, questionId, assessmentId) => {
       return scoringCache.get(cacheKey);
     }
 
-    // Call Cloud Function for AI scoring
-    const scoreResponse = httpsCallable(functions, 'analyzeAssessmentResponse');
-    const { data } = await scoreResponse({
-      text,
-      questionId,
-      assessmentId,
-      metadata: {
-        timestamp: new Date().toISOString(),
-        length: text.length
-      }
-    });
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('Authentication token not found');
 
-    // Validate structure of response data
+    // FIX: Replace firebase/functions call with standard fetch to your API endpoint
+    const response = await fetch(AI_SCORING_ENDPOINT, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        text,
+        questionId,
+        assessmentId,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          length: text.length
+        }
+      }),
+    });
+    
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.message || 'AI Scoring failed on server.');
+    }
+
     if (!data || typeof data.score !== 'number') {
         throw new Error('AI response structure invalid.');
     }
@@ -44,9 +55,9 @@ export const analyzeTextResponse = async (text, questionId, assessmentId) => {
     
     return data;
   } catch (error) {
-    console.error('AI Scoring Error: Falling back to basic score.', error);
+    console.error('AI Scoring API Error: Falling back to basic score.', error);
     
-    // Fallback to basic scoring if AI fails
+    // Fallback to basic scoring if API fails
     return getBasicTextScore(text);
   }
 };
@@ -109,7 +120,6 @@ export const evaluateAnswers = async (answers, questions, assessmentId) => {
         };
       }
 
-      // Handle other question types (multiple choice, etc.)
       const isCorrect = question.correctAnswer === answer;
       return {
         ...resultBase,
