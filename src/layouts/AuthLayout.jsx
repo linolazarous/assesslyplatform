@@ -3,13 +3,10 @@ import { Box, CircularProgress } from '@mui/material';
 import PropTypes from 'prop-types';
 import { Logo } from '../components/brand'; 
 
-// ----------------------------------------------------------------------
-// FIX: Lazy load the framer-motion library to avoid static build errors.
-// ----------------------------------------------------------------------
+// FIX: Lazy load the framer-motion library to prevent static build errors
 const MotionDiv = lazy(() => 
   import('framer-motion').then(module => ({ default: module.motion.div }))
 );
-// ----------------------------------------------------------------------
 
 export default function AuthLayout({ children }) {
   const motionProps = {
