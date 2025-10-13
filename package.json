@@ -5,9 +5,9 @@
   "type": "module",
   "description": "Assessly - Modern AI-Powered Assessment Platform",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview --host"
   },
   "dependencies": {
     "@emotion/react": "^11.13.5",
