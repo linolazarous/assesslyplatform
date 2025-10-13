@@ -2,14 +2,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
-// Define the absolute path to the root directory
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
 export default defineConfig({
-  // Ensure the react plugin is correctly configured for development
   plugins: [
     react({
-      // Explicitly enabled Fast Refresh is good for dev experience
       fastRefresh: true,
     }),
   ],
@@ -21,41 +18,37 @@ export default defineConfig({
     minify: 'esbuild',
     rollupOptions: {
       output: {
-        // Improved chunking strategy for production
         manualChunks: {
           react_core: ['react', 'react-dom', 'react-router-dom'],
           mui_core: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
-          utilities: ['axios', 'jspdf', 'notistack', 'jwt-decode'] // Added jwt-decode for completeness
+          utilities: ['axios', 'jspdf', 'notistack', 'jwt-decode']
         }
       }
     }
   },
   server: {
-    port: 5173,
+    // FIX: Removed explicit port definitions (port, preview)
     open: true,
     host: true,
-    // Production-ready proxy setup for backend API calls
+    // Keep proxy configuration for development mode when running Express separately
     proxy: {
       '/api': {
         target: 'http://localhost:3000', 
         changeOrigin: true,
-        secure: false, // Set to true if your backend uses HTTPS/SSL
+        secure: false,
       }
     }
   },
   preview: {
-    port: process.env.PORT || 4173,
+    // Removed explicit port definition
     host: true
   },
   resolve: {
-    // FIX: Using path.resolve(__dirname, 'src') for a robust, cross-platform alias resolution.
-    // The previous URL/import.meta method was unnecessarily complex.
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.json']
   },
-  // Keep dependency optimization for faster cold start
   optimizeDeps: {
     include: [
       'react', 
@@ -65,7 +58,7 @@ export default defineConfig({
       '@mui/icons-material',
       'notistack',
       'jspdf',
-      'jspdf-autotable' // Include jspdf-autotable for stability
+      'jspdf-autotable'
     ]
   }
 });
