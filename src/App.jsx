@@ -3,15 +3,14 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@mui/material/styles";
 
 // Contexts & Layouts
-// FIX: Using alias '@' for the most robust path resolution (assuming vite.config.js alias to src/)
-import { AuthProvider } from "@/contexts/AuthContext.jsx"; 
+import { AuthProvider } from "./contexts/AuthContext.jsx";
 import MainLayout from "./layouts/MainLayout.jsx";
 import AuthLayout from "./layouts/AuthLayout.jsx";
 import { getAppTheme } from "./styles/theme.jsx"; 
 import LoadingScreen from "./components/ui/LoadingScreen.jsx"; 
 import ProtectedRoute from "./components/common/ProtectedRoute.jsx";
 
-// Lazy-loaded components (Ensure all aliases/paths match the correct file extension)
+// Lazy-loaded components (Ensured all paths use .jsx)
 const AssessmentDashboard = lazy(() => import("./components/AssessmentDashboard.jsx"));
 const CreateAssessment = lazy(() => import("./components/CreateAssessment.jsx"));
 const TakeAssessment = lazy(() => import("./components/TakeAssessment.jsx"));
@@ -48,13 +47,14 @@ function App() {
               <Route path="/auth" element={<AuthLayout><AuthPage /></AuthLayout>} />
               <Route path="/login" element={<AuthLayout><AuthPage /></AuthLayout>} />
 
-              {/* General Layout for Dashboard and Landing */}
+              {/* General Layout for Dashboard and Landing (Uses MainLayout for header/sidebar logic) */}
               <Route 
                 element={
+                  // MainLayout handles rendering Header/Sidebar based on user state
                   <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
                 }
               >
-                {/* Landing/Home Route (Public, but uses MainLayout structure) */}
+                {/* Landing/Home Route */}
                 <Route path="/" element={<LandingScreen />} />
 
                 {/* --- Protected Routes --- */}
