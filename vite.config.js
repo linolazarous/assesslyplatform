@@ -5,7 +5,8 @@ import path from "path";
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
   // FIX 1: Instruct Vite to pre-bundle 'jwt-decode' during development 
-  // This often resolves issues where the default export isn't picked up correctly.
+  // This step helps Vite resolve the "default" export for CJS packages like the older version 
+  // of jwt-decode, allowing the import jwtDecode from 'jwt-decode' syntax to work.
   optimizeDeps: {
     include: ['jwt-decode'] 
   },
@@ -16,7 +17,7 @@ export default defineConfig(({ mode }) => ({
     sourcemap: false,
     chunkSizeWarningLimit: 1500, // prevent warnings on large chunks
     // FIX 2: Configure CommonJS handling for the production build.
-    // This ensures CJS dependencies are correctly transformed in an ESM project.
+    // Ensures CJS dependencies are correctly transformed for the browser in an ESM project.
     commonjsOptions: {
       include: [/node_modules/],
     },
