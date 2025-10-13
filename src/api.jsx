@@ -4,25 +4,29 @@ import axios from "axios";
 /**
  * 🌍 Dynamic Base URL Configuration
  * Automatically switches between local and production environments.
+ *
+ * - Local dev: connects to backend on localhost:3000
+ * - Production: connects to live Render backend
  */
-const API_BASE_URL =
-  import.meta.env.MODE === "development"
-    ? "http://localhost:3000/api" // Local backend (for testing)
-    : "https://assesslyplatform.onrender.com/api"; // 🔗 Replace with your Render Web Service URL
+const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+const API_BASE_URL = isLocalhost
+  ? "http://localhost:3000/api" // 🧪 Local backend for dev
+  : "https://assesslyplatform.onrender.com/api"; // 🚀 Render Web Service (production backend)
 
 /**
- * 🔐 Create a global axios instance with defaults
+ * 🔐 Global Axios Instance
  */
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
-  withCredentials: false,
+  withCredentials: false, // disable cookies for public API
 });
 
 /**
- * 🌈 Handle and log API errors gracefully
+ * 🚨 Handle and log API errors gracefully
  */
 const handleError = (error) => {
   console.error("❌ API Error:", error.response?.data || error.message);
@@ -47,7 +51,6 @@ export const AuthAPI = {
   login: async (data) => {
     try {
       const res = await api.post("/auth/login", data);
-      // You can store token in localStorage for persistence
       if (res.data.token) localStorage.setItem("token", res.data.token);
       return res.data;
     } catch (err) {
@@ -57,7 +60,10 @@ export const AuthAPI = {
 
   profile: async () => {
     try {
-      const res = await api.get("/user/profile");
+      const token = localStorage.getItem("token");
+      const res = await api.get("/user/profile", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       return res.data;
     } catch (err) {
       handleError(err);
@@ -197,7 +203,7 @@ export const SearchAPI = {
   },
 };
 
-// ✅ Health Check (optional for diagnostics)
+// ✅ Health Check (for diagnostics)
 export const HealthAPI = {
   check: async () => {
     try {
@@ -209,7 +215,7 @@ export const HealthAPI = {
   },
 };
 
-// ✅ Default export for flexible use
+// ✅ Export everything
 export default {
   AuthAPI,
   OrganizationAPI,
