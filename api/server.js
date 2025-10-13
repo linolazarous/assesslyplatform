@@ -21,7 +21,7 @@ const port = process.env.PORT || 3000;
 const allowedOrigins = [
   'http://localhost:5173', 
   'http://localhost:3000',
-  'https://assesslyplatform.onrender.com' 
+  'https://assessly-frontend.onrender.com' 
 ];
 
 app.use(cors({
