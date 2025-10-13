@@ -8,7 +8,7 @@ import axios from "axios";
 const API_BASE_URL =
   import.meta.env.MODE === "development"
     ? "http://localhost:3000/api" // Local backend (for testing)
-    : "https://assessly-backend.onrender.com/api"; // 🔗 Replace with your Render Web Service URL
+    : "https://assesslyplatform.onrender.com/api"; // 🔗 Replace with your Render Web Service URL
 
 /**
  * 🔐 Create a global axios instance with defaults
