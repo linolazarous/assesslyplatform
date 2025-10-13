@@ -22,10 +22,7 @@ const connectToDatabase = async () => {
 
   // If not, create a new connection
   const client = await MongoClient.connect(process.env.MONGO_URI, {
-    // useNewUrlParser and useUnifiedTopology are typically default in recent versions,
-    // but included here for compatibility.
-    // useNewUrlParser: true, 
-    // useUnifiedTopology: true,
+    // The driver handles options automatically in modern versions
   });
 
   // Extract the database name from the URI or set a default
