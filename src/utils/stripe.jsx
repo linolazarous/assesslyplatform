@@ -9,9 +9,9 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 // Initialize Stripe client
+// FIX: Using a stable recent API version
 stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock_key', {
-  // Always specify the API version you developed against
-  apiVersion: '2025-10-10', 
+  apiVersion: '2023-10-16', 
 });
 
 export { stripe };
