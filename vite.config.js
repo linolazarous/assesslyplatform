@@ -10,8 +10,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
-      react(),
-      // Removed node-fetch backendHealthCheckPlugin for Netlify
+      react({
+        jsxRuntime: "automatic", // ✅ ensures modern JSX transform
+      }),
     ],
     base: "./",
     optimizeDeps: { include: ["jwt-decode"] },
