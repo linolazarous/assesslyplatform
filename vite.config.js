@@ -2,13 +2,41 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import fetch from "node-fetch"; // ✅ For health check requests
+
+// 🔍 Custom health check plugin
+function backendHealthCheckPlugin(apiUrl) {
+  return {
+    name: "backend-health-check",
+    async configResolved() {
+      try {
+        const res = await fetch(`${apiUrl}/health`);
+        if (!res.ok) throw new Error(`Backend responded with ${res.status}`);
+        const data = await res.json();
+        console.log(
+          `\n✅ Backend Health Check Passed: ${data.status} (${apiUrl})\n`
+        );
+      } catch (err) {
+        console.warn(
+          `\n⚠️  Warning: Backend unreachable at ${apiUrl}\nReason: ${err.message}\n`
+        );
+      }
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const isProd = mode === "production";
+  const backendUrl = isProd
+    ? "https://assesslyplatform.onrender.com/api"
+    : "http://localhost:3000/api";
 
   return {
-    plugins: [react()],
-    base: "./", // ✅ ensures assets load correctly (prevents white screen)
+    plugins: [
+      react(),
+      backendHealthCheckPlugin(backendUrl) // ✅ runs before build/serve
+    ],
+    base: "./",
 
     optimizeDeps: {
       include: ["jwt-decode"],
@@ -22,7 +50,7 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 1500,
       assetsDir: "assets",
       manifest: true,
-      cssCodeSplit: true, // ✅ better caching and faster load
+      cssCodeSplit: true,
       commonjsOptions: {
         include: [/node_modules/],
       },
@@ -57,12 +85,8 @@ export default defineConfig(({ mode }) => {
 
     define: {
       __APP_ENV__: JSON.stringify(mode),
-      "process.env": {}, // ✅ prevents "process is not defined" errors
-      "import.meta.env.VITE_API_BASE_URL": JSON.stringify(
-        isProd
-          ? "https://assesslyplatform.onrender.com/api"
-          : "http://localhost:3000/api"
-      ),
+      "process.env": {},
+      "import.meta.env.VITE_API_BASE_URL": JSON.stringify(backendUrl),
     },
   };
 });
