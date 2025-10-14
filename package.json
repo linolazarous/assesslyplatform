@@ -1,0 +1,44 @@
+{
+  "name": "assessly-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Assessly - Modern AI-Powered Assessment Platform",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "serve": "vite preview --host",
+    "preview": "vite preview --port 4173 --host"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.13.5",
+    "@emotion/styled": "^11.13.5",
+    "@mui/icons-material": "^5.16.7",
+    "@mui/material": "^5.16.7",
+    "axios": "^1.7.2",
+    "framer-motion": "^12.23.24",
+    "jspdf": "^3.0.3",
+    "jspdf-autotable": "^5.0.2",
+    "jwt-decode": "^4.0.0",
+    "notistack": "^3.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^7.1.9"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "assessly",
+    "ai-assessment",
+    "react",
+    "vite",
+    "education",
+    "frontend"
+  ],
+  "license": "MIT"
+}
