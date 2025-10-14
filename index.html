@@ -4,12 +4,12 @@
     <!-- ✅ Basic Meta -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Assessly - Modern AI-Powered Assessment Platform for managing and creating online assessments, quizzes, and performance analytics." />
+    <meta name="description" content="Assessly - AI-Powered Assessment Platform for creating, managing, and analyzing online assessments and quizzes." />
     <meta name="theme-color" content="#3f51b5" />
     <title>Assessly | AI-Powered Assessment Platform</title>
 
     <!-- ✅ Favicons -->
-    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/favicon.ico" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
@@ -47,13 +47,17 @@
     <!-- ✅ Progressive Web App (PWA) Enhancements -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    
+    <!-- ✅ Preload main React entry (Vite) for faster hydration -->
+    <link rel="modulepreload" href="/src/main.jsx" />
   </head>
 
   <body>
+    <!-- ✅ Fallback for No JavaScript -->
     <noscript>
       <div style="padding:2rem; text-align:center; font-family:sans-serif;">
         <h1 style="color:#d32f2f;">JavaScript Required</h1>
-        <p>Assessly requires JavaScript to function properly. Please enable it in your browser settings.</p>
+        <p>Assessly requires JavaScript to function. Please enable it in your browser settings.</p>
       </div>
     </noscript>
 
@@ -75,7 +79,53 @@
       })();
     </script>
 
-    <!-- ✅ Entry Point (Vite / React App) -->
+    <!-- ✅ Main React App -->
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- ✅ Optional: Backend Connection Toast (preload script for runtime health check) -->
+    <script type="module">
+      import { createRoot } from 'react-dom/client';
+      import React, { useEffect, useState } from 'react';
+
+      function BackendConnectionToast() {
+        const [online, setOnline] = useState(true);
+
+        useEffect(() => {
+          let interval = setInterval(async () => {
+            try {
+              const res = await fetch(import.meta.env.VITE_API_BASE_URL + '/health');
+              if (!res.ok) throw new Error('Backend unreachable');
+              setOnline(true);
+            } catch {
+              setOnline(false);
+            }
+          }, 5000); // every 5s
+
+          return () => clearInterval(interval);
+        }, []);
+
+        if (online) return null;
+        return (
+          <div style="
+            position: fixed;
+            top: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ff9800;
+            color: #fff;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            font-family: sans-serif;
+            font-weight: 600;
+            z-index: 9999;
+          ">
+            ⚠️ Connection lost — retrying…
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<BackendConnectionToast />);
+    </script>
   </body>
-  </html>
+</html>
