@@ -2,6 +2,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import helmet from "helmet";
+import morgan from "morgan";
 
 // Load environment variables
 dotenv.config();
@@ -9,11 +11,14 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-// ✅ Configure allowed origins
+// ======================================================
+// ✅ 1. CORS Configuration — Restrict to Trusted Origins
+// ======================================================
 const allowedOrigins = [
   "http://localhost:5173", // local dev
   "http://localhost:3000",
-  "https://assessly-frontend.onrender.com" // your Render static frontend URL
+  "https://assesslyplatform.onrender.com", // backend
+  "https://assessly-frontend.onrender.com", // production frontend (Render static site)
 ];
 
 app.use(
@@ -22,21 +27,25 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        console.error("❌ Blocked by CORS:", origin);
         callback(new Error("CORS policy violation"), false);
       }
     },
+    credentials: true, // allow cookies and headers
   })
 );
 
-// Middleware
-app.use(express.json());
+// ======================================================
+// ✅ 2. Security, Logging, and Middleware
+// ======================================================
+app.use(helmet()); // adds secure HTTP headers
+app.use(morgan("dev")); // logs API requests
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// =========================================================
-// ===== MOCK API ROUTES (Backend only, no static serving) ===
-// =========================================================
-
-// ✅ Health check
+// ======================================================
+// ✅ 3. Health Check Route
+// ======================================================
 app.get("/api/health", (req, res) => {
   res.json({
     status: "OK",
@@ -46,14 +55,17 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// ✅ Auth Routes
+// ======================================================
+// ✅ 4. Auth Routes (Mocked for Development)
+// ======================================================
 app.post("/api/auth/register", (req, res) => {
   res.status(200).json({ message: "Account created. Please login." });
 });
 
 app.post("/api/auth/login", (req, res) => {
   const mockToken =
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJhZG1pbi0xMjMiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJyb2xlIjoiYWRtaW4iLCJleHAiOjE3OTIyMDAwMDB9.i8XlY5h7O-D6p4t9UqL0p7m4E1j3v0q3tJ4g7k9R6_p2G9mXhI";
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." +
+    "i8XlY5h7O-D6p4t9UqL0p7m4E1j3v0q3tJ4g7k9R6_p2G9mXhI";
   res.status(200).json({
     token: mockToken,
     message: "Login successful",
@@ -71,7 +83,9 @@ app.get("/api/user/profile", (req, res) => {
   });
 });
 
-// ✅ Organization & Assessment APIs
+// ======================================================
+// ✅ 5. Organization Routes
+// ======================================================
 app.get("/api/organizations", (req, res) => {
   res.status(200).json([
     { id: "org-1", name: "Assessly Corp" },
@@ -91,19 +105,22 @@ app.get("/api/organizations/:orgId", (req, res) => {
   });
 });
 
-// ✅ Assessments
+// ======================================================
+// ✅ 6. Assessments & AI Routes
+// ======================================================
 app.get("/api/assessments", (req, res) => {
   const mockAssessments = [
     { id: "a-1", title: "Quarterly Review", status: "active" },
     { id: "a-2", title: "Onboarding Quiz", status: "in_progress" },
     { id: "a-3", title: "Final Exam", status: "completed" },
   ];
+
   const { status } = req.query;
-  res.status(200).json({
-    assessments: status
-      ? mockAssessments.filter((a) => a.status === status)
-      : mockAssessments,
-  });
+  const filtered = status
+    ? mockAssessments.filter((a) => a.status === status)
+    : mockAssessments;
+
+  res.status(200).json({ assessments: filtered });
 });
 
 app.get("/api/assessments/:id", (req, res) => {
@@ -136,7 +153,6 @@ app.post("/api/assessments/:id/submit", (req, res) => {
   res.status(200).json({ message: "Assessment submitted successfully" });
 });
 
-// ✅ AI scoring mock
 app.post("/api/assessments/ai-score", (req, res) => {
   res.status(200).json({
     score: 92,
@@ -145,7 +161,9 @@ app.post("/api/assessments/ai-score", (req, res) => {
   });
 });
 
-// ✅ Billing/Admin
+// ======================================================
+// ✅ 7. Billing & Admin
+// ======================================================
 app.get("/api/admin/stats", (req, res) => {
   res.status(200).json({
     assessments: 15,
@@ -180,12 +198,21 @@ app.get("/api/billing/invoices", (req, res) => {
   });
 });
 
-// ✅ Catch-all for unknown routes
+// ======================================================
+// ✅ 8. Error Handling & Catch-All
+// ======================================================
 app.use("*", (req, res) => {
   res.status(404).json({ error: "Route not found" });
 });
 
-// ✅ Start server
+app.use((err, req, res, next) => {
+  console.error("🔥 Server Error:", err.message);
+  res.status(500).json({ error: "Internal server error" });
+});
+
+// ======================================================
+// ✅ 9. Start Server
+// ======================================================
 app.listen(port, "0.0.0.0", () => {
   console.log(`🚀 Assessly backend running on port ${port}`);
   console.log(`📊 Health check: http://localhost:${port}/api/health`);
