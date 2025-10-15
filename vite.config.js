@@ -10,9 +10,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
-      react({
-        jsxRuntime: "automatic", // ✅ ensures modern JSX transform
-      }),
+      react({ jsxRuntime: "automatic" }), // ✅ JSX enabled
     ],
     base: "./",
     optimizeDeps: { include: ["jwt-decode"] },
@@ -35,9 +33,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         "/api": {
-          target: isProd
-            ? "https://assesslyplatform.onrender.com"
-            : "http://localhost:3000",
+          target: isProd ? "https://assesslyplatform.onrender.com" : "http://localhost:3000",
           changeOrigin: true,
           secure: false,
         },
