@@ -18,7 +18,7 @@ const allowedOrigins = [
   "http://localhost:5173", // local dev
   "http://localhost:3000",
   "https://assesslyplatform.onrender.com", // backend
-  "https://assessly-frontend.onrender.com", // production frontend (Render static site)
+  "https://assesslyplatform.netlify.app", // production frontend (Render static site)
 ];
 
 app.use(
