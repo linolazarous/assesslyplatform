@@ -10,9 +10,12 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
-      react({ jsxRuntime: "automatic" }), // ✅ JSX enabled
+      react({
+        jsxRuntime: "automatic", // ✅ Ensures JSX works
+        babel: { presets: ["@babel/preset-react"] },
+      }),
     ],
-    base: "./",
+    base: "/", // ✅ Important for Netlify (absolute path)
     optimizeDeps: { include: ["jwt-decode"] },
     build: {
       outDir: "dist",
@@ -25,7 +28,11 @@ export default defineConfig(({ mode }) => {
       cssCodeSplit: true,
       commonjsOptions: { include: [/node_modules/] },
       rollupOptions: {
-        output: { manualChunks: { vendor: ["react", "react-dom"] } },
+        output: {
+          manualChunks: {
+            vendor: ["react", "react-dom"],
+          },
+        },
       },
     },
     server: {
@@ -33,13 +40,19 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         "/api": {
-          target: isProd ? "https://assesslyplatform.onrender.com" : "http://localhost:3000",
+          target: isProd
+            ? "https://assesslyplatform.onrender.com"
+            : "http://localhost:3000",
           changeOrigin: true,
           secure: false,
         },
       },
     },
-    resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
+    },
     define: {
       __APP_ENV__: JSON.stringify(mode),
       "process.env": {},
