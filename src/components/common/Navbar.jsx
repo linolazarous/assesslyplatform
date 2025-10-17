@@ -13,7 +13,8 @@ import {
   Container,
 } from "@mui/material";
 import { Menu as MenuIcon } from "@mui/icons-material";
-import Logo from "./brand/logo.jsx";
+// FIX: Corrected relative path to go up one directory (../) before accessing 'brand'
+import Logo from "../brand/logo.jsx"; 
 
 function Navbar({ links = [] }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -86,4 +87,3 @@ Navbar.propTypes = {
 };
 
 export default React.memo(Navbar);
-
