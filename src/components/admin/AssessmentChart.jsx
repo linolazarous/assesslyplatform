@@ -1,8 +1,7 @@
 import React from 'react';
-import { Box, Typography, Alert } from '@mui/material';
 import PropTypes from 'prop-types';
+import { Box, Typography, Alert } from '@mui/material';
 
-// NOTE: In a real app, this would use a library like recharts or chart.js
 export default function AssessmentChart({ data }) {
   if (!data || data.length === 0) {
     return (
@@ -12,7 +11,6 @@ export default function AssessmentChart({ data }) {
     );
   }
 
-  // Mock data display
   const totalAssessments = data.length;
   const lastAssessment = data[0]?.title || 'N/A';
 
@@ -21,13 +19,22 @@ export default function AssessmentChart({ data }) {
       <Typography variant="h6" color="primary" gutterBottom>
         Assessment Trends (Mock Chart)
       </Typography>
-      <Box sx={{ height: 300, bgcolor: 'action.hover', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 1 }}>
+      <Box
+        sx={{
+          height: 300,
+          bgcolor: 'action.hover',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 1,
+        }}
+      >
         <Typography variant="body2" color="text.secondary">
           [Placeholder for Chart Visualization]
         </Typography>
       </Box>
       <Typography variant="body2" sx={{ mt: 2 }}>
-        Showing data for **{totalAssessments}** recent assessments.
+        Showing data for <strong>{totalAssessments}</strong> recent assessments.
       </Typography>
       <Typography variant="caption" color="text.secondary">
         Latest entry: {lastAssessment}
@@ -37,6 +44,9 @@ export default function AssessmentChart({ data }) {
 }
 
 AssessmentChart.propTypes = {
-  data: PropTypes.arrayOf(PropTypes.object).isRequired,
+  data: PropTypes.arrayOf(PropTypes.object),
 };
 
+AssessmentChart.defaultProps = {
+  data: [],
+};
