@@ -4,19 +4,25 @@ import path from "path";
 
 export default defineConfig(({ mode }) => {
   const isProd = mode === "production";
+  // Determine the full API URL including /api path for client-side consumption
   const backendUrl = isProd
     ? "https://assesslyplatform.onrender.com/api"
     : "http://localhost:3000/api";
 
   return {
+    // Defines the base path for assets, crucial for Netlify/subfolders
+    base: "/", 
     plugins: [
       react({
-        jsxRuntime: "automatic", // ✅ Ensures JSX works
+        // Keeping explicit Babel config to prevent recurrence of the @babel/preset-react error
+        jsxRuntime: "automatic", 
         babel: { presets: ["@babel/preset-react"] },
       }),
     ],
-    base: "/", // ✅ Important for Netlify (absolute path)
-    optimizeDeps: { include: ["jwt-decode"] },
+    // Explicitly include jwt-decode to handle its CJS structure in an ESM project
+    optimizeDeps: { 
+      include: ["jwt-decode"] 
+    },
     build: {
       outDir: "dist",
       target: "es2020",
@@ -26,9 +32,13 @@ export default defineConfig(({ mode }) => {
       assetsDir: "assets",
       manifest: true,
       cssCodeSplit: true,
-      commonjsOptions: { include: [/node_modules/] },
+      // Ensure CommonJS dependencies like jwt-decode are correctly transformed during build
+      commonjsOptions: { 
+        include: [/node_modules/] 
+      },
       rollupOptions: {
         output: {
+          // Manual chunking for vendor packages (React, React-DOM)
           manualChunks: {
             vendor: ["react", "react-dom"],
           },
@@ -38,13 +48,14 @@ export default defineConfig(({ mode }) => {
     server: {
       host: true,
       port: 5173,
+      // Proxying /api/ requests to the backend host (without /api path)
       proxy: {
         "/api": {
           target: isProd
             ? "https://assesslyplatform.onrender.com"
             : "http://localhost:3000",
           changeOrigin: true,
-          secure: false,
+          secure: false, // For local development with self-signed certs (if applicable)
         },
       },
     },
@@ -53,9 +64,12 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
+    // Define global constants/environment variables
     define: {
       __APP_ENV__: JSON.stringify(mode),
-      "process.env": {},
+      // Required for older libraries that check process.env (e.g., some MUI dependencies)
+      "process.env": {}, 
+      // Define the client-side variable using the full URL
       "import.meta.env.VITE_API_BASE_URL": JSON.stringify(backendUrl),
     },
   };
