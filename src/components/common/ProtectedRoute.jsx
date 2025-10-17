@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
-// Assuming these two components exist in the defined paths
+import { useAuth } from '../contexts/AuthContext';
+// Assuming this component exists in the defined path
 import LoadingScreen from '../ui/LoadingScreen'; 
 import PropTypes from 'prop-types';
 
@@ -10,10 +10,11 @@ export default function ProtectedRoute({
   redirectTo = '/login',
   unauthorizedRedirectTo = '/unauthorized'
 }) {
-  const { currentUser, loading, claims } = useAuth();
+  const { currentUser, isLoading, claims } = useAuth(); // Use isLoading from useAuth
   const location = useLocation();
 
-  if (loading) {
+  if (isLoading) {
+    // Show a loading screen while authentication status is being determined
     return <LoadingScreen fullScreen />;
   }
 
@@ -32,14 +33,16 @@ export default function ProtectedRoute({
   if (roles && roles.length > 0) {
     // Determine if the user has any of the required roles
     const isAuthorized = roles.some(requiredRole => {
-      // Convert required role for safer comparison against claim keys
+      // Ensure role comparison is case-insensitive (best practice)
       const lowerRequiredRole = requiredRole.toLowerCase();
 
-      // Check 1: Direct role claim (e.g., claims.role === 'admin')
+      // Check 1: Direct role claim (e.g., claims.role === 'admin' or claims.role === 'assessor')
       const userRoleMatch = claims?.role === lowerRequiredRole;
       
       // Check 2: Boolean flag claim (e.g., claims.isadmin === true)
-      const isClaimRole = claims?.[`is${lowerRequiredRole}`];
+      // Note: claims are often derived and exposed via useAuth as isAdmin, isAssessor, etc.
+      // We check the claims object for the existence of a corresponding 'is' flag.
+      const isClaimRole = claims?.[`is${lowerRequiredRole.charAt(0).toUpperCase() + lowerRequiredRole.slice(1)}`];
 
       return userRoleMatch || isClaimRole;
     });
