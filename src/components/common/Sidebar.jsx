@@ -18,9 +18,10 @@ import {
   Settings as SettingsIcon,
   ExitToApp as LogoutIcon
 } from '@mui/icons-material';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Logo } from '../brand/logo'; // ✅ FIXED: named import
+// FIX: Added the mandatory .jsx extension for internal file imports
+import { Logo } from '../brand/logo.jsx'; 
 import PropTypes from 'prop-types';
 
 const drawerWidth = 240;
@@ -31,6 +32,9 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
   const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  // Define active route for highlighting selected link
+  const currentPath = location.pathname;
 
   const menuItems = [
     { text: 'Assessments', icon: <AssessmentIcon />, path: '/assessments' },
@@ -49,99 +53,74 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
     } else {
       navigate(item.path);
     }
+    // Close the mobile drawer after navigation or action
     if (isMobile) onDrawerToggle();
   };
+
+  const menuList = (items) => (
+    <List component="nav">
+      {items.map((item) => (
+        <ListItem 
+          button 
+          key={item.text} 
+          onClick={() => handleNavigation(item)}
+          // Highlight the selected path, ensuring "Assessments" is highlighted for nested routes
+          selected={item.path && (currentPath === item.path || (item.path === '/assessments' && currentPath.startsWith('/assessments/')))}
+        >
+          <ListItemIcon>{item.icon}</ListItemIcon>
+          <ListItemText primary={item.text} />
+        </ListItem>
+      ))}
+    </List>
+  );
 
   const drawerContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Toolbar sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-        <Logo size={40} /> {/* ✅ fixed named import */}
+        <Logo size={40} />
       </Toolbar>
       <Divider />
-      <List component="nav" sx={{ flexGrow: 0 }}>
-        {menuItems.map((item) => (
-          <ListItem
-            button
-            key={item.text}
-            onClick={() => handleNavigation(item)}
-            selected={location.pathname.startsWith(item.path)}
-            sx={{
-              '&:hover': { backgroundColor: theme.palette.action.hover },
-              ...(location.pathname.startsWith(item.path) && {
-                backgroundColor: theme.palette.primary.main,
-                color: theme.palette.common.white,
-                '& .MuiListItemIcon-root': { color: theme.palette.common.white }
-              })
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-            <ListItemText primary={item.text} />
-          </ListItem>
-        ))}
-      </List>
+      
+      {/* Top Menu Items */}
+      <Box sx={{ flexGrow: 1 }}>
+        {menuList(menuItems)}
+      </Box>
 
-      <Divider sx={{ my: 1 }} />
-      <List component="nav" sx={{ mt: 'auto', mb: 0 }}>
-        {bottomMenuItems.map((item) => (
-          <ListItem
-            button
-            key={item.text}
-            onClick={() => handleNavigation(item)}
-            selected={!item.action && location.pathname.startsWith(item.path)}
-            sx={{
-              '&:hover': { backgroundColor: theme.palette.action.hover },
-              ...(!item.action && location.pathname.startsWith(item.path) && {
-                backgroundColor: theme.palette.primary.main,
-                color: theme.palette.common.white,
-                '& .MuiListItemIcon-root': { color: theme.palette.common.white }
-              })
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-            <ListItemText primary={item.text} />
-          </ListItem>
-        ))}
-      </List>
+      <Divider />
+
+      {/* Bottom Menu Items */}
+      <Box sx={{ flexShrink: 0 }}>
+        {menuList(bottomMenuItems)}
+      </Box>
     </Box>
   );
 
   return (
     <Box
       component="nav"
-      sx={{
-        width: { md: drawerWidth },
-        flexShrink: { md: 0 }
-      }}
-      aria-label="assessment navigation"
+      sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}
+      aria-label="mailbox folders"
     >
-      {/* Mobile Drawer */}
+      {/* Mobile Drawer (Temporary) */}
       <Drawer
         variant="temporary"
         open={mobileOpen}
         onClose={onDrawerToggle}
-        ModalProps={{
-          keepMounted: true
-        }}
+        ModalProps={{ keepMounted: true }} // Better open performance on mobile
         sx={{
           display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': {
-            width: drawerWidth,
-            boxSizing: 'border-box'
-          }
+          '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
         }}
       >
         {drawerContent}
       </Drawer>
 
-      {/* Desktop Drawer */}
+      {/* Desktop Drawer (Permanent) */}
       <Drawer
         variant="permanent"
         sx={{
           display: { xs: 'none', md: 'block' },
-          '& .MuiDrawer-paper': {
-            width: drawerWidth,
-            boxSizing: 'border-box'
-          }
+          '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
         }}
         open
       >
@@ -153,5 +132,5 @@ export default function Sidebar({ mobileOpen, onDrawerToggle }) {
 
 Sidebar.propTypes = {
   mobileOpen: PropTypes.bool.isRequired,
-  onDrawerToggle: PropTypes.func.isRequired
+  onDrawerToggle: PropTypes.func.isRequired,
 };
