@@ -6,111 +6,126 @@ import { PictureAsPdf } from '@mui/icons-material';
 import PropTypes from 'prop-types';
 
 export default function PdfReport({ assessment, answers, responses }) {
-  const [isGenerating, setIsGenerating] = useState(false); 
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const generatePdf = useCallback(async () => {
     setIsGenerating(true);
     let logoUrl = null;
     
-    try {
-      const doc = new jsPDF();
+    try { 
+      const doc = new jsPDF(); 
       
-      // Logo handling: Load and clean up URL
-      try {
-        const logoResponse = await fetch('/logo.png');
-        if (logoResponse.ok) {
-          const logoBlob = await logoResponse.blob();
-          logoUrl = URL.createObjectURL(logoBlob);
-          doc.addImage(logoUrl, 'PNG', 15, 10, 30, 10);
-        } else {
-          console.warn('Could not load logo: Response not OK');
-        }
-      } catch (e) {
-        console.warn('Could not load logo (fetch error):', e.message);
-      } finally {
-        if (logoUrl) {
-          URL.revokeObjectURL(logoUrl);
-          logoUrl = null;
-        }
-      }
+      // --- 1. Logo Handling ---
+      try { 
+        const logoResponse = await fetch('/logo.png'); 
+        if (logoResponse.ok) { 
+          const logoBlob = await logoResponse.blob(); 
+          logoUrl = URL.createObjectURL(logoBlob); 
+          // Assuming a standard A4 size (210mm wide), placing at x=15, y=10
+          doc.addImage(logoUrl, 'PNG', 15, 10, 30, 10); 
+        } else { 
+          console.warn('Could not load logo: Response not OK'); 
+        } 
+      } catch (e) { 
+        console.warn('Could not load logo (fetch error):', e.message); 
+      } finally { 
+        // IMPORTANT: Revoke the object URL to free up memory
+        if (logoUrl) { 
+          URL.revokeObjectURL(logoUrl); 
+          logoUrl = null; 
+        } 
+      } 
 
-      // Title section
-      doc.setFontSize(18);
-      doc.setTextColor(40, 53, 147);
-      doc.text(assessment.title, 105, 20, { align: 'center' });
-      
-      // Metadata
-      doc.setFontSize(10);
-      doc.setTextColor(100);
-      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 15, 30);
-      
-      if (assessment.description) {
-        doc.setFontSize(12);
-        doc.setTextColor(60);
-        const splitDesc = doc.splitTextToSize(assessment.description, 180);
-        const startY = assessment.description ? 40 : 35;
-        doc.text(splitDesc, 15, startY);
-      }
-      
-      // Questions table
-      const tableData = assessment.questions.map((q, i) => {
-        let answer = 'Not answered';
+      // --- 2. Title Section ---
+      doc.setFontSize(18); 
+      doc.setTextColor(40, 53, 147); // Deep indigo color
+      doc.text(assessment.title, 105, 20, { align: 'center' }); 
 
-        if (Array.isArray(answers) && answers[i] !== undefined) {
-          answer = answers[i];
-        } else if (Array.isArray(responses) && responses[i]?.answer !== undefined) {
-          answer = responses[i].answer;
-        } else if (answers?.[i] !== undefined) {
-          answer = answers[i];
-        }
+      // --- 3. Metadata & Description ---
+      doc.setFontSize(10); 
+      doc.setTextColor(100); 
+      // FIX: Template literal for date string
+      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 15, 30); 
+      
+      let currentY = 35;
+      
+      if (assessment.description) { 
+        doc.setFontSize(12); 
+        doc.setTextColor(60); 
+        const splitDesc = doc.splitTextToSize(assessment.description, 180); 
+        doc.text(splitDesc, 15, currentY); 
+        currentY += splitDesc.length * 5 + 10; // Calculate Y after description block
+      } 
 
-        if (Array.isArray(answer)) answer = answer.join(', ');
+      // --- 4. Questions Table ---
+      const tableData = assessment.questions.map((q, i) => { 
+        let answer = 'Not answered'; 
         
-        return [
-          `Q${i+1}`,
-          q.text,
-          String(answer).substring(0, 100)
-        ];
-      });
+        // Complex logic to find the answer from three possible sources
+        if (Array.isArray(answers) && answers[i] !== undefined) { 
+          answer = answers[i]; 
+        } else if (Array.isArray(responses) && responses[i]?.answer !== undefined) { 
+          answer = responses[i].answer; 
+        } else if (answers?.[i] !== undefined) { 
+          answer = answers[i]; 
+        } 
+        
+        // Handle array answers (e.g., multiple selections)
+        if (Array.isArray(answer)) answer = answer.join(', '); 
+        
+        // Fallback for null/undefined answers
+        if (answer === null || answer === undefined || answer === '') answer = 'N/A';
+        
+        return [ 
+          `Q${i+1}`, 
+          q.text, 
+          // Limit answer text length in the table
+          String(answer).substring(0, 200) 
+        ]; 
+      }); 
 
-      doc.autoTable({
-        startY: doc.lastAutoTable.finalY + 10 || (assessment.description ? 65 : 50),
-        head: [['#', 'Question', 'Answer']],
-        body: tableData,
-        theme: 'grid',
-        headStyles: {
-          fillColor: [40, 53, 147],
-          textColor: 255,
-          fontStyle: 'bold'
-        },
-        columnStyles: {
-          0: { cellWidth: 15 },
-          1: { cellWidth: 100 },
-          2: { cellWidth: 75 }
-        },
-        styles: {
-          fontSize: 10,
-          cellPadding: 3,
-          overflow: 'linebreak'
-        },
-        didDrawPage: (data) => {
-          doc.setFontSize(8);
-          doc.setTextColor(150);
-          doc.text(
-            `Page ${data.pageNumber} of ${doc.internal.getNumberOfPages()}`,
-            105,
-            doc.internal.pageSize.height - 10,
-            { align: 'center' }
-          );
-        }
-      });
+      doc.autoTable({ 
+        // Start table below description or metadata
+        startY: currentY, 
+        head: [['#', 'Question', 'Answer']], 
+        body: tableData, 
+        theme: 'grid', 
+        headStyles: { 
+          fillColor: [40, 53, 147], 
+          textColor: 255, 
+          fontStyle: 'bold' 
+        }, 
+        columnStyles: { 
+          0: { cellWidth: 15 }, 
+          1: { cellWidth: 80 }, 
+          2: { cellWidth: 95 } 
+        }, 
+        styles: { 
+          fontSize: 10, 
+          cellPadding: 3, 
+          overflow: 'linebreak' 
+        }, 
+        didDrawPage: (data) => { 
+          // Footer with page number
+          doc.setFontSize(8); 
+          doc.setTextColor(150); 
+          // FIX: Template literal interpolation for page number
+          doc.text( 
+            `Page ${data.pageNumber} of ${doc.internal.getNumberOfPages()}`, 
+            105, 
+            doc.internal.pageSize.height - 10, 
+            { align: 'center' } 
+          ); 
+        } 
+      }); 
       
-      doc.save(`${assessment.title.replace(/[^a-z0-9]/gi, '_')}_report.pdf`);
-    } catch (error) {
-      console.error('PDF generation failed:', error);
-    } finally {
-      setIsGenerating(false);
-    }
+      // FIX: Template literal interpolation for filename
+      doc.save(`${assessment.title.replace(/[^a-z0-9]/gi, '_')}_report.pdf`); 
+    } catch (error) { 
+      console.error('PDF generation failed:', error); 
+    } finally { 
+      setIsGenerating(false); 
+    } 
   }, [assessment, answers, responses]);
 
   return (
@@ -118,7 +133,8 @@ export default function PdfReport({ assessment, answers, responses }) {
       variant="contained"
       color="secondary"
       onClick={generatePdf}
-      startIcon={isGenerating ? <CircularProgress size={20} /> : <PictureAsPdf />}
+      // FIX: Correctly render the icon or progress spinner in JSX
+      startIcon={isGenerating ? <CircularProgress size={20} color="inherit" /> : <PictureAsPdf />}
       disabled={isGenerating}
       size="small"
       sx={{ minWidth: 180 }}
@@ -138,7 +154,7 @@ PdfReport.propTypes = {
     })).isRequired
   }).isRequired,
   answers: PropTypes.oneOfType([
-    PropTypes.object, 
+    PropTypes.object,
     PropTypes.array
   ]),
   responses: PropTypes.arrayOf(PropTypes.shape({
@@ -149,3 +165,4 @@ PdfReport.propTypes = {
     ])
   }))
 };
+
