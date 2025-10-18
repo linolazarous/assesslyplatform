@@ -46,7 +46,7 @@ export default defineConfig({
     })
   ],
 
-  base: './', // Ensures assets load correctly in production
+  base: './', // Ensures correct asset loading in production
 
   resolve: {
     alias: {
