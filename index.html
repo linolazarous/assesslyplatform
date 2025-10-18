@@ -3,16 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Assessly - AI-Powered Assessment Platform for quizzes, tests, and analytics."
-    />
+    <meta name="description" content="%VITE_APP_DESCRIPTION%" />
     <meta name="theme-color" content="#3f51b5" />
-    <title>Assessly | AI-Powered Assessment Platform</title>
+    <title>%VITE_APP_NAME% | AI-Powered Assessment Platform</title>
 
     <!-- ✅ Favicons & Manifest -->
-    <link rel="icon" href="/favicon.ico" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" href="%VITE_APP_LOGO_URL%" />
+    <link rel="apple-touch-icon" href="%VITE_APP_LOGO_URL%" />
     <link rel="manifest" href="/manifest.json" />
 
     <!-- ✅ Fonts -->
@@ -24,17 +21,13 @@
     />
 
     <!-- ✅ Open Graph / SEO -->
-    <meta property="og:title" content="Assessly | AI-Powered Assessment Platform" />
-    <meta
-      property="og:description"
-      content="Create, manage, and analyze assessments using AI. Empower learning with Assessly."
-    />
+    <meta property="og:title" content="%VITE_APP_NAME% | AI-Powered Assessment Platform" />
+    <meta property="og:description" content="%VITE_APP_DESCRIPTION%" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://assesslyplatform.onrender.com" />
-    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image" content="%VITE_APP_LOGO_URL%" />
 
-    <!-- ✅ Security (moved HTTP headers to server level) -->
-    <!-- NOTE: X-Frame-Options and CSP must NOT be inside <meta> in modern browsers -->
+    <!-- ✅ Security headers (set server-side for production) -->
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
     <meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=()" />
 
@@ -47,7 +40,7 @@
     <noscript>
       <div style="padding:2rem; text-align:center; font-family:sans-serif;">
         <h1 style="color:#d32f2f;">JavaScript Required</h1>
-        <p>Assessly requires JavaScript to function properly. Please enable it in your browser.</p>
+        <p>%VITE_APP_NAME% requires JavaScript to function properly. Please enable it in your browser.</p>
       </div>
     </noscript>
 
@@ -70,5 +63,21 @@
 
     <!-- ✅ React Entry Point -->
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- ✅ Register Service Worker for PWA offline support -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/service-worker.js").then(
+            (registration) => {
+              console.log("Service Worker registered: ", registration.scope);
+            },
+            (err) => {
+              console.error("Service Worker registration failed: ", err);
+            }
+          );
+        });
+      }
+    </script>
   </body>
-  </html>
+</html>
