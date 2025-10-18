@@ -1,77 +1,89 @@
+// vite.config.js
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
+import dotenv from 'dotenv';
 
-// ✅ Base path '/' ensures all assets load correctly on Render
+// Load environment variables from .env
+dotenv.config();
+
 export default defineConfig({
   plugins: [
     react(),
-    // ✅ PWA plugin
     VitePWA({
       registerType: 'autoUpdate',
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'Assessly.mp4', 'logo.png'],
       manifest: {
-        name: 'Assessly - AI-Powered Assessment Platform',
-        short_name: 'Assessly',
-        description: 'Create, manage, and analyze assessments using AI.',
-        start_url: '/',
-        display: 'standalone',
-        background_color: '#ffffff',
+        name: process.env.VITE_APP_NAME || 'Assessly',
+        short_name: process.env.VITE_APP_SHORT_NAME || 'Assessly',
+        description: process.env.VITE_APP_DESCRIPTION || 'AI-Powered Assessment Platform',
         theme_color: '#3f51b5',
-        orientation: 'portrait-primary',
+        background_color: '#ffffff',
+        display: 'standalone',
+        start_url: './index.html',
         icons: [
           {
-            src: '/logo.png',
+            src: 'favicon.ico',
             sizes: '48x48',
-            type: 'image/png'
+            type: 'image/x-icon',
           },
           {
-            src: '/logo.png',
+            src: 'apple-touch-icon.png',
+            sizes: '180x180',
+            type: 'image/png',
+          },
+          {
+            src: 'logo.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
           },
           {
-            src: '/logo.png',
+            src: 'logo.png',
             sizes: '512x512',
-            type: 'image/png'
-          }
-        ]
+            type: 'image/png',
+          },
+        ],
       },
       workbox: {
-        // Optional caching strategies
         runtimeCaching: [
           {
-            urlPattern: ({ request }) => request.destination === 'image',
-            handler: 'CacheFirst',
+            urlPattern: /^https:\/\/.*/,
+            handler: 'NetworkFirst',
             options: {
-              cacheName: 'images',
-              expiration: { maxEntries: 50, maxAgeSeconds: 30 * 24 * 60 * 60 }
-            }
-          }
-        ]
-      }
-    })
+              cacheName: 'offline-cache',
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 24 * 60 * 60, // 1 day
+              },
+            },
+          },
+        ],
+      },
+    }),
   ],
 
-  // ✅ Resolve aliases for cleaner imports
+  base: './', // ✅ Critical: ensures correct asset loading in production
+
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src')
-    }
+      '@': path.resolve(__dirname, 'src'),
+      '@components': path.resolve(__dirname, 'src/components'),
+    },
   },
 
-  // ✅ Build options
+  server: {
+    port: 5173,
+    open: true,
+  },
+
   build: {
     outDir: 'dist',
     target: 'esnext',
+    assetsDir: 'assets',
     sourcemap: false,
     rollupOptions: {
-      input: path.resolve(__dirname, 'index.html')
-    }
+      input: path.resolve(__dirname, 'index.html'), // Entry point
+    },
   },
-
-  // ✅ Define environment variables for VITE_APP_*
-  define: {
-    'process.env': process.env
-  }
 });
