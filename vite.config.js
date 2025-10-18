@@ -1,4 +1,3 @@
-// vite.config.js
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -23,27 +22,11 @@ export default defineConfig({
         display: 'standalone',
         start_url: './index.html',
         icons: [
-          {
-            src: 'favicon.ico',
-            sizes: '48x48',
-            type: 'image/x-icon',
-          },
-          {
-            src: 'apple-touch-icon.png',
-            sizes: '180x180',
-            type: 'image/png',
-          },
-          {
-            src: 'logo.png',
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: 'logo.png',
-            sizes: '512x512',
-            type: 'image/png',
-          },
-        ],
+          { src: 'favicon.ico', sizes: '48x48', type: 'image/x-icon' },
+          { src: 'apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+          { src: 'logo.png', sizes: '192x192', type: 'image/png' },
+          { src: 'logo.png', sizes: '512x512', type: 'image/png' }
+        ]
       },
       workbox: {
         runtimeCaching: [
@@ -54,27 +37,27 @@ export default defineConfig({
               cacheName: 'offline-cache',
               expiration: {
                 maxEntries: 200,
-                maxAgeSeconds: 24 * 60 * 60, // 1 day
-              },
-            },
-          },
-        ],
-      },
-    }),
+                maxAgeSeconds: 24 * 60 * 60 // 1 day
+              }
+            }
+          }
+        ]
+      }
+    })
   ],
 
-  base: './', // ✅ Critical: ensures correct asset loading in production
+  base: './', // Ensures assets load correctly in production
 
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
-      '@components': path.resolve(__dirname, 'src/components'),
-    },
+      '@components': path.resolve(__dirname, 'src/components')
+    }
   },
 
   server: {
     port: 5173,
-    open: true,
+    open: true
   },
 
   build: {
@@ -83,7 +66,7 @@ export default defineConfig({
     assetsDir: 'assets',
     sourcemap: false,
     rollupOptions: {
-      input: path.resolve(__dirname, 'index.html'), // Entry point
-    },
-  },
+      input: path.resolve(__dirname, 'index.html')
+    }
+  }
 });
