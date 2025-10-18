@@ -1,7 +1,7 @@
 {
-  "name": "Assessly - AI-Powered Assessment Platform",
+  "name": "%VITE_APP_NAME%",
   "short_name": "Assessly",
-  "description": "Create, manage, and analyze assessments using AI.",
+  "description": "%VITE_APP_DESCRIPTION%",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -10,22 +10,17 @@
   "scope": "./",
   "icons": [
     {
-      "src": "/favicon.ico",
+      "src": "%VITE_APP_LOGO_URL%",
       "sizes": "48x48",
-      "type": "image/x-icon"
-    },
-    {
-      "src": "/apple-touch-icon.png",
-      "sizes": "180x180",
       "type": "image/png"
     },
     {
-      "src": "/icon-192x192.png",
+      "src": "%VITE_APP_LOGO_URL%",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/icon-512x512.png",
+      "src": "%VITE_APP_LOGO_URL%",
       "sizes": "512x512",
       "type": "image/png"
     }
