@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-// ✅ Import path is correct: Up one level from common/ to components/, then down into contexts/
+// FIX: Corrected import path to traverse up two directories to reach src/contexts/
 import { useAuth } from '../../contexts/AuthContext';
 // Assuming this component exists in the defined path
 import LoadingScreen from '../ui/LoadingScreen'; 
@@ -11,8 +11,7 @@ export default function ProtectedRoute({
   redirectTo = '/login',
   unauthorizedRedirectTo = '/unauthorized'
 }) {
-  // Use isLoading, currentUser, and claims from the context
-  const { currentUser, isLoading, claims } = useAuth(); 
+  const { currentUser, isLoading, claims } = useAuth(); // Use isLoading from useAuth
   const location = useLocation();
 
   if (isLoading) {
@@ -38,12 +37,11 @@ export default function ProtectedRoute({
       // Ensure role comparison is case-insensitive (best practice)
       const lowerRequiredRole = requiredRole.toLowerCase();
 
-      // Check 1: Direct role claim from the JWT (claims.role)
+      // Check 1: Direct role claim (e.g., claims.role === 'admin' or claims.role === 'assessor')
       const userRoleMatch = claims?.role === lowerRequiredRole;
       
       // Check 2: Boolean flag claim (e.g., claims.isAdmin)
       // This logic checks for property names like isAdmin, isAssessor, etc.
-      // This assumes the claims object provides these derived boolean flags.
       const isClaimRole = claims?.[`is${lowerRequiredRole.charAt(0).toUpperCase() + lowerRequiredRole.slice(1)}`];
 
       return userRoleMatch || isClaimRole;
@@ -73,3 +71,4 @@ ProtectedRoute.propTypes = {
   redirectTo: PropTypes.string,
   unauthorizedRedirectTo: PropTypes.string
 };
+
