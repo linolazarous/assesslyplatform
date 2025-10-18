@@ -1,5 +1,5 @@
 const CACHE_NAME = "assessly-cache-v1";
-const urlsToCache = ["/", "/public/index.html", "%VITE_APP_LOGO_URL%", "/manifest.json"];
+const urlsToCache = ["/", "/index.html", "%VITE_APP_LOGO_URL%", "/manifest.json"];
 
 // Install SW and cache files
 self.addEventListener("install", (event) => {
