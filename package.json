@@ -30,7 +30,9 @@
     "@babel/preset-react": "^7.24.7",
     "@emotion/babel-plugin": "^11.11.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^7.1.9"
+    "vite": "^7.1.9",
+    "vite-plugin-pwa": "^1.15.0",
+    "dotenv": "^16.3.1"
   },
   "engines": {
     "node": ">=18.0.0"
