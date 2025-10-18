@@ -18,7 +18,7 @@ import {
   Settings as SettingsIcon,
   ExitToApp as LogoutIcon
 } from '@mui/icons-material';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 // FIX: Added the mandatory .jsx extension for internal file imports
 import { Logo } from '../brand/logo.jsx'; 
