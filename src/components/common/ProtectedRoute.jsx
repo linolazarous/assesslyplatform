@@ -73,4 +73,3 @@ ProtectedRoute.propTypes = {
   redirectTo: PropTypes.string,
   unauthorizedRedirectTo: PropTypes.string
 };
-
