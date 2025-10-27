@@ -10,7 +10,7 @@
     <!-- ✅ Favicons & Manifest -->
     <link rel="icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/logo.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="manifest" href="/manifest.json" />
 
     <!-- ✅ Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -20,18 +20,18 @@
       rel="stylesheet"
     />
 
-    <!-- ✅ Open Graph -->
+    <!-- ✅ Open Graph / SEO -->
     <meta property="og:title" content="Assessly | AI-Powered Assessment Platform" />
     <meta property="og:description" content="Create, manage, and analyze assessments using AI." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://assesslyplatform.onrender.com" />
     <meta property="og:image" content="/logo.png" />
 
-    <!-- ✅ Security headers -->
+    <!-- ✅ Security (will be enforced by Render headers in production) -->
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
     <meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=()" />
 
-    <!-- ✅ PWA -->
+    <!-- ✅ PWA Meta -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   </head>
@@ -46,7 +46,7 @@
 
     <div id="root"></div>
 
-    <!-- ✅ Background video -->
+    <!-- ✅ Hero Background Video -->
     <video
       src="/Assessly.mp4"
       autoplay
@@ -73,5 +73,21 @@
 
     <!-- ✅ React Entry -->
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- ✅ Register Service Worker (PWA) -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', async () => {
+          try {
+            const registration = await navigator.serviceWorker.register('/service-worker.js', {
+              scope: '/'
+            });
+            console.log('✅ Service Worker registered with scope:', registration.scope);
+          } catch (error) {
+            console.warn('⚠️ Service Worker registration failed:', error);
+          }
+        });
+      }
+    </script>
   </body>
 </html>
