@@ -10,7 +10,7 @@
     <!-- ✅ Favicons & Manifest -->
     <link rel="icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/logo.png" />
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="/manifest.webmanifest" />
 
     <!-- ✅ Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -20,14 +20,14 @@
       rel="stylesheet"
     />
 
-    <!-- ✅ Open Graph / SEO -->
+    <!-- ✅ Open Graph -->
     <meta property="og:title" content="Assessly | AI-Powered Assessment Platform" />
     <meta property="og:description" content="Create, manage, and analyze assessments using AI." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://assesslyplatform.onrender.com" />
     <meta property="og:image" content="/logo.png" />
 
-    <!-- ✅ Security headers (set server-side for production) -->
+    <!-- ✅ Security headers -->
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
     <meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=()" />
 
@@ -46,7 +46,7 @@
 
     <div id="root"></div>
 
-    <!-- ✅ Hero video background -->
+    <!-- ✅ Background video -->
     <video
       src="/Assessly.mp4"
       autoplay
@@ -71,23 +71,7 @@
       })();
     </script>
 
-    <!-- ✅ React Entry Point -->
+    <!-- ✅ React Entry -->
     <script type="module" src="/src/main.jsx"></script>
-
-    <!-- ✅ Optional: Register Service Worker for PWA offline support -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker
-            .register('/service-worker.js')
-            .then((registration) => {
-              console.log('Service Worker registered: ', registration.scope);
-            })
-            .catch((err) => {
-              console.warn('Service Worker registration failed: ', err);
-            });
-        });
-      }
-    </script>
   </body>
 </html>
