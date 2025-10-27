@@ -4,7 +4,6 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import dotenv from 'dotenv';
 
-// Load environment variables from .env
 dotenv.config();
 
 export default defineConfig({
@@ -12,19 +11,15 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      filename: 'service-worker.js', // ✅ Ensure consistent SW filename
-      injectRegister: 'auto', // ✅ Automatically inject registration script
-      strategies: 'generateSW', // ✅ Generate SW dynamically
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'Assessly.mp4', 'logo.png'],
       manifest: {
         name: process.env.VITE_APP_NAME || 'Assessly',
         short_name: 'Assessly',
         description: process.env.VITE_APP_DESCRIPTION || 'AI-Powered Assessment Platform',
-        start_url: '/',
-        display: 'standalone',
-        background_color: '#ffffff',
         theme_color: '#3f51b5',
-        orientation: 'portrait-primary',
+        background_color: '#ffffff',
+        display: 'standalone',
+        start_url: '/',
         scope: '/',
         icons: [
           { src: '/logo.png', sizes: '48x48', type: 'image/png' },
@@ -33,16 +28,14 @@ export default defineConfig({
         ]
       },
       workbox: {
+        globPatterns: ['**/*.{js,css,html,png,ico,svg,mp4}'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*/,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'offline-cache',
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 24 * 60 * 60 // 1 day
-              }
+              cacheName: 'assessly-cache',
+              expiration: { maxEntries: 200, maxAgeSeconds: 86400 }
             }
           }
         ]
@@ -50,7 +43,7 @@ export default defineConfig({
     })
   ],
 
-  base: '/', // ✅ Render serves from root (not ./)
+  base: './',
 
   resolve: {
     alias: {
@@ -59,18 +52,10 @@ export default defineConfig({
     }
   },
 
-  server: {
-    port: 5173,
-    open: true
-  },
-
   build: {
     outDir: 'dist',
     target: 'esnext',
     assetsDir: 'assets',
-    sourcemap: false,
-    rollupOptions: {
-      input: path.resolve(__dirname, 'index.html')
-    }
+    sourcemap: false
   }
 });
