@@ -12,20 +12,24 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      filename: 'service-worker.js', // ✅ Ensure consistent SW filename
+      injectRegister: 'auto', // ✅ Automatically inject registration script
+      strategies: 'generateSW', // ✅ Generate SW dynamically
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'Assessly.mp4', 'logo.png'],
       manifest: {
         name: process.env.VITE_APP_NAME || 'Assessly',
-        short_name: process.env.VITE_APP_SHORT_NAME || 'Assessly',
+        short_name: 'Assessly',
         description: process.env.VITE_APP_DESCRIPTION || 'AI-Powered Assessment Platform',
-        theme_color: '#3f51b5',
-        background_color: '#ffffff',
+        start_url: '/',
         display: 'standalone',
-        start_url: './index.html',
+        background_color: '#ffffff',
+        theme_color: '#3f51b5',
+        orientation: 'portrait-primary',
+        scope: '/',
         icons: [
-          { src: 'favicon.ico', sizes: '48x48', type: 'image/x-icon' },
-          { src: 'apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
-          { src: 'logo.png', sizes: '192x192', type: 'image/png' },
-          { src: 'logo.png', sizes: '512x512', type: 'image/png' }
+          { src: '/logo.png', sizes: '48x48', type: 'image/png' },
+          { src: '/logo.png', sizes: '192x192', type: 'image/png' },
+          { src: '/logo.png', sizes: '512x512', type: 'image/png' }
         ]
       },
       workbox: {
@@ -46,7 +50,7 @@ export default defineConfig({
     })
   ],
 
-  base: './', // Ensures correct asset loading in production
+  base: '/', // ✅ Render serves from root (not ./)
 
   resolve: {
     alias: {
