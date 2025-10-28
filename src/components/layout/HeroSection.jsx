@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  useTheme,
-  Grid,
-  useMediaQuery,
-} from '@mui/material';
+import { Box, Typography, Button, Grid, useTheme, useMediaQuery } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { Logo } from '../brand';
 import PropTypes from 'prop-types';
@@ -24,7 +17,7 @@ const HeroSection = ({ videoUrl = '/Assessly.mp4' }) => {
         position: 'relative',
         borderRadius: 4,
         mb: 8,
-        px: 4,
+        px: { xs: 2, md: 4 },
         overflow: 'hidden',
       }}
     >
@@ -96,7 +89,7 @@ const HeroSection = ({ videoUrl = '/Assessly.mp4' }) => {
             From Questions to Insights, Anywhere — A modern assessment SaaS platform.
           </Typography>
 
-          <Box sx={{ display: 'flex', gap: 2, justifyContent: isMobile ? 'center' : 'flex-start' }}>
+          <Box sx={{ display: 'flex', gap: 2, justifyContent: isMobile ? 'center' : 'flex-start', flexWrap: 'wrap' }}>
             <Button
               variant="contained"
               size="large"
@@ -108,17 +101,20 @@ const HeroSection = ({ videoUrl = '/Assessly.mp4' }) => {
             <Button
               variant="outlined"
               size="large"
-              onClick={() =>
-                document.getElementById('features-section')?.scrollIntoView({ behavior: 'smooth' })
-              }
-              sx={{ px: 5, color: '#fff', borderColor: '#fff', '&:hover': { borderColor: '#fff', backgroundColor: 'rgba(255,255,255,0.1)' } }}
+              onClick={() => document.getElementById('features-section')?.scrollIntoView({ behavior: 'smooth' })}
+              sx={{
+                px: 5,
+                color: '#fff',
+                borderColor: '#fff',
+                '&:hover': { borderColor: '#fff', backgroundColor: 'rgba(255,255,255,0.1)' },
+              }}
             >
               See Features
             </Button>
           </Box>
         </Grid>
 
-        {/* Right: Optional video placeholder for desktop */}
+        {/* Right: Video/Illustration */}
         {!isMobile && (
           <Grid item xs={12} md={6}>
             <Box sx={{ display: 'flex', justifyContent: 'center' }}>
@@ -136,9 +132,7 @@ const HeroSection = ({ videoUrl = '/Assessly.mp4' }) => {
                   boxShadow: theme.shadows[10],
                   border: `4px solid ${theme.palette.primary.main}`,
                 }}
-              >
-                Your browser does not support the video tag.
-              </Box>
+              />
             </Box>
           </Grid>
         )}
@@ -147,8 +141,5 @@ const HeroSection = ({ videoUrl = '/Assessly.mp4' }) => {
   );
 };
 
-HeroSection.propTypes = {
-  videoUrl: PropTypes.string,
-};
-
+HeroSection.propTypes = { videoUrl: PropTypes.string };
 export default React.memo(HeroSection);
