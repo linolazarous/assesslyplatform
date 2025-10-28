@@ -27,86 +27,77 @@
       rel="stylesheet"
     />
 
-    <!-- ✅ Critical CSS (prevents FOUC - Flash of Unstyled Content) -->
+    <!-- ✅ Critical CSS for clean rendering -->
     <style>
-      /* Critical loading styles */
+      /* Prevent flash of unstyled content */
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #f8fafc; /* Light fallback background */
+        color: #1a202c;
+      }
+      
       #root {
         min-height: 100vh;
         position: relative;
-        z-index: 1;
-      }
-      
-      /* Remove video or make it conditional */
-      .background-video {
-        display: none; /* Hide by default, show only on specific pages */
       }
       
       /* Loading state */
-      .app-loading {
+      #loading-fallback {
         display: flex;
         justify-content: center;
         align-items: center;
         height: 100vh;
-        font-family: 'Inter', sans-serif;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
+        font-family: 'Inter', sans-serif;
       }
       
-      /* Prevent FOUC */
-      [data-reactroot] { 
-        display: none !important; 
+      /* Hide loading when React loads */
+      .react-loaded #loading-fallback {
+        display: none;
       }
       
-      .react-loaded [data-reactroot] { 
-        display: block !important; 
+      /* Ensure smooth transitions */
+      * {
+        box-sizing: border-box;
       }
     </style>
   </head>
 
   <body>
-    <!-- ✅ Loading fallback -->
-    <div id="loading-fallback" class="app-loading">
-      <div style="text-align: center;">
-        <h1 style="margin-bottom: 1rem;">Assessly</h1>
-        <p>Loading...</p>
+    <!-- ✅ Simple loading fallback -->
+    <div id="loading-fallback">
+      <div style="text-align: center; padding: 2rem;">
+        <div style="font-size: 2rem; margin-bottom: 1rem; font-weight: 700;">Assessly</div>
+        <div style="opacity: 0.8;">Loading...</div>
       </div>
     </div>
 
-    <!-- ✅ Main App Container -->
+    <!-- ✅ Clean React root - no video interference -->
     <div id="root"></div>
-
-    <!-- ✅ REMOVED: Background Video (or make it conditional) -->
-    <!-- 
-      <video
-        src="/Assessly.mp4"
-        autoplay
-        muted
-        loop
-        playsinline
-        style="position:fixed;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:-1;"
-      ></video>
-    -->
 
     <!-- ✅ React Entry -->
     <script type="module" src="/src/main.jsx"></script>
     
-    <!-- ✅ Script to handle loading states -->
+    <!-- ✅ Simple loading handler -->
     <script>
-      // Hide loading fallback when React loads
-      window.addEventListener('DOMContentLoaded', function() {
-        const loadingFallback = document.getElementById('loading-fallback');
-        const root = document.getElementById('root');
-        
-        // Show React app when it's ready
-        if (root && root.children.length > 0) {
-          loadingFallback.style.display = 'none';
-          document.documentElement.classList.add('react-loaded');
-        }
-        
-        // Fallback: hide loading after 5 seconds
+      // Basic loading state management
+      document.addEventListener('DOMContentLoaded', function() {
+        // Hide loading fallback when React mounts
         setTimeout(() => {
-          loadingFallback.style.display = 'none';
-        }, 5000);
+          const root = document.getElementById('root');
+          if (root && root.innerHTML.trim() !== '') {
+            document.getElementById('loading-fallback').style.display = 'none';
+            document.body.classList.add('react-loaded');
+          }
+        }, 100);
+        
+        // Safety timeout - always hide loading after 3 seconds
+        setTimeout(() => {
+          document.getElementById('loading-fallback').style.display = 'none';
+        }, 3000);
       });
     </script>
   </body>
