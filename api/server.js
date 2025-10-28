@@ -4,8 +4,15 @@ import cors from "cors";
 import dotenv from "dotenv";
 import helmet from "helmet";
 import morgan from "morgan";
+import connectDB from "./config/database.js";
+import { authenticate, authorize } from "./middleware/auth.js";
+import User from "./models/User.js";
+import Organization from "./models/Organization.js";
 
 dotenv.config();
+
+// Connect to database
+connectDB();
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -14,9 +21,9 @@ const port = process.env.PORT || 3000;
 // 1. CORS Configuration
 // ==============================
 const allowedOrigins = [
-  "http://localhost:5173",               // local dev
-  "http://localhost:3000",               // local dev
-  "https://assessly-frontend.onrender.com", // production frontend
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "https://assessly-frontend.onrender.com",
 ];
 
 app.use(
@@ -37,7 +44,7 @@ app.use(
 // 2. Security + Logging + Body Parsing
 // ==============================
 app.use(helmet());
-app.use(morgan("combined")); // production logging
+app.use(morgan("combined"));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -52,45 +59,124 @@ app.get("/api/health", (req, res) => {
     message: "Assessly backend running 🚀",
     environment: process.env.NODE_ENV || "production",
     timestamp: new Date().toISOString(),
+    database: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected"
   });
 });
 
-// Auth
-app.post("/api/auth/register", (req, res) => {
-  res.status(200).json({ message: "Account created. Please login." });
+// Auth Routes
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { name, email, password, role = 'candidate' } = req.body;
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ error: "User already exists with this email" });
+    }
+
+    // Create user
+    const user = new User({
+      name,
+      email,
+      password,
+      role
+    });
+
+    await user.save();
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      message: "Account created successfully",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error("Registration error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
-app.post("/api/auth/login", (req, res) => {
-  res.status(200).json({
-    token: "mock-jwt-token",
-    message: "Login successful",
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Find user and include password for comparison
+    const user = await User.findOne({ email }).select('+password');
+    if (!user) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // Check password
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      message: "Login successful",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profile: user.profile
+      }
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Protected routes
+app.get("/api/user/profile", authenticate, (req, res) => {
+  res.json({
+    user: req.user
   });
 });
 
-// User profile example
-app.get("/api/user/profile", (req, res) => {
-  res.status(200).json({
-    user: { id: "admin-123", name: "Admin User", email: "test@example.com", role: "admin" },
-  });
+// Admin only routes
+app.get("/api/admin/users", authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const users = await User.find().select('-password');
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
-// Example: Organizations
-app.get("/api/organizations", (req, res) => {
-  res.status(200).json([
-    { id: "org-1", name: "Assessly Corp" },
-    { id: "org-2", name: "Client Services Inc" },
-  ]);
+// Organization routes
+app.get("/api/organizations", authenticate, async (req, res) => {
+  try {
+    const organizations = await Organization.find();
+    res.json(organizations);
+  } catch (error) {
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
-
-app.get("/api/organizations/:id", (req, res) => {
-  res.status(200).json({
-    id: req.params.id,
-    name: "Test Organization",
-    subscription: { status: "active", plan: "Professional", currentPeriodEnd: Date.now() + 30*24*60*60*1000 },
-  });
-});
-
-// Add other API routes here (Assessments, Billing, Admin, etc.)
 
 // ==============================
 // 4. 404 Handler for unknown API routes
