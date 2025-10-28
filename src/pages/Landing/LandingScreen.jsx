@@ -1,7 +1,11 @@
+// src/pages/Landing/LandingScreen.jsx
 import React from 'react';
-import { Box, Container, useTheme, useMediaQuery } from '@mui/material';
-
-// Layout components
+import { 
+  Box,
+  Container,
+  useTheme,
+  useMediaQuery
+} from '@mui/material';
 import HeroSection from '../../components/layout/HeroSection.jsx';
 import FeaturesSection from '../../components/layout/FeaturesSection.jsx';
 import Testimonials from '../../components/layout/Testimonials.jsx';
@@ -14,7 +18,7 @@ const LandingScreen = () => {
 
   return (
     <Box
-      component="main"
+      component="div"
       id="top"
       sx={{
         display: 'flex',
@@ -22,28 +26,60 @@ const LandingScreen = () => {
         minHeight: '100vh',
         backgroundColor: theme.palette.background.default,
         overflowX: 'hidden',
+        scrollBehavior: 'smooth',
       }}
     >
-      {/* Main content container */}
+      {/* Main Content */}
       <Container
         maxWidth="xl"
         sx={{
-          flex: 1, // Push footer to bottom
-          px: { xs: 2, md: 4 },
-          py: { xs: 3, md: 6 },
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8, // vertical spacing between sections
+          flex: 1,
+          px: isMobile ? 2 : 4,
+          py: isMobile ? 3 : 6,
         }}
       >
-        <HeroSection />
+        {/* Hero Section with Video Background */}
+        <HeroSection videoUrl="/Assessly.mp4" />
+
+        {/* Core Platform Features */}
         <FeaturesSection />
+
+        {/* Testimonials */}
         <Testimonials />
+
+        {/* Call to Action */}
         <CallToAction />
       </Container>
 
-      {/* Footer outside main content for sticky-bottom behavior */}
+      {/* Footer */}
       <Footer />
+
+      {/* Scroll-to-Top Button */}
+      <Box
+        component="button"
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        sx={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          bgcolor: 'primary.main',
+          color: '#fff',
+          border: 'none',
+          borderRadius: '50%',
+          width: 50,
+          height: 50,
+          cursor: 'pointer',
+          boxShadow: 3,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          '&:hover': { bgcolor: 'primary.dark' },
+          zIndex: 999,
+        }}
+        aria-label="Scroll to top"
+      >
+        ↑
+      </Box>
     </Box>
   );
 };
