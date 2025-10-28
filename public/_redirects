@@ -1,1 +1,5 @@
+# Redirect all routes to index.html for React SPA
 /*    /index.html   200
+
+# Optional: Cache control for static assets (images, CSS, JS)
+# /assets/*   /assets/:splat   200
