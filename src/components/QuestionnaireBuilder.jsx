@@ -34,8 +34,6 @@ export default function QuestionnaireBuilder({ organizationId }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isTemplate, setIsTemplate] = useState(false);
-  
-  // Use a unique ID for questions and initialize with a text question
   const [questions, setQuestions] = useState([
     { id: Date.now(), text: '', type: 'text', options: [], required: true }
   ]);
@@ -43,7 +41,9 @@ export default function QuestionnaireBuilder({ organizationId }) {
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
 
-  // --- Question Management Handlers ---
+  // ✅ Fixed: Add API base URL
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform.onrender.com/api';
+
   const addQuestion = () => {
     if (questions.length >= 50) {
       enqueueSnackbar('Maximum 50 questions allowed.', { variant: 'warning' });
@@ -75,7 +75,6 @@ export default function QuestionnaireBuilder({ organizationId }) {
         if (value !== 'multiple_choice') { 
           newQuestions[index].options = []; 
         } else if (value === 'multiple_choice' && newQuestions[index].options.length === 0) { 
-          // Initialize with two empty options when switching to MC for immediate validation 
           newQuestions[index].options = [ 
             { id: Date.now(), text: '' }, 
             { id: Date.now() + 1, text: '' } 
@@ -86,7 +85,6 @@ export default function QuestionnaireBuilder({ organizationId }) {
     }); 
   };
 
-  // --- Option Management Handlers ---
   const addOption = (qIndex) => {
     setQuestions(prevQuestions => {
       const newQuestions = [...prevQuestions];
@@ -110,7 +108,6 @@ export default function QuestionnaireBuilder({ organizationId }) {
   const removeOption = (qIndex, oIndex) => {
     setQuestions(prevQuestions => {
       const newQuestions = [...prevQuestions];
-      // Prevent removing options if only 2 remain in MC
       if (newQuestions[qIndex].type === 'multiple_choice' && newQuestions[qIndex].options.length <= 2) {
         enqueueSnackbar('Multiple choice questions require at least two options.', { variant: 'warning' });
         return prevQuestions;
@@ -120,7 +117,6 @@ export default function QuestionnaireBuilder({ organizationId }) {
     });
   };
 
-  // --- Validation and Save ---
   const validateQuestionnaire = () => {
     if (!title.trim()) {
       enqueueSnackbar('Assessment Title is required.', { variant: 'error' });
@@ -129,13 +125,11 @@ export default function QuestionnaireBuilder({ organizationId }) {
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       if (!q.text.trim()) {
-        // FIX: Template literal interpolation
         enqueueSnackbar(`Question ${i + 1} text is required.`, { variant: 'error' });
         return false;
       }
       if (q.type === 'multiple_choice') {
         if (q.options.length < 2) {
-          // FIX: Template literal interpolation
           enqueueSnackbar(`Question ${i + 1} needs at least 2 options.`, { variant: 'error' });
           return false;
         }
@@ -156,13 +150,13 @@ export default function QuestionnaireBuilder({ organizationId }) {
       const token = localStorage.getItem('token'); 
       if (!token) throw new Error('Authentication token not found'); 
       
-      const endpoint = isTemplate ? '/api/templates/create' : '/api/assessments/create'; 
+      // ✅ Fixed: Use correct API URLs
+      const endpoint = isTemplate ? `${API_BASE_URL}/templates/create` : `${API_BASE_URL}/assessments/create`; 
       
       const questionsPayload = questions.map(q => ({ 
         text: q.text, 
         type: q.type, 
         required: q.required, 
-        // Map options back to a string array for the API
         options: q.type === 'multiple_choice' ? q.options.map(opt => opt.text) : [] 
       })); 
       
@@ -187,17 +181,14 @@ export default function QuestionnaireBuilder({ organizationId }) {
         throw new Error(data.message || 'Failed to save the questionnaire/template.'); 
       } 
       
-      // FIX: Template literal interpolation
       enqueueSnackbar( 
         `${isTemplate ? 'Template' : 'Questionnaire'} saved successfully!`, 
         { variant: 'success' } 
       ); 
       
-      // Navigate to the list page for templates or assessments
-      navigate(isTemplate ? '/templates' : '/assessments'); 
+      navigate(isTemplate ? '/templates' : '/dashboard'); // ✅ Fixed: Navigate to dashboard
     } catch (err) { 
       console.error('Save error:', err); 
-      // FIX: Template literal interpolation
       enqueueSnackbar(`Failed to save: ${err.message}`, { variant: 'error', autoHideDuration: 5000 }); 
     } finally { 
       setLoading(false); 
@@ -227,7 +218,6 @@ export default function QuestionnaireBuilder({ organizationId }) {
                 checked={isTemplate} 
                 onChange={(e) => setIsTemplate(e.target.checked)} 
                 color="primary" 
-                aria-label="Toggle save as template" 
               />
             }
             label="Save as Template"
@@ -271,7 +261,6 @@ export default function QuestionnaireBuilder({ organizationId }) {
                   color="error" 
                   onClick={() => removeQuestion(qIndex)} 
                   disabled={questions.length <= 1} 
-                  aria-label={`Remove question ${qIndex + 1}`}
                 > 
                   <Delete /> 
                 </IconButton>
@@ -309,7 +298,6 @@ export default function QuestionnaireBuilder({ organizationId }) {
                         checked={question.required} 
                         onChange={(e) => updateQuestion(qIndex, 'required', e.target.checked)} 
                         color="primary" 
-                        aria-label="Toggle required status" 
                       />
                     }
                     label="Required"
@@ -335,7 +323,6 @@ export default function QuestionnaireBuilder({ organizationId }) {
                         color="error" 
                         onClick={() => removeOption(qIndex, oIndex)} 
                         disabled={question.options.length <= 2} 
-                        aria-label={`remove option ${oIndex + 1}`}
                       > 
                         <Delete fontSize="small" /> 
                       </IconButton>
@@ -390,5 +377,9 @@ export default function QuestionnaireBuilder({ organizationId }) {
 }
 
 QuestionnaireBuilder.propTypes = {
-  organizationId: PropTypes.string.isRequired
+  organizationId: PropTypes.string
+};
+
+QuestionnaireBuilder.defaultProps = {
+  organizationId: ''
 };
