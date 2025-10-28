@@ -10,12 +10,10 @@ import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 
 // Database and Models
-import { connectDB } from "./db.js";
+import connectDB from "./db.js";
 import { 
   authenticateToken, 
-  requireRole, 
   requireAdmin, 
-  requireAssessor,
   securityHeaders,
   invalidateToken 
 } from "./middleware/auth.js";
@@ -34,22 +32,14 @@ const isProduction = process.env.NODE_ENV === 'production';
 // ==============================
 // 1. Database Connection
 // ==============================
-connectDB().catch(console.error);
+connectDB();
 
 // ==============================
 // 2. Security Middleware
 // ==============================
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
+  contentSecurityPolicy: false, // Disable CSP for API (can be configured later)
 }));
 
 // ==============================
@@ -63,10 +53,7 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.warn("⚠️ CORS Blocked:", origin);
@@ -83,25 +70,22 @@ app.use(cors({
 // ==============================
 app.use(compression());
 app.use(express.json({ 
-  limit: "10mb",
-  verify: (req, res, buf) => {
-    req.rawBody = buf;
-  }
+  limit: "10mb"
 }));
 app.use(express.urlencoded({ 
   extended: true,
   limit: "10mb"
 }));
 
-// Conditional logging - more verbose in development
+// Logging
 app.use(morgan(isProduction ? "combined" : "dev"));
 
 // ==============================
 // 5. Rate Limiting
 // ==============================
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: {
     error: "Too many requests from this IP, please try again later.",
     code: "RATE_LIMIT_EXCEEDED"
@@ -112,7 +96,7 @@ const generalLimiter = rateLimit({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5, // stricter limit for auth endpoints
+  max: 5,
   message: {
     error: "Too many authentication attempts, please try again later.",
     code: "AUTH_RATE_LIMIT_EXCEEDED"
@@ -127,7 +111,7 @@ app.use("/api/auth/", authLimiter);
 // 6. API Routes
 // ==============================
 
-// Health check with detailed system info
+// Health check
 app.get("/api/health", securityHeaders, (req, res) => {
   const healthCheck = {
     status: "OK",
@@ -136,18 +120,8 @@ app.get("/api/health", securityHeaders, (req, res) => {
     timestamp: new Date().toISOString(),
     database: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
     uptime: process.uptime(),
-    memory: process.memoryUsage(),
-    version: process.env.npm_package_version || "1.0.0"
+    version: "1.0.0"
   };
-
-  // Add database connection details in development
-  if (!isProduction) {
-    healthCheck.databaseDetails = {
-      host: mongoose.connection.host,
-      name: mongoose.connection.name,
-      readyState: mongoose.connection.readyState
-    };
-  }
 
   res.status(200).json(healthCheck);
 });
@@ -171,15 +145,6 @@ app.post("/api/auth/register", authLimiter, securityHeaders, async (req, res) =>
       return res.status(400).json({ 
         error: "Password must be at least 6 characters",
         code: "PASSWORD_TOO_SHORT"
-      });
-    }
-
-    // Validate role
-    const allowedRoles = ['admin', 'assessor', 'candidate'];
-    if (!allowedRoles.includes(role)) {
-      return res.status(400).json({ 
-        error: "Invalid role specified",
-        code: "INVALID_ROLE"
       });
     }
 
@@ -210,7 +175,7 @@ app.post("/api/auth/register", authLimiter, securityHeaders, async (req, res) =>
         email: user.email
       },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      { expiresIn: '7d' }
     );
 
     res.status(201).json({
@@ -221,15 +186,13 @@ app.post("/api/auth/register", authLimiter, securityHeaders, async (req, res) =>
         name: user.name,
         email: user.email,
         role: user.role,
-        isActive: user.isActive,
-        createdAt: user.createdAt
+        isActive: user.isActive
       }
     });
 
   } catch (error) {
     console.error("Registration error:", error);
     
-    // Handle validation errors
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({ 
@@ -250,7 +213,6 @@ app.post("/api/auth/login", authLimiter, securityHeaders, async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Input validation
     if (!email || !password) {
       return res.status(400).json({ 
         error: "Email and password are required",
@@ -264,14 +226,6 @@ app.post("/api/auth/login", authLimiter, securityHeaders, async (req, res) => {
       return res.status(401).json({ 
         error: "Invalid email or password",
         code: "INVALID_CREDENTIALS"
-      });
-    }
-
-    // Check if account is active
-    if (!user.isActive) {
-      return res.status(401).json({ 
-        error: "Account is deactivated. Please contact support.",
-        code: "ACCOUNT_DEACTIVATED"
       });
     }
 
@@ -296,7 +250,7 @@ app.post("/api/auth/login", authLimiter, securityHeaders, async (req, res) => {
         email: user.email
       },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      { expiresIn: '7d' }
     );
 
     res.json({
@@ -307,9 +261,7 @@ app.post("/api/auth/login", authLimiter, securityHeaders, async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        profile: user.profile,
-        lastLogin: user.lastLogin,
-        isActive: user.isActive
+        lastLogin: user.lastLogin
       }
     });
 
@@ -355,64 +307,12 @@ app.get("/api/user/profile", authenticateToken, securityHeaders, (req, res) => {
   });
 });
 
-// Update user profile
-app.patch("/api/user/profile", authenticateToken, securityHeaders, async (req, res) => {
-  try {
-    const { name, profile } = req.body;
-    const updates = {};
-    
-    if (name) updates.name = name;
-    if (profile) updates.profile = { ...req.user.profile, ...profile };
-
-    const user = await User.findByIdAndUpdate(
-      req.user.userId, 
-      updates, 
-      { new: true, runValidators: true }
-    ).select('-password');
-
-    res.json({
-      message: "Profile updated successfully",
-      user,
-      code: "PROFILE_UPDATED"
-    });
-  } catch (error) {
-    console.error("Profile update error:", error);
-    res.status(500).json({ 
-      error: "Failed to update profile",
-      code: "PROFILE_UPDATE_FAILED"
-    });
-  }
-});
-
 // Admin routes
 app.get("/api/admin/users", authenticateToken, requireAdmin, securityHeaders, async (req, res) => {
   try {
-    const { page = 1, limit = 10, role, search } = req.query;
-    
-    const query = {};
-    if (role) query.role = role;
-    if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
-      ];
-    }
-
-    const users = await User.find(query)
-      .select('-password')
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .sort({ createdAt: -1 });
-
-    const total = await User.countDocuments(query);
-
+    const users = await User.find().select('-password').sort({ createdAt: -1 });
     res.json({
       users,
-      pagination: {
-        current: parseInt(page),
-        pages: Math.ceil(total / limit),
-        total
-      },
       code: "USERS_RETRIEVED"
     });
   } catch (error) {
@@ -444,7 +344,7 @@ app.get("/api/organizations", authenticateToken, securityHeaders, async (req, re
   }
 });
 
-// Assessment routes (basic)
+// Assessment routes
 app.get("/api/assessments", authenticateToken, securityHeaders, async (req, res) => {
   try {
     const assessments = await Assessment.find()
@@ -466,13 +366,12 @@ app.get("/api/assessments", authenticateToken, securityHeaders, async (req, res)
 });
 
 // ==============================
-// 9. 404 Handler for unknown API routes
+// 9. 404 Handler
 // ==============================
 app.use("/api/*", securityHeaders, (req, res) => {
   res.status(404).json({ 
     error: "API endpoint not found",
-    code: "ENDPOINT_NOT_FOUND",
-    path: req.originalUrl
+    code: "ENDPOINT_NOT_FOUND"
   });
 });
 
@@ -482,7 +381,6 @@ app.use("/api/*", securityHeaders, (req, res) => {
 app.use((err, req, res, next) => {
   console.error("🔥 Server Error:", err);
 
-  // Mongoose validation error
   if (err.name === 'ValidationError') {
     const errors = Object.values(err.errors).map(error => error.message);
     return res.status(400).json({
@@ -492,69 +390,26 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // Mongoose duplicate key error
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
     return res.status(409).json({
-      error: `${field} already exists`,
+      error: "Duplicate entry found",
       code: "DUPLICATE_ENTRY"
     });
   }
 
-  // JWT errors
-  if (err.name === 'JsonWebTokenError') {
-    return res.status(401).json({
-      error: "Invalid token",
-      code: "INVALID_TOKEN"
-    });
-  }
-
-  if (err.name === 'TokenExpiredError') {
-    return res.status(401).json({
-      error: "Token expired",
-      code: "TOKEN_EXPIRED"
-    });
-  }
-
-  // Default error
-  const statusCode = err.statusCode || err.status || 500;
+  const statusCode = err.statusCode || 500;
   const message = isProduction && statusCode === 500 
     ? "Internal server error" 
     : err.message;
 
   res.status(statusCode).json({
     error: message,
-    code: "INTERNAL_SERVER_ERROR",
-    ...(!isProduction && { stack: err.stack })
+    code: "INTERNAL_SERVER_ERROR"
   });
 });
 
 // ==============================
-// 11. Graceful Shutdown
-// ==============================
-const gracefulShutdown = (signal) => {
-  console.log(`\n⚠️ Received ${signal}. Closing server gracefully...`);
-  
-  server.close(() => {
-    console.log("✅ HTTP server closed.");
-    mongoose.connection.close(false, () => {
-      console.log("✅ MongoDB connection closed.");
-      process.exit(0);
-    });
-  });
-
-  // Force close after 10 seconds
-  setTimeout(() => {
-    console.error("❌ Could not close connections in time, forcefully shutting down");
-    process.exit(1);
-  }, 10000);
-};
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-// ==============================
-// 12. Start Server
+// 11. Start Server
 // ==============================
 const server = app.listen(port, "0.0.0.0", () => {
   console.log(`
@@ -564,6 +419,16 @@ const server = app.listen(port, "0.0.0.0", () => {
 📊 Health: http://localhost:${port}/api/health
 🕒 Started: ${new Date().toISOString()}
   `);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('✅ HTTP server closed');
+    mongoose.connection.close();
+    process.exit(0);
+  });
 });
 
 export default app;
