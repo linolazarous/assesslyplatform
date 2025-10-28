@@ -18,6 +18,7 @@ const LandingScreen = () => {
 
   return (
     <Box
+      className="app-container landing-page" // ✅ Added layout classes
       component="div"
       id="top"
       sx={{
@@ -27,28 +28,41 @@ const LandingScreen = () => {
         backgroundColor: theme.palette.background.default,
         overflowX: 'hidden',
         scrollBehavior: 'smooth',
+        width: '100%', // ✅ Ensure full width
       }}
     >
       {/* Main Content */}
       <Container
         maxWidth="xl"
+        className="main-content" // ✅ Added layout class
         sx={{
           flex: 1,
           px: isMobile ? 2 : 4,
           py: isMobile ? 3 : 6,
+          width: '100%', // ✅ Ensure full width
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         {/* Hero Section with Video Background */}
-        <HeroSection videoUrl="/Assessly.mp4" />
+        <Box className="section-container" sx={{ width: '100%' }}> {/* ✅ Added wrapper */}
+          <HeroSection videoUrl="/Assessly.mp4" />
+        </Box>
 
         {/* Core Platform Features */}
-        <FeaturesSection />
+        <Box className="section-container" sx={{ width: '100%', py: 4 }}> {/* ✅ Added wrapper */}
+          <FeaturesSection />
+        </Box>
 
         {/* Testimonials */}
-        <Testimonials />
+        <Box className="section-container" sx={{ width: '100%', py: 4 }}> {/* ✅ Added wrapper */}
+          <Testimonials />
+        </Box>
 
         {/* Call to Action */}
-        <CallToAction />
+        <Box className="section-container" sx={{ width: '100%', py: 4 }}> {/* ✅ Added wrapper */}
+          <CallToAction />
+        </Box>
       </Container>
 
       {/* Footer */}
