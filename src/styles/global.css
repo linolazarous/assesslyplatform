@@ -1,81 +1,126 @@
+/* ============ CSS Reset & Base Styles ============ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.6;
+  text-rendering: optimizeSpeed;
+}
+
+#root {
+  min-height: 100vh;
+  isolation: isolate;
+}
+
 /* ============ Logo Styles ============ */
-/* Base logo styles */
 .logo {
   display: inline-block;
-  transition: all 0.3s ease;
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   will-change: transform;
 }
 
-/* Logo animation */
-.logo-transition {
-  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.logo-transition:hover {
+.logo:hover {
   transform: scale(1.05);
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
 }
 
-/* Dark mode adjustments */
-@media (prefers-color-scheme: dark) {
-  .dark .logo,
-  .logo-dark {
-    filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgba(255, 255, 255, 0.1));
-  }
-}
-
-/* Print styles */
-@media print {
-  .logo-print {
-    height: 40px !important;
-    width: auto !important;
-    filter: brightness(0) saturate(100%) !important;
-  }
-
-  /* Hide unnecessary elements in print */
-  .no-print {
-    display: none !important;
-  }
-}
-
-/* ============ Global Enhancements ============ */
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
-}
-
-/* Better focus styles for accessibility */
-:focus-visible {
-  outline: 2px solid var(--primary-color, #3f51b5);
+.logo:focus-visible {
+  outline: 2px solid #3f51b5;
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 
-/* Remove outline for mouse users */
+/* ============ Accessibility & Focus Management ============ */
+:focus-visible {
+  outline: 2px solid #3f51b5;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Hide focus for mouse users */
 :focus:not(:focus-visible) {
   outline: none;
 }
 
-/* ============ Animation Utilities ============ */
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  .logo {
+    transition: none;
+  }
+}
+
+/* ============ Performance Optimizations ============ */
+/* Containment for better performance */
+.performance-contain {
+  contain: layout style paint;
+}
+
+/* ============ Responsive Design Helpers ============ */
+.mobile-hidden {
+  display: none;
+}
+
+.desktop-hidden {
+  display: block;
+}
+
+@media (min-width: 768px) {
+  .mobile-hidden {
+    display: block;
+  }
+  
+  .desktop-hidden {
+    display: none;
+  }
+}
+
+/* ============ Loading & Animation Utilities ============ */
 .fade-in {
   animation: fadeIn 0.3s ease-in forwards;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+.slide-up {
+  animation: slideUp 0.4s ease-out forwards;
 }
 
-/* ============ Responsive Helpers ============ */
-@media (max-width: 768px) {
-  .mobile-hidden {
-    display: none !important;
+@keyframes fadeIn {
+  from { 
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-@media (min-width: 769px) {
-  .desktop-hidden {
-    display: none !important;
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -88,18 +133,60 @@ html {
     text-shadow: none !important;
   }
 
+  .no-print {
+    display: none !important;
+  }
+
+  .logo-print {
+    height: 40px !important;
+    width: auto !important;
+    filter: brightness(0) saturate(100%) !important;
+  }
+
   a, a:visited {
     text-decoration: underline;
   }
 
-  a[href]::after {
+  a[href]:after {
     content: " (" attr(href) ")";
     font-size: 0.8em;
     font-weight: normal;
   }
 
-  /* Don't show links that are fragment identifiers */
-  a[href^="#"]::after {
+  a[href^="#"]:after,
+  a[href^="javascript:"]:after {
     content: "";
   }
+}
+
+/* ============ High Contrast Mode Support ============ */
+@media (prefers-contrast: high) {
+  .logo {
+    filter: contrast(1.5);
+  }
+}
+
+/* ============ Scrollbar Styling ============ */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1c1 #f1f1f1;
 }
