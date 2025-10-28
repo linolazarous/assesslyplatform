@@ -32,6 +32,9 @@ export default function Auth({ disableSignup = false }) {
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
 
+  // ✅ Fixed: Add API base URL
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform.onrender.com/api';
+
   const validateForm = () => {
     if (!email || !email.includes("@")) {
       enqueueSnackbar("Please enter a valid email", { variant: "error" });
@@ -50,7 +53,8 @@ export default function Auth({ disableSignup = false }) {
     if (!validateForm()) return;
     setLoading(true);
 
-    const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
+    // ✅ Fixed: Use correct API URL
+    const endpoint = isLogin ? `${API_BASE_URL}/auth/login` : `${API_BASE_URL}/auth/register`;
 
     try {
       const response = await fetch(endpoint, {
@@ -72,7 +76,7 @@ export default function Auth({ disableSignup = false }) {
       if (isLogin) {
         localStorage.setItem("token", data.token);
         enqueueSnackbar("Login successful", { variant: "success" });
-        navigate("/");
+        navigate("/dashboard"); // ✅ Fixed: Navigate to dashboard
       } else {
         enqueueSnackbar("Account created successfully. Please sign in.", {
           variant: "success",
