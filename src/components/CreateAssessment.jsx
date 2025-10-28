@@ -39,6 +39,9 @@ export default function CreateAssessment({ organizationId }) {
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
 
+  // ✅ Fixed: Add API base URL
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform.onrender.com/api';
+
   const addQuestion = () => {
     setQuestions([...questions, { id: Date.now(), text: '', type: 'text', options: [], required: true }]);
   };
@@ -55,12 +58,10 @@ export default function CreateAssessment({ organizationId }) {
     const newQuestions = [...questions];
     newQuestions[index][field] = value;
     
-    // Logic to manage options when question type changes
     if (field === 'type') {
       if (value !== 'multiple_choice') {
         newQuestions[index].options = [];
       } else if (value === 'multiple_choice' && newQuestions[index].options.length === 0) {
-        // Initialize with two options for MC questions for immediate validation
         newQuestions[index].options = [{ id: Date.now(), text: '' }, { id: Date.now() + 1, text: '' }];
       }
     }
@@ -98,18 +99,15 @@ export default function CreateAssessment({ organizationId }) {
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       if (!q.text.trim()) {
-        // FIX: Template literal interpolation
         enqueueSnackbar(`Question ${i + 1} text is required`, { variant: 'error' });
         return false;
       }
       if (q.type === 'multiple_choice') {
         if (q.options.length < 2) {
-          // FIX: Template literal interpolation
           enqueueSnackbar(`Question ${i + 1} needs at least 2 options`, { variant: 'error' });
           return false;
         }
         if (q.options.some(opt => !opt.text.trim())) {
-          // FIX: Template literal interpolation
           enqueueSnackbar(`Question ${i + 1} has empty options`, { variant: 'error' });
           return false;
         }
@@ -138,7 +136,8 @@ export default function CreateAssessment({ organizationId }) {
         })) 
       }; 
       
-      const response = await fetch('/api/assessments/create', { 
+      // ✅ Fixed: Use correct API URL
+      const response = await fetch(`${API_BASE_URL}/assessments/create`, { 
         method: 'POST', 
         headers: { 
           'Content-Type': 'application/json', 
@@ -153,10 +152,9 @@ export default function CreateAssessment({ organizationId }) {
       } 
       
       enqueueSnackbar('Assessment created successfully!', { variant: 'success' }); 
-      navigate('/assessments'); 
+      navigate('/dashboard'); // ✅ Fixed: Navigate to dashboard instead of /assessments
     } catch (err) { 
       console.error('Error saving assessment:', err); 
-      // FIX: Template literal interpolation
       enqueueSnackbar(`Failed to save assessment: ${err.message}`, { variant: 'error', autoHideDuration: 5000 }); 
     } finally { 
       setLoading(false); 
@@ -250,7 +248,6 @@ export default function CreateAssessment({ organizationId }) {
                 <Grid item xs={12} md={6}>
                   <FormControl fullWidth required>
                     <InputLabel id={`q-required-label-${qIndex}`}>Required Status</InputLabel>
-                    {/* Using Select for required status is fine, but a Switch/Checkbox (like in QuestionnaireBuilder) is often more intuitive */}
                     <Select 
                       labelId={`q-required-label-${qIndex}`} 
                       value={question.required} 
@@ -333,5 +330,9 @@ export default function CreateAssessment({ organizationId }) {
 }
 
 CreateAssessment.propTypes = {
-  organizationId: PropTypes.string.isRequired
+  organizationId: PropTypes.string
+};
+
+CreateAssessment.defaultProps = {
+  organizationId: ''
 };
