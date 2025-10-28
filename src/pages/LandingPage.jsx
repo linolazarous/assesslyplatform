@@ -21,8 +21,8 @@ export default function LandingPage() {
 
   const features = [
     {
-      title: "Create Assessments",
-      description: "Build customized tests with our intuitive question builder"
+      title: "Multi-role System",
+      description: "Admin, Assessor, and Candidate roles with granular permissions."
     },
     {
       title: "Real-time Analytics",
@@ -35,10 +35,18 @@ export default function LandingPage() {
   ];
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: theme.palette.background.default }}>
+    <Box className="app-container landing-page" sx={{ 
+      minHeight: '100vh', 
+      bgcolor: theme.palette.background.default,
+      display: 'flex',
+      flexDirection: 'column',
+      width: '100%',
+      overflowX: 'hidden' // Prevent horizontal scroll
+    }}>
       {/* Hero Section */}
       <Box 
         component="section"
+        className="hero-section section-container"
         sx={{ 
           textAlign: 'center', 
           py: { xs: 8, md: 12 },
@@ -46,6 +54,12 @@ export default function LandingPage() {
           background: theme.palette.mode === 'dark' 
             ? 'linear-gradient(180deg, #121212 0%, #1E1E1E 100%)' 
             : 'linear-gradient(180deg, #f5f7fa 0%, #e4e8f0 100%)',
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          width: '100%'
         }}
       >
         <Logo size={isMobile ? 80 : 120} />
@@ -56,7 +70,9 @@ export default function LandingPage() {
             mt: 3,
             fontWeight: 700,
             fontSize: { xs: '2rem', md: '3rem' },
-            lineHeight: 1.2
+            lineHeight: 1.2,
+            maxWidth: '800px',
+            width: '100%'
           }}
         >
           Measure Smarter, Not Harder
@@ -68,18 +84,32 @@ export default function LandingPage() {
             color: 'text.secondary',
             maxWidth: 600,
             mx: 'auto',
-            px: 2
+            px: 2,
+            width: '100%'
           }}
         >
           From Questions to Insights, Anywhere — The modern assessment SaaS platform.
         </Typography>
         
-        <Box sx={{ mt: 4, display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+        <Box sx={{ 
+          mt: 4, 
+          display: 'flex', 
+          gap: 2, 
+          justifyContent: 'center', 
+          flexWrap: isMobile ? 'wrap' : 'nowrap',
+          width: '100%',
+          maxWidth: '400px'
+        }}>
           <Button 
             variant="contained" 
             size="large"
             onClick={() => navigate('/auth?tab=signup')}
-            sx={{ px: 5, py: 1.5 }}
+            sx={{ 
+              px: 5, 
+              py: 1.5,
+              flex: isMobile ? '1 1 100%' : 'none',
+              minWidth: isMobile ? '200px' : 'auto'
+            }}
           >
             Get Started Free
           </Button>
@@ -88,48 +118,70 @@ export default function LandingPage() {
             size="large"
             onClick={() => navigate('/demo')}
             sx={{
-              px: 5, py: 1.5,
+              px: 5, 
+              py: 1.5,
               borderColor: 'primary.main',
               color: 'primary.main',
-              '&:hover': { backgroundColor: 'primary.light', borderColor: 'primary.dark' }
+              '&:hover': { 
+                backgroundColor: 'primary.light', 
+                borderColor: 'primary.dark',
+                color: 'white'
+              },
+              flex: isMobile ? '1 1 100%' : 'none',
+              minWidth: isMobile ? '200px' : 'auto'
             }}
           >
-            Live Demo
+            See Features
           </Button>
         </Box>
       </Box>
 
-      {/* Features Section */}
-      <Container maxWidth="lg" sx={{ py: 10 }} component="section">
+      {/* Platform Capabilities Section */}
+      <Container 
+        maxWidth="lg" 
+        className="capabilities-section section-container"
+        sx={{ 
+          py: 10,
+          width: '100%'
+        }} 
+        component="section"
+      >
         <Typography 
           variant="h3" 
           component="h2"
           align="center" 
-          sx={{ mb: 6, fontWeight: 700 }}
+          sx={{ 
+            mb: 6, 
+            fontWeight: 700,
+            width: '100%'
+          }}
         >
-          Powerful Assessment Tools
+          Platform Capabilities
         </Typography>
         
-        <Grid container spacing={4}>
-          {features.map((feature) => (
-            <Grid item xs={12} md={4} key={feature.title}>
+        <Grid container spacing={4} sx={{ width: '100%', margin: 0 }}>
+          {features.map((feature, index) => (
+            <Grid item xs={12} md={4} key={feature.title} sx={{ display: 'flex' }}>
               <Card 
                 elevation={3}
                 sx={{ 
                   height: '100%',
                   transition: 'all 0.3s ease',
                   '&:hover': {
-                    transform: 'translateY(-8px) scale(1.03)',
+                    transform: 'translateY(-8px)',
                     boxShadow: theme.shadows[10]
                   },
-                  borderRadius: 3
+                  borderRadius: 3,
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column'
                 }}
               >
-                <CardContent sx={{ p: 4 }}>
+                <CardContent sx={{ p: 4, flex: 1 }}>
                   <Typography variant="h5" gutterBottom component="h3" sx={{ fontWeight: 600 }}>
                     {feature.title}
                   </Typography>
-                  <Typography color="text.secondary">
+                  <Typography color="text.secondary" sx={{ lineHeight: 1.6 }}>
                     {feature.description}
                   </Typography>
                 </CardContent>
@@ -140,8 +192,16 @@ export default function LandingPage() {
       </Container>
 
       {/* CTA Section */}
-      <Box sx={{ py: 12, bgcolor: theme.palette.background.paper }} component="section">
-        <Container maxWidth="md" sx={{ textAlign: 'center' }}>
+      <Box 
+        className="section-container"
+        sx={{ 
+          py: 12, 
+          bgcolor: theme.palette.background.paper,
+          width: '100%'
+        }} 
+        component="section"
+      >
+        <Container maxWidth="md" sx={{ textAlign: 'center', width: '100%' }}>
           <Typography variant="h3" component="h2" sx={{ mb: 3, fontWeight: 700 }}>
             Ready to Transform Your Assessments?
           </Typography>
@@ -151,7 +211,12 @@ export default function LandingPage() {
           <Button 
             variant="contained" 
             size="large" 
-            sx={{ px: 6, py: 1.5, fontSize: '1.1rem' }}
+            sx={{ 
+              px: 6, 
+              py: 1.5, 
+              fontSize: '1.1rem',
+              minWidth: '200px'
+            }}
             onClick={() => navigate('/auth?tab=signup')}
           >
             Start Your Free Trial
