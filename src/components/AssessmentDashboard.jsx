@@ -10,7 +10,6 @@ import {
   CircularProgress,
   Box,
   TablePagination,
-  Badge,
 } from "@mui/material";
 import { CheckCircle, HourglassEmpty, DoneAll } from "@mui/icons-material";
 import { useSnackbar } from "notistack";
@@ -18,9 +17,9 @@ import PropTypes from "prop-types";
 
 // ✅ Fixed: Added proper icons to config map
 const statusConfig = {
-  active: { color: "success", icon: <CheckCircle /> },
-  in_progress: { color: "warning", icon: <HourglassEmpty /> },
-  completed: { color: "primary", icon: <DoneAll /> },
+  active: { color: "success", icon: <CheckCircle />, label: "Active" },
+  in_progress: { color: "warning", icon: <HourglassEmpty />, label: "In Progress" },
+  completed: { color: "primary", icon: <DoneAll />, label: "Completed" },
 };
 
 export default function AssessmentDashboard() {
@@ -29,37 +28,49 @@ export default function AssessmentDashboard() {
   const [activeTab, setActiveTab] = useState("active");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
+  const [error, setError] = useState(null);
   const { enqueueSnackbar } = useSnackbar();
 
-  // ✅ UseCallback with dependencies for safe fetch on tab change
+  // ✅ Fixed: Use correct API base URL from environment
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform.onrender.com/api';
+
+  // ✅ Fixed: UseCallback with proper API URL
   const fetchAssessments = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const token = localStorage.getItem("token");
-      if (!token) throw new Error("Authentication token not found");
+      if (!token) {
+        throw new Error("Authentication token not found. Please log in.");
+      }
 
-      const response = await fetch(`/api/assessments?status=${activeTab}`, {
+      // ✅ Fixed: Use full API URL
+      const response = await fetch(`${API_BASE_URL}/assessments?status=${activeTab}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
       });
 
-      const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.message || "Failed to fetch assessments");
+        const errorData = await response.json().catch(() => ({ message: "Network error" }));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
 
-      setAssessments(Array.isArray(data.assessments) ? data.assessments : data);
+      const data = await response.json();
+      setAssessments(Array.isArray(data.assessments) ? data.assessments : []);
+      
     } catch (error) {
       console.error("Error fetching assessments:", error);
+      setError(error.message);
       enqueueSnackbar(`Failed to load assessments: ${error.message}`, {
         variant: "error",
       });
     } finally {
       setLoading(false);
     }
-  }, [activeTab, enqueueSnackbar]);
+  }, [activeTab, enqueueSnackbar, API_BASE_URL]);
 
   useEffect(() => {
     fetchAssessments();
@@ -70,7 +81,8 @@ export default function AssessmentDashboard() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("Authentication token not found");
 
-      const response = await fetch(`/api/assessments/${assessmentId}/start`, {
+      // ✅ Fixed: Use full API URL
+      const response = await fetch(`${API_BASE_URL}/assessments/${assessmentId}/start`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -79,12 +91,12 @@ export default function AssessmentDashboard() {
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || "Failed to start assessment");
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to start assessment");
       }
 
       enqueueSnackbar("Assessment started successfully", { variant: "success" });
-      fetchAssessments();
+      fetchAssessments(); // Refresh the list
     } catch (err) {
       console.error("Error starting assessment:", err);
       enqueueSnackbar(`Failed to start assessment: ${err.message}`, {
@@ -94,26 +106,42 @@ export default function AssessmentDashboard() {
     }
   };
 
+  // ✅ Fixed: Render error state
+  if (error && assessments.length === 0) {
+    return (
+      <Paper elevation={2} sx={{ p: 3, borderRadius: 2, textAlign: 'center' }}>
+        <Typography color="error" variant="h6" gutterBottom>
+          Unable to Load Dashboard
+        </Typography>
+        <Typography color="text.secondary" paragraph>
+          {error}
+        </Typography>
+        <Button variant="contained" onClick={fetchAssessments}>
+          Retry
+        </Button>
+      </Paper>
+    );
+  }
+
   return (
     <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
       {/* Header */}
-      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
-        <Typography variant="h6" fontWeight="bold">
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3, flexWrap: 'wrap', gap: 2 }}>
+        <Typography variant="h5" fontWeight="bold">
           Assessment Dashboard
         </Typography>
 
-        <Box sx={{ display: "flex", gap: 1 }}>
-          {Object.keys(statusConfig).map((tab) => (
+        <Box sx={{ display: "flex", gap: 1, flexWrap: 'wrap' }}>
+          {Object.entries(statusConfig).map(([tab, config]) => (
             <Chip
               key={tab}
-              label={tab.replace("_", " ")}
+              label={config.label}
               onClick={() => {
                 setActiveTab(tab);
                 setPage(0);
               }}
               color={activeTab === tab ? "primary" : "default"}
               variant={activeTab === tab ? "filled" : "outlined"}
-              sx={{ textTransform: "capitalize" }}
             />
           ))}
         </Box>
@@ -130,7 +158,7 @@ export default function AssessmentDashboard() {
           color="text.secondary"
           sx={{ p: 3, textAlign: "center" }}
         >
-          No {activeTab.replace("_", " ")} assessments found.
+          No {statusConfig[activeTab]?.label?.toLowerCase() || activeTab} assessments found.
         </Typography>
       ) : (
         <>
@@ -138,20 +166,18 @@ export default function AssessmentDashboard() {
             {assessments
               .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
               .map((assessment) => {
-                const config =
-                  statusConfig[assessment.status] || statusConfig.active;
+                const config = statusConfig[assessment.status] || statusConfig.active;
                 return (
                   <ListItem
-                    key={assessment.id}
+                    key={assessment.id || assessment._id}
                     divider
                     secondaryAction={
                       <Button
                         variant="contained"
                         size="small"
                         startIcon={config.icon}
-                        onClick={() => handleStartAssessment(assessment.id)}
+                        onClick={() => handleStartAssessment(assessment.id || assessment._id)}
                         disabled={assessment.status === "completed"}
-                        sx={{ textTransform: "capitalize" }}
                       >
                         {assessment.status === "active"
                           ? "Start"
@@ -164,31 +190,26 @@ export default function AssessmentDashboard() {
                     <ListItemText
                       primary={
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                          <Badge color={config.color} variant="dot" overlap="circular">
-                            <Typography fontWeight="medium">
-                              {assessment.title}
-                            </Typography>
-                          </Badge>
+                          <Typography fontWeight="medium">
+                            {assessment.title || "Untitled Assessment"}
+                          </Typography>
+                          <Chip 
+                            icon={config.icon} 
+                            label={config.label}
+                            color={config.color}
+                            size="small"
+                            variant="outlined"
+                          />
                         </Box>
                       }
                       secondary={
                         <>
-                          <Typography
-                            variant="body2"
-                            component="span"
-                            display="block"
-                          >
-                            Created:{" "}
-                            {new Date(assessment.createdAt).toLocaleDateString()}
+                          <Typography variant="body2" component="span" display="block">
+                            Created: {new Date(assessment.createdAt).toLocaleDateString()}
                           </Typography>
                           {assessment.dueDate && (
-                            <Typography
-                              variant="body2"
-                              component="span"
-                              display="block"
-                            >
-                              Due:{" "}
-                              {new Date(assessment.dueDate).toLocaleString()}
+                            <Typography variant="body2" component="span" display="block">
+                              Due: {new Date(assessment.dueDate).toLocaleString()}
                             </Typography>
                           )}
                         </>
