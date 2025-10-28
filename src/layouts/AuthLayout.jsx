@@ -1,25 +1,19 @@
 import React, { lazy, Suspense } from 'react';
-import { Box, CircularProgress } from '@mui/material';
+import { Box, CircularProgress, Paper } from '@mui/material';
 import PropTypes from 'prop-types';
-import { Logo } from '../components/brand'; 
+import { Logo } from '../components/brand';
 
-// FIX: Lazy load the framer-motion library to prevent static build errors
-const MotionDiv = lazy(() => 
+const MotionDiv = lazy(() =>
   import('framer-motion').then(module => ({ default: module.motion.div }))
 );
 
-export default function AuthLayout({ children }) {
+export default function AuthLayout({ children, darkMode = false }) {
   const motionProps = {
     initial: { opacity: 0, y: 20 },
     animate: { opacity: 1, y: 0 },
-    transition: { 
-      type: 'spring',
-      damping: 20,
-      stiffness: 100,
-      duration: 0.5
-    }
+    transition: { type: 'spring', damping: 20, stiffness: 100, duration: 0.5 },
   };
-  
+
   return (
     <Box
       sx={{
@@ -31,20 +25,24 @@ export default function AuthLayout({ children }) {
         p: 2
       }}
     >
-      {/* Wrap the motion component in Suspense */}
-      <Suspense fallback={<CircularProgress size={40} />}>
+      <Suspense fallback={
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+          <CircularProgress size={50} />
+        </Box>
+      }>
         <MotionDiv {...motionProps}>
           <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-            <Logo size={80} darkMode={false} withText={true} /> 
+            <Logo size={80} darkMode={darkMode} withText />
           </Box>
           <Box
+            component={Paper}
+            elevation={3}
             sx={{
               width: '100%',
               maxWidth: 450,
               p: { xs: 3, sm: 4 },
               borderRadius: 2,
-              boxShadow: 3,
-              backgroundColor: 'background.paper'
+              backgroundColor: 'background.paper',
             }}
           >
             {children}
@@ -56,5 +54,6 @@ export default function AuthLayout({ children }) {
 }
 
 AuthLayout.propTypes = {
-  children: PropTypes.node.isRequired
+  children: PropTypes.node.isRequired,
+  darkMode: PropTypes.bool,
 };
