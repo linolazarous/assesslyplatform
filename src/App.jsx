@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useState, useMemo } from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Outlet } from "react-router-dom";
 import { ThemeProvider } from "@mui/material/styles";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import MainLayout from "./layouts/MainLayout.jsx";
@@ -8,21 +8,22 @@ import { getAppTheme } from "./styles/theme.jsx";
 import LoadingScreen from "./components/ui/LoadingScreen.jsx"; 
 import ProtectedRoute from "./components/common/ProtectedRoute.jsx";
 
-// Lazy imports
-const AssessmentDashboard = lazy(() => import("./components/AssessmentDashboard.jsx"));
-const CreateAssessment = lazy(() => import("./components/CreateAssessment.jsx"));
-const TakeAssessment = lazy(() => import("./components/TakeAssessment.jsx"));
-const PdfReport = lazy(() => import("./components/PdfReport.jsx"));
-const AuthPage = lazy(() => import("./pages/Auth.jsx"));
-const LandingScreen = lazy(() => import("./pages/Landing/LandingScreen.jsx"));
-const BillingPage = lazy(() => import("./pages/Billing.jsx"));
-const AdminDashboard = lazy(() => import("./pages/Admin/Dashboard.jsx"));
+// Lazy imports (keep your existing imports)
 
 const useThemeMode = () => {
   const [darkMode, setDarkMode] = useState(false);
   const toggleDarkMode = () => setDarkMode(prev => !prev);
   const theme = useMemo(() => getAppTheme(darkMode ? "dark" : "light"), [darkMode]);
   return { theme, darkMode, toggleDarkMode };
+};
+
+// Layout wrapper component
+const MainLayoutWrapper = ({ darkMode, toggleDarkMode }) => {
+  return (
+    <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+      <Outlet /> {/* This renders the child routes */}
+    </MainLayout>
+  );
 };
 
 export default function App() {
@@ -34,10 +35,12 @@ export default function App() {
         <AuthProvider>
           <Suspense fallback={<LoadingScreen fullScreen />}>
             <Routes>
+              {/* Auth routes */}
               <Route path="/auth" element={<AuthLayout><AuthPage /></AuthLayout>} />
               <Route path="/login" element={<AuthLayout><AuthPage /></AuthLayout>} />
 
-              <Route element={<MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode} />}>
+              {/* Main layout routes */}
+              <Route element={<MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode} />}>
                 <Route path="/" element={<LandingScreen />} />
                 <Route path="/dashboard" element={<ProtectedRoute><AssessmentDashboard /></ProtectedRoute>} />
                 <Route path="/create" element={<ProtectedRoute><CreateAssessment /></ProtectedRoute>} />
@@ -45,12 +48,14 @@ export default function App() {
                 <Route path="/report/:id" element={<ProtectedRoute><PdfReport /></ProtectedRoute>} />
                 <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
                 <Route path="/admin" element={<ProtectedRoute roles={['admin']}><AdminDashboard /></ProtectedRoute>} />
-                <Route path="*" element={<div>404 Not Found</div>} />
               </Route>
+
+              {/* 404 route */}
+              <Route path="*" element={<div>404 Not Found</div>} />
             </Routes>
           </Suspense>
         </AuthProvider>
       </ThemeProvider>
     </Router>
   );
-    }
+}
