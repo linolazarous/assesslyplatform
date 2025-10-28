@@ -4,9 +4,14 @@ import cors from "cors";
 import dotenv from "dotenv";
 import helmet from "helmet";
 import morgan from "morgan";
+import path from "path";
+import { fileURLToPath } from "url";
 
 // Load environment variables
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -15,10 +20,10 @@ const port = process.env.PORT || 3000;
 // ✅ 1. CORS Configuration — Restrict to Trusted Origins
 // ======================================================
 const allowedOrigins = [
-  "http://localhost:5173", // local dev
+  "http://localhost:5173", // local frontend dev
   "http://localhost:3000",
   "https://assesslyplatform.onrender.com", // backend
-  "https://assessly-frontend.onrender.com", // production frontend (Render static site)
+  "https://assessly-frontend.onrender.com", // production frontend
 ];
 
 app.use(
@@ -44,7 +49,12 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // ======================================================
-// ✅ 3. Health Check Route
+// ✅ 3. Serve React Frontend
+// ======================================================
+app.use(express.static(path.join(__dirname, "../dist"))); // serve static files
+
+// ======================================================
+// ✅ 4. API Routes
 // ======================================================
 app.get("/api/health", (req, res) => {
   res.json({
@@ -55,9 +65,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// ======================================================
-// ✅ 4. Auth Routes (Mocked for Development)
-// ======================================================
+// --- Auth Routes ---
 app.post("/api/auth/register", (req, res) => {
   res.status(200).json({ message: "Account created. Please login." });
 });
@@ -83,9 +91,7 @@ app.get("/api/user/profile", (req, res) => {
   });
 });
 
-// ======================================================
-// ✅ 5. Organization Routes
-// ======================================================
+// --- Organization Routes ---
 app.get("/api/organizations", (req, res) => {
   res.status(200).json([
     { id: "org-1", name: "Assessly Corp" },
@@ -105,21 +111,17 @@ app.get("/api/organizations/:orgId", (req, res) => {
   });
 });
 
-// ======================================================
-// ✅ 6. Assessments & AI Routes
-// ======================================================
+// --- Assessment Routes ---
 app.get("/api/assessments", (req, res) => {
   const mockAssessments = [
     { id: "a-1", title: "Quarterly Review", status: "active" },
     { id: "a-2", title: "Onboarding Quiz", status: "in_progress" },
     { id: "a-3", title: "Final Exam", status: "completed" },
   ];
-
   const { status } = req.query;
   const filtered = status
     ? mockAssessments.filter((a) => a.status === status)
     : mockAssessments;
-
   res.status(200).json({ assessments: filtered });
 });
 
@@ -161,9 +163,7 @@ app.post("/api/assessments/ai-score", (req, res) => {
   });
 });
 
-// ======================================================
-// ✅ 7. Billing & Admin
-// ======================================================
+// --- Billing & Admin Routes ---
 app.get("/api/admin/stats", (req, res) => {
   res.status(200).json({
     assessments: 15,
@@ -199,19 +199,23 @@ app.get("/api/billing/invoices", (req, res) => {
 });
 
 // ======================================================
-// ✅ 8. Error Handling & Catch-All
+// ✅ 5. React Router Fallback for SPA (After API routes)
 // ======================================================
-app.use("*", (req, res) => {
-  res.status(404).json({ error: "Route not found" });
+app.get("*", (req, res, next) => {
+  if (req.originalUrl.startsWith("/api")) return next(); // skip API routes
+  res.sendFile(path.join(__dirname, "../dist", "index.html"));
 });
 
+// ======================================================
+// ✅ 6. Global Error Handling
+// ======================================================
 app.use((err, req, res, next) => {
   console.error("🔥 Server Error:", err.message);
   res.status(500).json({ error: "Internal server error" });
 });
 
 // ======================================================
-// ✅ 9. Start Server
+// ✅ 7. Start Server
 // ======================================================
 app.listen(port, "0.0.0.0", () => {
   console.log(`🚀 Assessly backend running on port ${port}`);
