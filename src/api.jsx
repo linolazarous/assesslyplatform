@@ -2,107 +2,223 @@
 import axios from "axios";
 
 /**
- * 🌍 Dynamic Base URL Configuration
+ * 🌍 Dynamic Base URL Configuration for Production
  */
-const isLocalhost =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1";
+const getApiBaseUrl = () => {
+  // Always use environment variable in production
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  
+  // Fallback for different environments
+  const isLocalhost = window.location.hostname === "localhost" || 
+                      window.location.hostname === "127.0.0.1";
+  
+  return isLocalhost 
+    ? "http://localhost:3000/api" 
+    : "https://assesslyplatform.onrender.com/api";
+};
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  (isLocalhost
-    ? "http://localhost:3000/api"
-    : "https://assesslyplatform.onrender.com/api");
+const API_BASE_URL = getApiBaseUrl();
 
 /**
- * 🔐 Axios Instance
+ * 🔐 Production Axios Instance
  */
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: { "Content-Type": "application/json" },
-  withCredentials: false, // enable if backend uses cookies
+  headers: { 
+    "Content-Type": "application/json",
+    "X-Client": "assessly-frontend" 
+  },
+  withCredentials: false,
+  timeout: 15000, // 15 second timeout for production
 });
 
 /**
- * ✅ Request interceptor to automatically attach JWT
+ * ✅ Production Request Interceptor
  */
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      // Verify token format before attaching
+      if (token.startsWith('eyJ') && token.length > 50) {
+        config.headers.Authorization = `Bearer ${token}`;
+      } else {
+        console.warn('Invalid token format detected');
+        localStorage.removeItem("token");
+      }
     }
+    
+    // Add request ID for tracking
+    config.headers['X-Request-ID'] = Date.now().toString();
+    
     return config;
   },
-  (error) => Promise.reject(error)
-);
-
-/**
- * 🚨 Handle and log API errors globally
- */
-api.interceptors.response.use(
-  (response) => response,
   (error) => {
-    console.error("❌ API Error:", error.response?.data || error.message);
-    return Promise.reject(error.response?.data || { message: "Server error" });
+    console.error('Request interceptor error:', error);
+    return Promise.reject(error);
   }
 );
 
+/**
+ * 🚨 Production Response Interceptor with Enhanced Error Handling
+ */
+api.interceptors.response.use(
+  (response) => {
+    // Log successful API calls in development
+    if (import.meta.env.DEV) {
+      console.log(`✅ API Success: ${response.config.method?.toUpperCase()} ${response.config.url}`);
+    }
+    return response;
+  },
+  (error) => {
+    const message = error.response?.data?.message || error.message;
+    const status = error.response?.status;
+    const url = error.config?.url;
+    
+    // Production error logging (avoid verbose logging in production)
+    if (import.meta.env.PROD) {
+      console.error(`API Error [${status}]: ${url} - ${message}`);
+    } else {
+      console.error("❌ API Error:", { 
+        url, 
+        status, 
+        message,
+        config: error.config 
+      });
+    }
+    
+    // Handle specific status codes
+    if (status === 401) {
+      // Token expired or invalid
+      localStorage.removeItem("token");
+      // Don't redirect automatically in production - let components handle
+      console.warn('Authentication failed - token removed');
+    }
+    
+    if (status === 429) {
+      // Rate limiting
+      console.warn('Rate limit exceeded');
+    }
+    
+    if (status >= 500) {
+      // Server errors
+      console.error('Server error occurred');
+    }
+    
+    // Return consistent error format
+    return Promise.reject({ 
+      message: message || "Service temporarily unavailable", 
+      status: status || 0,
+      code: error.code,
+      url: url
+    });
+  }
+);
+
+/**
+ * 🛡️ Safe API Call Wrapper with Retry Logic
+ */
+const handleRequest = (promise, maxRetries = 1) => {
+  return promise
+    .then((res) => res.data)
+    .catch(async (error) => {
+      // Only retry on network errors, not auth or validation errors
+      if (maxRetries > 0 && (!error.status || error.status >= 500)) {
+        console.warn(`Retrying request, ${maxRetries} attempts left`);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+        return handleRequest(promise, maxRetries - 1);
+      }
+      
+      throw error;
+    });
+};
+
 // =================================================================
-// ======================== API ENDPOINTS ===========================
+// ======================== PRODUCTION API ENDPOINTS ===============
 // =================================================================
 
 // Authentication
 export const AuthAPI = {
-  register: (data) => api.post("/auth/register", data).then((res) => res.data),
-  login: (data) =>
-    api.post("/auth/login", data).then((res) => {
-      if (res.data.token) localStorage.setItem("token", res.data.token);
-      return res.data;
-    }),
-  profile: () => api.get("/user/profile").then((res) => res.data),
+  register: (data) => handleRequest(api.post("/auth/register", data)),
+  login: (data) => 
+    handleRequest(api.post("/auth/login", data).then((res) => {
+      if (res.data.token) {
+        localStorage.setItem("token", res.data.token);
+        // Also store user info if available
+        if (res.data.user) {
+          localStorage.setItem("user", JSON.stringify(res.data.user));
+        }
+      }
+      return res;
+    })),
+  profile: () => handleRequest(api.get("/user/profile")),
+  logout: () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    return Promise.resolve();
+  },
+  refreshToken: () => handleRequest(api.post("/auth/refresh")),
 };
 
 // Organizations
 export const OrganizationAPI = {
-  list: () => api.get("/organizations").then((res) => res.data),
-  details: (id) => api.get(`/organizations/${id}`).then((res) => res.data),
+  list: () => handleRequest(api.get("/organizations")),
+  details: (id) => handleRequest(api.get(`/organizations/${id}`)),
+  create: (data) => handleRequest(api.post("/organizations", data)),
+  update: (id, data) => handleRequest(api.put(`/organizations/${id}`, data)),
 };
 
 // Assessments
 export const AssessmentAPI = {
-  list: (status = "") =>
-    api
-      .get(`/assessments${status ? `?status=${status}` : ""}`)
-      .then((res) => res.data.assessments || []),
-  details: (id) => api.get(`/assessments/${id}`).then((res) => res.data),
-  create: (data) => api.post("/assessments/create", data).then((res) => res.data),
-  start: (id) => api.post(`/assessments/${id}/start`).then((res) => res.data),
-  submit: (id, data) => api.post(`/assessments/${id}/submit`, data).then((res) => res.data),
-  aiScore: (answers) => api.post("/assessments/ai-score", { answers }).then((res) => res.data),
+  list: (status = "", page = 1, limit = 10) => 
+    handleRequest(api.get(`/assessments?status=${status}&page=${page}&limit=${limit}`))
+      .then((data) => data.assessments || []),
+  details: (id) => handleRequest(api.get(`/assessments/${id}`)),
+  create: (data) => handleRequest(api.post("/assessments/create", data)),
+  update: (id, data) => handleRequest(api.put(`/assessments/${id}`, data)),
+  delete: (id) => handleRequest(api.delete(`/assessments/${id}`)),
+  start: (id) => handleRequest(api.post(`/assessments/${id}/start`)),
+  submit: (id, data) => handleRequest(api.post(`/assessments/${id}/submit`, data)),
+  aiScore: (answers) => handleRequest(api.post("/assessments/ai-score", { answers })),
+  results: (id) => handleRequest(api.get(`/assessments/${id}/results`)),
 };
 
 // Billing
 export const BillingAPI = {
-  checkoutSession: (plan) =>
-    api.post("/billing/checkout-session", { plan }).then((res) => res.data.url),
-  portalLink: () => api.post("/billing/portal-link").then((res) => res.data.url),
-  invoices: () => api.get("/billing/invoices").then((res) => res.data.invoices || []),
+  checkoutSession: (plan) => 
+    handleRequest(api.post("/billing/checkout-session", { plan })),
+  portalLink: () => handleRequest(api.post("/billing/portal-link")),
+  invoices: () => handleRequest(api.get("/billing/invoices")),
+  subscription: () => handleRequest(api.get("/billing/subscription")),
 };
 
 // Admin
 export const AdminAPI = {
-  stats: () => api.get("/admin/stats").then((res) => res.data),
+  stats: () => handleRequest(api.get("/admin/stats")),
+  users: (page = 1, limit = 20) => 
+    handleRequest(api.get(`/admin/users?page=${page}&limit=${limit}`)),
+  organizations: () => handleRequest(api.get("/admin/organizations")),
 };
 
 // Search
 export const SearchAPI = {
-  query: (query) => api.post("/search", { query }).then((res) => res.data.results || []),
+  query: (query, type = "all") => 
+    handleRequest(api.post("/search", { query, type }))
+      .then((data) => data.results || []),
 };
 
 // Health Check
 export const HealthAPI = {
-  check: () => api.get("/health").then((res) => res.data),
+  check: () => handleRequest(api.get("/health")),
+  ping: () => handleRequest(api.get("/health/ping")),
+};
+
+// System
+export const SystemAPI = {
+  config: () => handleRequest(api.get("/system/config")),
+  maintenance: () => handleRequest(api.get("/system/maintenance")),
 };
 
 // Export all APIs
@@ -114,4 +230,5 @@ export default {
   AdminAPI,
   SearchAPI,
   HealthAPI,
+  SystemAPI,
 };
