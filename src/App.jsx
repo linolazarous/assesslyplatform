@@ -5,7 +5,7 @@ import { CssBaseline, Box, CircularProgress } from "@mui/material";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import MainLayout from "./layouts/MainLayout.jsx";
 import AuthLayout from "./layouts/AuthLayout.jsx";
-import { getAppTheme } from "./styles/theme.jsx"; // ✅ FIXED: Import theme function
+import { getAppTheme } from "./styles/theme.jsx";
 import LoadingScreen from "./components/ui/LoadingScreen.jsx"; 
 import ProtectedRoute from "./components/common/ProtectedRoute.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
@@ -29,14 +29,13 @@ const CreateAssessment = lazyWithRetry(() => import("./components/CreateAssessme
 const TakeAssessment = lazyWithRetry(() => import("./components/TakeAssessment.jsx"));
 const PdfReport = lazyWithRetry(() => import("./components/PdfReport.jsx"));
 const AuthPage = lazyWithRetry(() => import("./pages/Auth.jsx"));
-const LandingPage = lazyWithRetry(() => import("./pages/LandingPage.jsx")); // ✅ UPDATED: Direct import
+const LandingPage = lazyWithRetry(() => import("./pages/LandingPage.jsx"));
 const BillingPage = lazyWithRetry(() => import("./pages/Billing.jsx"));
 const AdminDashboard = lazyWithRetry(() => import("./pages/Admin/Dashboard.jsx"));
 
 // Production theme hook with persistence
 const useThemeMode = () => {
   const [darkMode, setDarkMode] = useState(() => {
-    // Get theme preference from localStorage or default to light
     const saved = localStorage.getItem('darkMode');
     return saved ? JSON.parse(saved) : false;
   });
@@ -49,7 +48,6 @@ const useThemeMode = () => {
     });
   };
 
-  // ✅ FIXED: Use the imported getAppTheme function
   const theme = useMemo(() => 
     getAppTheme(darkMode ? "dark" : "light"), 
     [darkMode]
@@ -87,7 +85,6 @@ export default function App() {
   const { theme, darkMode, toggleDarkMode } = useThemeMode();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Monitor online/offline status
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -103,9 +100,8 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      {/* ✅ FIXED: ThemeProvider now has the actual theme */}
       <ThemeProvider theme={theme}>
-        <CssBaseline /> {/* Reset CSS and apply Material-UI baseline */}
+        <CssBaseline />
         <Router 
           future={{
             v7_startTransition: true,
@@ -136,12 +132,8 @@ export default function App() {
             
             <Suspense fallback={<LoadingScreen fullScreen />}>
               <Routes>
-                {/* Public routes */}
-                <Route path="/" element={
-                  <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                    <LandingPage /> {/* ✅ UPDATED: Now using the consolidated LandingPage */}
-                  </MainLayoutWrapper>
-                } />
+                {/* ✅ FIXED: Landing page without MainLayout wrapper */}
+                <Route path="/" element={<LandingPage />} />
                 
                 <Route path="/auth" element={
                   <AuthLayout>
