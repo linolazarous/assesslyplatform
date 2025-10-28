@@ -5,6 +5,7 @@ import { HelmetProvider } from "react-helmet-async";
 import App from "./App.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import "./styles/global.css";
+import "./styles/theme.jsx";
 
 /**
  * 🚀 Production Configuration
