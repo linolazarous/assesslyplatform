@@ -18,6 +18,9 @@ export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium'
   const [error, setError] = useState(null);
   const { enqueueSnackbar } = useSnackbar();
 
+  // ✅ Fixed: Add API base URL
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform.onrender.com/api';
+
   const fetchOrganizations = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -25,7 +28,8 @@ export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium'
       const token = localStorage.getItem('token');
       if (!token) throw new Error('Authentication token not found');
       
-      const response = await fetch('/api/organizations', { 
+      // ✅ Fixed: Use correct API URL
+      const response = await fetch(`${API_BASE_URL}/organizations`, { 
         headers: { 'Authorization': `Bearer ${token}` } 
       }); 
       
@@ -36,19 +40,17 @@ export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium'
       } 
       
       setOrgs(data); 
-      // Set the first organization as current if none is selected
       if (data.length > 0 && (!currentOrg || !data.some(org => org.id === currentOrg))) { 
         setCurrentOrg(data[0].id); 
       } 
     } catch (err) { 
       console.error('Error loading organizations:', err); 
-      // FIX: Template literal interpolation for error message
       enqueueSnackbar(`Failed to load organizations: ${err.message}`, { variant: 'error' }); 
       setError(err.message); 
     } finally { 
       setLoading(false); 
     } 
-  }, [currentOrg, setCurrentOrg, enqueueSnackbar]);
+  }, [currentOrg, setCurrentOrg, enqueueSnackbar, API_BASE_URL]);
 
   useEffect(() => {
     fetchOrganizations();
@@ -95,7 +97,6 @@ export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium'
         value={currentOrg || ''}
         label="Organization"
         onChange={handleChange}
-        disabled={orgs.length === 0} // Disabled if no orgs, but handled by the check above
       >
         {orgs.map(org => (
           <MenuItem key={org.id} value={org.id}>
@@ -112,4 +113,3 @@ OrgSelector.propTypes = {
   setCurrentOrg: PropTypes.func.isRequired,
   size: PropTypes.oneOf(['small', 'medium'])
 };
-
