@@ -1,7 +1,6 @@
 // src/main.jsx
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { HelmetProvider } from "react-helmet-async";
 import App from "./App.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import "./styles/global.css";
@@ -11,57 +10,22 @@ import "./styles/theme.jsx";
  * 🚀 Production Configuration
  */
 
-// Performance monitoring (optional - add your preferred service)
+// Performance monitoring
 const initMonitoring = () => {
   if (import.meta.env.PROD) {
-    // Example: Initialize your analytics/monitoring service
     console.log('🚀 Assessly Frontend - Production Mode');
-    
-    // Remove console.log in production (optional)
-    if (import.meta.env.VITE_ENABLE_CONSOLE === 'false') {
-      console.log = () => {};
-      console.warn = () => {};
-      console.info = () => {};
-    }
   }
 };
 
 // Error handler for uncaught errors
 const registerErrorHandlers = () => {
-  // Handle unhandled promise rejections
   window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason);
     event.preventDefault();
   });
 
-  // Handle runtime errors
   window.addEventListener('error', (event) => {
     console.error('Runtime error:', event.error);
-  });
-};
-
-// Performance optimizations
-const enablePerformanceOptimizations = () => {
-  // Preload critical resources
-  if ('connection' in navigator && navigator.connection.saveData === true) {
-    console.log('Data saver mode detected - skipping non-critical preloads');
-    return;
-  }
-
-  // Preload critical fonts or assets if needed
-  const preloadLinks = [
-    // Add critical preloads here
-    // { href: '/critical-font.woff2', as: 'font', type: 'font/woff2' }
-  ];
-
-  preloadLinks.forEach(link => {
-    const preloadLink = document.createElement('link');
-    preloadLink.rel = 'preload';
-    preloadLink.href = link.href;
-    preloadLink.as = link.as;
-    if (link.type) preloadLink.type = link.type;
-    preloadLink.crossOrigin = 'anonymous';
-    document.head.appendChild(preloadLink);
   });
 };
 
@@ -104,18 +68,15 @@ const initializeApp = () => {
   try {
     const root = createRoot(rootElement);
 
-    // Render the app with production enhancements
+    // Render the app
     root.render(
       <React.StrictMode>
-        <HelmetProvider>
-          <ErrorBoundary>
-            <App />
-          </ErrorBoundary>
-        </HelmetProvider>
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
       </React.StrictMode>
     );
 
-    // Log successful initialization
     console.log('✅ Assessly application mounted successfully');
 
   } catch (error) {
@@ -150,12 +111,8 @@ const startApplication = () => {
 
   // Wait for DOM to be ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      enablePerformanceOptimizations();
-      initializeApp();
-    });
+    document.addEventListener('DOMContentLoaded', initializeApp);
   } else {
-    enablePerformanceOptimizations();
     initializeApp();
   }
 };
@@ -175,32 +132,3 @@ if (import.meta.env.DEV) {
     import.meta.hot.accept();
   }
 }
-
-/**
- * 📊 Performance Observers (Optional)
- */
-const observePerformance = () => {
-  if ('PerformanceObserver' in window) {
-    // Observe largest contentful paint
-    const lcpObserver = new PerformanceObserver((entryList) => {
-      const entries = entryList.getEntries();
-      const lastEntry = entries[entries.length - 1];
-      console.log('LCP:', lastEntry.startTime);
-    });
-    
-    lcpObserver.observe({ type: 'largest-contentful-paint', buffered: true });
-
-    // Observe first input delay
-    const fidObserver = new PerformanceObserver((entryList) => {
-      const entries = entryList.getEntries();
-      entries.forEach(entry => {
-        console.log('FID:', entry.processingStart - entry.startTime);
-      });
-    });
-    
-    fidObserver.observe({ type: 'first-input', buffered: true });
-  }
-};
-
-// Start performance observation after app loads
-setTimeout(observePerformance, 3000);
