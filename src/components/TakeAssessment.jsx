@@ -29,10 +29,13 @@ export default function TakeAssessment() {
   const navigate = useNavigate();
   const timerRef = useRef(null);
 
+  // ✅ Fixed: Add API base URL
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform.onrender.com/api';
+
   const handleSubmit = useCallback(async () => {
-    if (submitting || !assessment) return; // Add null check for assessment
+    if (submitting || !assessment) return;
     
-    const requiredQuestions = assessment.questions 
+    const requiredQuestions = (assessment.questions || [])
       .map((q, i) => (q.required ? i : null)) 
       .filter(i => i !== null); 
       
@@ -42,9 +45,7 @@ export default function TakeAssessment() {
       (Array.isArray(answers[i]) && answers[i].length === 0) 
     ); 
     
-    // Check for required answers only if time has not run out (to allow auto-submission)
     if (missingAnswers.length > 0 && timeRemaining > 1) { 
-      // FIX: Template literal interpolation
       enqueueSnackbar( 
         `Please answer all required questions (${missingAnswers.map(i => i + 1).join(', ')})`, 
         { variant: 'error' } 
@@ -62,10 +63,11 @@ export default function TakeAssessment() {
       if (!token) throw new Error('Authentication token not found'); 
       
       const durationSeconds = assessment.timeLimitMinutes 
-        ? assessment.timeLimitMinutes * 60 - timeRemaining 
-        : null; // Handle case where timeLimitMinutes is null
+        ? assessment.timeLimitMinutes * 60 - (timeRemaining || 0)
+        : null;
         
-      const response = await fetch(`/api/assessments/${assessmentId}/submit`, { 
+      // ✅ Fixed: Use correct API URL
+      const response = await fetch(`${API_BASE_URL}/assessments/${assessmentId}/submit`, { 
         method: 'POST', 
         headers: { 
           'Content-Type': 'application/json', 
@@ -83,14 +85,14 @@ export default function TakeAssessment() {
       } 
       
       enqueueSnackbar('Assessment submitted successfully!', { variant: 'success' }); 
-      navigate(`/assessments/${assessmentId}/results`); 
+      navigate('/dashboard'); // ✅ Fixed: Navigate to dashboard
     } catch (err) { 
       console.error('Submission error:', err); 
       enqueueSnackbar(`Failed to submit: ${err.message}`, { variant: 'error', autoHideDuration: 5000 }); 
     } finally { 
       setSubmitting(false); 
     } 
-  }, [submitting, assessment, answers, timeRemaining, assessmentId, enqueueSnackbar, navigate]); // FIX: Added 'assessment' to deps
+  }, [submitting, assessment, answers, timeRemaining, assessmentId, enqueueSnackbar, navigate, API_BASE_URL]);
 
   const fetchAssessment = useCallback(async () => {
     setLoading(true);
@@ -98,7 +100,8 @@ export default function TakeAssessment() {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('Authentication token not found');
       
-      const response = await fetch(`/api/assessments/${assessmentId}`, { 
+      // ✅ Fixed: Use correct API URL
+      const response = await fetch(`${API_BASE_URL}/assessments/${assessmentId}`, { 
         method: 'GET', 
         headers: { 'Authorization': `Bearer ${token}` } 
       }); 
@@ -112,30 +115,26 @@ export default function TakeAssessment() {
       setAssessment(data); 
       
       if (data.timeLimitMinutes) { 
-        // Logic to determine time remaining based on when the assessment started
-        const startedAt = new Date(data.startedAt); 
+        const startedAt = new Date(data.startedAt || new Date()); 
         const endTime = new Date(startedAt.getTime() + data.timeLimitMinutes * 60000); 
-        // Ensure timeRemaining is never negative
         setTimeRemaining(Math.max(0, Math.floor((endTime - new Date()) / 1000))); 
       } 
     } catch (err) { 
       console.error('Error loading assessment:', err); 
       enqueueSnackbar('Failed to load assessment', { variant: 'error' }); 
-      navigate('/assessments'); 
+      navigate('/dashboard'); // ✅ Fixed: Navigate to dashboard
     } finally { 
       setLoading(false); 
     } 
-  }, [assessmentId, enqueueSnackbar, navigate]);
+  }, [assessmentId, enqueueSnackbar, navigate, API_BASE_URL]);
 
   useEffect(() => {
     fetchAssessment();
   }, [fetchAssessment]);
 
-  // Timer Effect
   useEffect(() => {
     if (timeRemaining === null || submitting) return;
     
-    // FIX: Template literal interpolation for interval setup
     timerRef.current = timeRemaining > 0 
       ? setInterval(() => { 
           setTimeRemaining(prev => { 
@@ -160,9 +159,9 @@ export default function TakeAssessment() {
   };
 
   const formatTime = (seconds) => {
+    if (seconds === null || seconds === undefined) return '0:00';
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    // FIX: Template literal interpolation
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
@@ -182,8 +181,8 @@ export default function TakeAssessment() {
     );
   }
 
-  const totalDuration = assessment.timeLimitMinutes * 60;
-  const progressValue = totalDuration > 0
+  const totalDuration = (assessment.timeLimitMinutes || 0) * 60;
+  const progressValue = totalDuration > 0 && timeRemaining !== null
     ? 100 - (timeRemaining / totalDuration * 100)
     : 0;
 
@@ -191,7 +190,7 @@ export default function TakeAssessment() {
     <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h4" component="h1" color="primary">
-          {assessment.title}
+          {assessment.title || 'Assessment'}
         </Typography>
         {timeRemaining !== null && ( 
           <Typography variant="h6" color={timeRemaining < 60 ? 'error' : 'textPrimary'}> 
@@ -211,17 +210,16 @@ export default function TakeAssessment() {
         /> 
       )}
       <Divider sx={{ my: 3 }} />
-      {assessment.questions.map((question, qIndex) => (
+      {(assessment.questions || []).map((question, qIndex) => (
         <Box key={`q-${qIndex}`} sx={{ mb: 4 }}>
           <Typography variant="h6" gutterBottom> 
-            {qIndex + 1}. {question.text} 
+            {qIndex + 1}. {question.text || 'Question'} 
             {question.required && ( 
               <Typography component="span" color="error" sx={{ ml: 1 }}> 
-                * </Typography> 
+                * 
+              </Typography> 
             )} 
           </Typography>
-          
-          {/* Answer Inputs based on Type */}
           
           {question.type === 'text' && ( 
             <TextField 
@@ -240,7 +238,7 @@ export default function TakeAssessment() {
               value={answers[qIndex] || ''} 
               onChange={(e) => handleAnswerChange(qIndex, e.target.value)}
             > 
-              {question.options.map((option, oIndex) => ( 
+              {(question.options || []).map((option, oIndex) => ( 
                 <FormControlLabel 
                   key={`opt-${oIndex}`} 
                   value={option} 
@@ -277,7 +275,7 @@ export default function TakeAssessment() {
           
           {question.type === 'file' && ( 
             <Alert severity="info" sx={{ mt: 1 }}> 
-              File upload logic needs a dedicated API endpoint (e.g., S3 or Vercel Blob) 
+              File upload feature coming soon
             </Alert> 
           )} 
         </Box>
@@ -306,6 +304,5 @@ export default function TakeAssessment() {
 }
 
 TakeAssessment.propTypes = {
-  // PropTypes for TakeAssessment are minimal since it uses useParams, 
-  // but if props were passed, they would be defined here.
+  // Component uses useParams, no external props needed
 };
