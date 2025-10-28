@@ -1,11 +1,16 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import React, { Suspense, lazy } from "react";
+import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 
-// Minimal components for testing
+// Simple loading component
+function SimpleLoading() {
+  return <div style={{ padding: '20px' }}>Loading...</div>;
+}
+
+// Test components
 function Home() {
   return (
     <div style={{ padding: '20px' }}>
-      <h1>Home Page - Working!</h1>
+      <h1>Home Page - Testing Components</h1>
       <nav>
         <Link to="/dashboard" style={{ marginRight: '10px' }}>Dashboard</Link>
         <Link to="/create">Create</Link>
@@ -14,37 +19,35 @@ function Home() {
   );
 }
 
-function Dashboard() {
-  return (
-    <div style={{ padding: '20px' }}>
-      <h1>Dashboard Page - Different Content!</h1>
-      <p>If you see this, routing is working.</p>
-      <Link to="/">Back to Home</Link>
-    </div>
-  );
-}
-
-function Create() {
-  return (
-    <div style={{ padding: '20px' }}>
-      <h1>Create Assessment Page</h1>
-      <p>Another different page.</p>
-      <Link to="/">Back to Home</Link>
-    </div>
-  );
-}
-
-function MinimalApp() {
+// Test version - gradually add your components
+function TestApp() {
   return (
     <Router>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/create" element={<Create />} />
-        <Route path="*" element={<h1>404 - Page Not Found</h1>} />
-      </Routes>
+      <Suspense fallback={<SimpleLoading />}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          
+          {/* Test Dashboard with basic version first */}
+          <Route path="/dashboard" element={
+            <div style={{ padding: '20px' }}>
+              <h1>Dashboard - Basic Version</h1>
+              <p>If this works, the issue is in AssessmentDashboard component</p>
+              <Link to="/">Back to Home</Link>
+            </div>
+          } />
+          
+          {/* Test Create with basic version */}
+          <Route path="/create" element={
+            <div style={{ padding: '20px' }}>
+              <h1>Create - Basic Version</h1>
+              <p>If this works, the issue is in CreateAssessment component</p>
+              <Link to="/">Back to Home</Link>
+            </div>
+          } />
+        </Routes>
+      </Suspense>
     </Router>
   );
 }
 
-export default MinimalApp;
+export default TestApp;
