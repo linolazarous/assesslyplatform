@@ -29,7 +29,7 @@ const CreateAssessment = lazyWithRetry(() => import("./components/CreateAssessme
 const TakeAssessment = lazyWithRetry(() => import("./components/TakeAssessment.jsx"));
 const PdfReport = lazyWithRetry(() => import("./components/PdfReport.jsx"));
 const AuthPage = lazyWithRetry(() => import("./pages/Auth.jsx"));
-const LandingScreen = lazyWithRetry(() => import("./pages/Landing/LandingScreen.jsx"));
+const LandingPage = lazyWithRetry(() => import("./pages/LandingPage.jsx")); // ✅ UPDATED: Direct import
 const BillingPage = lazyWithRetry(() => import("./pages/Billing.jsx"));
 const AdminDashboard = lazyWithRetry(() => import("./pages/Admin/Dashboard.jsx"));
 
@@ -139,7 +139,7 @@ export default function App() {
                 {/* Public routes */}
                 <Route path="/" element={
                   <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                    <LandingScreen />
+                    <LandingPage /> {/* ✅ UPDATED: Now using the consolidated LandingPage */}
                   </MainLayoutWrapper>
                 } />
                 
