@@ -23,15 +23,13 @@ import {
   Brightness7 as LightModeIcon,
   AccountCircle as AccountIcon,
   Settings as SettingsIcon,
-  ExitToApp as LogoutIcon,
-  ArrowUpward as ArrowUpwardIcon
+  ExitToApp as LogoutIcon
 } from '@mui/icons-material';
-import { useAuth } from '../../contexts/AuthContext.jsx'; // Using .jsx
+import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
-import { Logo } from '../brand'; // Importing from index.jsx
+import { Logo } from '../brand';
 import PropTypes from 'prop-types';
 
-// Hide AppBar on scroll
 function HideOnScroll({ children }) {
   const trigger = useScrollTrigger();
   return (
@@ -40,59 +38,48 @@ function HideOnScroll({ children }) {
     </Slide>
   );
 }
-
-HideOnScroll.propTypes = {
-  children: PropTypes.element.isRequired,
-};
+HideOnScroll.propTypes = { children: PropTypes.element.isRequired };
 
 export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   const [anchorEl, setAnchorEl] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false); 
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
-  const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
+  const handleMenuOpen = (e) => setAnchorEl(e.currentTarget);
   const handleMenuClose = () => setAnchorEl(null);
-  
-  const handleLogout = () => {
-    handleMenuClose();
-    logout();
-    navigate('/login');
-  };
-  
+  const handleLogout = () => { handleMenuClose(); logout(); navigate('/login'); };
   const handleSearch = (e) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
-    
     navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
     setSearchQuery('');
-    if (isMobile) setIsMobileSearchOpen(false); 
+    if (isMobile) setIsMobileSearchOpen(false);
   };
-  
+
   const userDisplayName = currentUser?.displayName || currentUser?.email || 'Profile';
   const userPhotoURL = currentUser?.photoURL;
 
   return (
     <HideOnScroll>
-      <AppBar 
+      <AppBar
         component="header"
-        className="no-print"
+        position="sticky"
         sx={{
-          backgroundColor: theme.palette.background.paper,
+          bgcolor: theme.palette.background.paper,
           color: theme.palette.text.primary,
           boxShadow: 'none',
           borderBottom: `1px solid ${theme.palette.divider}`,
-          // Fix: Use theme colors defined in theme.jsx
-          bgcolor: theme.palette.background.paper, 
         }}
       >
         <Toolbar sx={{ justifyContent: 'space-between', gap: 2 }}>
-          {/* Left Section - Logo & Mobile Menu */}
+          {/* Left Section: Logo & Mobile Drawer */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            {isMobile && currentUser && ( // Only show drawer icon if logged in
+            {isMobile && currentUser && (
               <IconButton
                 color="inherit"
                 aria-label="open drawer"
@@ -103,14 +90,14 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
               </IconButton>
             )}
             <IconButton onClick={() => navigate('/')} sx={{ p: 0 }} aria-label="Home">
-               <Logo size={isMobile ? 32 : 40} />
+              <Logo size={isMobile ? 32 : 40} />
             </IconButton>
           </Box>
 
-          {/* Middle Section - Search (Desktop) */}
-          {currentUser && !isMobile && ( // Only show search if logged in and desktop
-            <Box 
-              component="form" 
+          {/* Center Section: Search (Desktop) */}
+          {currentUser && !isMobile && (
+            <Box
+              component="form"
               onSubmit={handleSearch}
               sx={{
                 flexGrow: 1,
@@ -118,7 +105,7 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
                 mx: 4,
                 display: 'flex',
                 alignItems: 'center',
-                backgroundColor: theme.palette.action.hover,
+                bgcolor: theme.palette.action.hover,
                 borderRadius: 2,
                 px: 2,
                 py: 0.5
@@ -135,21 +122,19 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
             </Box>
           )}
 
-          {/* Right Section - Controls */}
+          {/* Right Section: Controls */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {/* Dark Mode Toggle */}
-            <IconButton 
-              color="inherit" 
+            <IconButton
+              color="inherit"
               onClick={toggleDarkMode}
               aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
             >
               {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
             </IconButton>
 
-            {/* Mobile Search Toggle */}
             {isMobile && currentUser && (
-              <IconButton 
-                color="inherit" 
+              <IconButton
+                color="inherit"
                 aria-label="Toggle search bar"
                 onClick={() => setIsMobileSearchOpen(prev => !prev)}
               >
@@ -157,7 +142,6 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
               </IconButton>
             )}
 
-            {/* User Menu / Login Button */}
             {currentUser ? (
               <>
                 <IconButton
@@ -169,14 +153,8 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
                   color="inherit"
                 >
                   {userPhotoURL ? (
-                    <Avatar 
-                      src={userPhotoURL} 
-                      alt={userDisplayName}
-                      sx={{ width: 32, height: 32 }}
-                    />
-                  ) : (
-                    <AccountIcon fontSize="medium" />
-                  )}
+                    <Avatar src={userPhotoURL} alt={userDisplayName} sx={{ width: 32, height: 32 }} />
+                  ) : <AccountIcon fontSize="medium" />}
                 </IconButton>
                 <Menu
                   id="user-menu"
@@ -201,19 +179,14 @@ export default function Header({ onDrawerToggle, darkMode, toggleDarkMode }) {
                 </Menu>
               </>
             ) : (
-              <Button 
-                variant="outlined" 
-                color="primary"
-                onClick={() => navigate('/login')}
-                sx={{ ml: 1 }}
-              >
+              <Button variant="outlined" color="primary" onClick={() => navigate('/login')} sx={{ ml: 1 }}>
                 Login
               </Button>
             )}
           </Box>
         </Toolbar>
 
-        {/* Mobile Search Bar (when activated) */}
+        {/* Mobile Search */}
         {isMobile && currentUser && isMobileSearchOpen && (
           <Box sx={{ p: 1, borderTop: `1px solid ${theme.palette.divider}` }}>
             <form onSubmit={handleSearch}>
