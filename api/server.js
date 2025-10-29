@@ -20,7 +20,461 @@ import {
 import User from "./models/User.js";
 import Organization from "./models/Organization.js";
 import Assessment from "./models/Assessment.js";
+// Add these imports at the top of api/server.js
+import cookieParser from 'cookie-parser';
+import stripe from 'stripe';
 
+// Add after your existing imports
+const stripeInstance = stripe(process.env.STRIPE_SECRET_KEY);
+
+// ==============================
+// Add cookie parser middleware (after body parsing)
+// ==============================
+app.use(cookieParser());
+
+// ==============================
+// Add these routes AFTER your existing routes but BEFORE 404 handler
+// ==============================
+
+// ==============================
+// Token Refresh Route
+// ==============================
+app.get("/api/auth/refresh", securityHeaders, async (req, res) => {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+
+    if (!refreshToken) {
+      console.warn("⚠️ No refresh token found in cookies");
+      return res.status(401).json({ error: "No refresh token provided" });
+    }
+
+    // Verify refresh token
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+
+    // Issue new access token
+    const newAccessToken = jwt.sign(
+      {
+        userId: decoded.userId,
+        email: decoded.email,
+        role: decoded.role,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    // Issue new refresh token
+    const newRefreshToken = jwt.sign(
+      {
+        userId: decoded.userId,
+        email: decoded.email,
+        role: decoded.role,
+      },
+      process.env.JWT_REFRESH_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    // Store refresh token in HTTP-only cookie
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    console.log(`✅ Token refreshed for user: ${decoded.email}`);
+
+    res.json({
+      token: newAccessToken,
+      message: "Access token refreshed successfully",
+      code: "TOKEN_REFRESHED"
+    });
+  } catch (error) {
+    console.error("❌ Token refresh failed:", error.message);
+    res.status(401).json({ 
+      error: "Invalid or expired refresh token",
+      code: "REFRESH_TOKEN_INVALID"
+    });
+  }
+});
+
+// ==============================
+// Search Route
+// ==============================
+app.post("/api/search", authenticateToken, securityHeaders, async (req, res) => {
+  try {
+    const { searchTerm, type, limit = 20 } = req.body;
+
+    if (!searchTerm) {
+      return res.status(400).json({ 
+        error: "Search term is required",
+        code: "MISSING_SEARCH_TERM"
+      });
+    }
+
+    let results = [];
+    const searchRegex = new RegExp(searchTerm, 'i');
+
+    if (type === 'assessments') {
+      results = await Assessment.find({
+        $or: [
+          { title: searchRegex },
+          { description: searchRegex }
+        ],
+        $or: [
+          { createdBy: req.user.userId },
+          { organization: { $in: await Organization.find({ owner: req.user.userId }).select('_id') } }
+        ]
+      })
+      .populate('createdBy', 'name email')
+      .populate('organization', 'name')
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    } else if (type === 'questions') {
+      // This is a simplified search - you might need a more complex aggregation
+      const assessments = await Assessment.find({
+        'questions.text': searchRegex,
+        $or: [
+          { createdBy: req.user.userId },
+          { organization: { $in: await Organization.find({ owner: req.user.userId }).select('_id') } }
+        ]
+      })
+      .select('title questions')
+      .limit(limit);
+
+      results = assessments.flatMap(assessment => 
+        assessment.questions
+          .filter(question => question.text.match(searchRegex))
+          .map(question => ({
+            id: question._id,
+            assessmentId: assessment._id,
+            assessmentTitle: assessment.title,
+            text: question.text
+          }))
+      );
+    }
+
+    res.json({
+      results,
+      code: "SEARCH_COMPLETED"
+    });
+  } catch (error) {
+    console.error("Search error:", error);
+    res.status(500).json({ 
+      error: "Search failed",
+      code: "SEARCH_FAILED"
+    });
+  }
+});
+
+// ==============================
+// Billing Routes
+// ==============================
+
+// Create checkout session
+app.post("/api/billing/checkout-session", authenticateToken, securityHeaders, async (req, res) => {
+  try {
+    const { priceId, successUrl, cancelUrl } = req.body;
+
+    // Find user's organization
+    const organization = await Organization.findOne({ owner: req.user.userId });
+    if (!organization) {
+      return res.status(404).json({ 
+        error: "Organization not found",
+        code: "ORGANIZATION_NOT_FOUND"
+      });
+    }
+
+    let customerId = organization.subscription?.stripeCustomerId;
+
+    // Create customer if doesn't exist
+    if (!customerId) {
+      const customer = await stripeInstance.customers.create({
+        email: req.user.email,
+        name: req.user.name,
+        metadata: {
+          userId: req.user.userId,
+          organizationId: organization._id.toString()
+        }
+      });
+      customerId = customer.id;
+
+      // Update organization with customer ID
+      await Organization.findByIdAndUpdate(organization._id, {
+        'subscription.stripeCustomerId': customerId
+      });
+    }
+
+    // Create checkout session
+    const session = await stripeInstance.checkout.sessions.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      mode: 'subscription',
+      success_url: successUrl || `${process.env.CLIENT_URL}/billing/success`,
+      cancel_url: cancelUrl || `${process.env.CLIENT_URL}/billing/cancel`,
+      metadata: {
+        userId: req.user.userId,
+        organizationId: organization._id.toString()
+      }
+    });
+
+    res.json({
+      sessionId: session.id,
+      url: session.url,
+      code: "CHECKOUT_SESSION_CREATED"
+    });
+  } catch (error) {
+    console.error("Checkout session error:", error);
+    res.status(500).json({ 
+      error: "Failed to create checkout session",
+      code: "CHECKOUT_SESSION_FAILED"
+    });
+  }
+});
+
+// Stripe webhook
+app.post("/api/billing/webhook", express.raw({type: 'application/json'}), (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripeInstance.webhooks.constructEvent(req.rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error(`❌ Webhook signature verification failed:`, err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle the event
+  switch (event.type) {
+    case 'checkout.session.completed':
+      const session = event.data.object;
+      handleCheckoutSessionCompleted(session);
+      break;
+    case 'customer.subscription.updated':
+      const subscription = event.data.object;
+      handleSubscriptionUpdated(subscription);
+      break;
+    case 'customer.subscription.deleted':
+      const deletedSubscription = event.data.object;
+      handleSubscriptionDeleted(deletedSubscription);
+      break;
+    default:
+      console.log(`Unhandled event type: ${event.type}`);
+  }
+
+  res.json({received: true});
+});
+
+// Webhook handlers
+const handleCheckoutSessionCompleted = async (session) => {
+  try {
+    const { userId, organizationId } = session.metadata;
+    
+    await Organization.findByIdAndUpdate(organizationId, {
+      'subscription.status': 'active',
+      'subscription.stripeSubscriptionId': session.subscription,
+      'subscription.plan': 'professional', // or determine from price
+      'subscription.currentPeriodEnd': new Date(session.subscription.current_period_end * 1000)
+    });
+
+    console.log(`✅ Subscription activated for organization: ${organizationId}`);
+  } catch (error) {
+    console.error('Error handling checkout session:', error);
+  }
+};
+
+const handleSubscriptionUpdated = async (subscription) => {
+  try {
+    await Organization.findOneAndUpdate(
+      { 'subscription.stripeSubscriptionId': subscription.id },
+      {
+        'subscription.status': subscription.status,
+        'subscription.currentPeriodEnd': new Date(subscription.current_period_end * 1000)
+      }
+    );
+  } catch (error) {
+    console.error('Error updating subscription:', error);
+  }
+};
+
+const handleSubscriptionDeleted = async (subscription) => {
+  try {
+    await Organization.findOneAndUpdate(
+      { 'subscription.stripeSubscriptionId': subscription.id },
+      {
+        'subscription.status': 'canceled',
+        'subscription.plan': 'free'
+      }
+    );
+  } catch (error) {
+    console.error('Error canceling subscription:', error);
+  }
+};
+
+// ==============================
+// Admin Routes (Add these)
+// ==============================
+
+// Admin stats
+app.get("/api/admin/stats", authenticateToken, requireAdmin, securityHeaders, async (req, res) => {
+  try {
+    const [assessments, users, organizations, completions] = await Promise.all([
+      Assessment.countDocuments(),
+      User.countDocuments({ isActive: true }),
+      Organization.countDocuments(),
+      AssessmentResponse.countDocuments({ status: 'completed' })
+    ]);
+
+    res.json({
+      assessments,
+      activeUsers: users,
+      organizations,
+      completions,
+      code: "STATS_RETRIEVED"
+    });
+  } catch (error) {
+    console.error("Admin stats error:", error);
+    res.status(500).json({ 
+      error: "Failed to retrieve admin statistics",
+      code: "STATS_RETRIEVAL_FAILED"
+    });
+  }
+});
+
+// Admin assessments
+app.get("/api/admin/assessments", authenticateToken, requireAdmin, securityHeaders, async (req, res) => {
+  try {
+    const assessments = await Assessment.find()
+      .populate('createdBy', 'name email')
+      .populate('organization', 'name')
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    res.json({
+      assessments,
+      code: "ADMIN_ASSESSMENTS_RETRIEVED"
+    });
+  } catch (error) {
+    console.error("Admin assessments error:", error);
+    res.status(500).json({ 
+      error: "Failed to retrieve admin assessments",
+      code: "ADMIN_ASSESSMENTS_RETRIEVAL_FAILED"
+    });
+  }
+});
+
+// Admin user activity
+app.get("/api/admin/user-activity", authenticateToken, requireAdmin, securityHeaders, async (req, res) => {
+  try {
+    const activities = await UserActivity.find()
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    res.json({
+      activities,
+      code: "USER_ACTIVITY_RETRIEVED"
+    });
+  } catch (error) {
+    console.error("User activity error:", error);
+    res.status(500).json({ 
+      error: "Failed to retrieve user activity",
+      code: "USER_ACTIVITY_RETRIEVAL_FAILED"
+    });
+  }
+});
+
+// ==============================
+// AI Scoring Route
+// ==============================
+app.post("/api/assessments/ai-score", authenticateToken, securityHeaders, async (req, res) => {
+  try {
+    const { text, questionId, assessmentId } = req.body;
+
+    if (!text || !questionId) {
+      return res.status(400).json({ 
+        error: "Text and question ID are required",
+        code: "MISSING_FIELDS"
+      });
+    }
+
+    // Mock AI scoring (replace with actual AI service)
+    const mockAiScore = (text) => {
+      const lengthScore = Math.min(text.length / 150, 1);
+      const keywordScore = ["structure", "analysis", "evidence", "conclusion"].filter(kw => 
+        text.toLowerCase().includes(kw)
+      ).length / 4;
+      
+      const totalScore = Math.round((lengthScore * 0.7 + keywordScore * 0.3) * 100);
+      
+      return {
+        score: totalScore,
+        feedback: [
+          totalScore > 80 ? "AI Analysis: Highly detailed and insightful response." : 
+          totalScore > 50 ? "AI Analysis: Solid content, needs better structural evidence." : 
+          "AI Analysis: Response is minimal; require more depth."
+        ],
+        confidence: 0.95
+      };
+    };
+
+    const result = mockAiScore(text);
+
+    res.json({
+      ...result,
+      code: "AI_SCORE_GENERATED"
+    });
+
+  } catch (error) {
+    console.error("AI scoring error:", error);
+    res.status(500).json({ 
+      error: "Failed to generate AI score",
+      code: "AI_SCORE_FAILED"
+    });
+  }
+});
+
+// ==============================
+// Cron endpoint for expiring subscriptions
+// ==============================
+app.get("/api/cron/expiring-subscriptions", async (req, res) => {
+  // Simple cron endpoint - in production, use actual cron jobs
+  try {
+    const sevenDaysFromNow = new Date();
+    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+    const expiringSubscriptions = await Organization.find({
+      'subscription.currentPeriodEnd': { 
+        $lte: sevenDaysFromNow,
+        $gte: new Date()
+      },
+      'subscription.status': 'active'
+    }).populate('owner', 'email name');
+
+    console.log(`📅 Found ${expiringSubscriptions.length} expiring subscriptions`);
+
+    // Here you would send email notifications
+    // await sendExpirationEmails(expiringSubscriptions);
+
+    res.json({
+      message: `Checked ${expiringSubscriptions.length} expiring subscriptions`,
+      expiringCount: expiringSubscriptions.length,
+      code: "SUBSCRIPTIONS_CHECKED"
+    });
+  } catch (error) {
+    console.error("Cron job error:", error);
+    res.status(500).json({ 
+      error: "Cron job failed",
+      code: "CRON_JOB_FAILED"
+    });
+  }
+});
 // Load environment variables
 dotenv.config();
 
