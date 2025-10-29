@@ -35,34 +35,41 @@ const isProduction = process.env.NODE_ENV === 'production';
 connectDB();
 
 // ==============================
-// 2. Security Middleware
+// 2. CORS Configuration (Updated with environment variable)
 // ==============================
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  contentSecurityPolicy: false, // Disable CSP for API (can be configured later)
-}));
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',') 
+  : [
+      "http://localhost:5173",
+      "http://localhost:3000", 
+      "https://assessly-frontend.onrender.com",
+    ];
 
-// ==============================
-// 3. CORS Configuration
-// ==============================
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:3000",
-  "https://assessly-frontend.onrender.com",
-];
+console.log(`🌐 Allowed CORS origins: ${allowedOrigins.join(', ')}`);
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.warn("⚠️ CORS Blocked:", origin);
-      callback(new Error("Not allowed by CORS"), false);
+      callback(new Error(`Not allowed by CORS. Allowed origins: ${allowedOrigins.join(', ')}`), false);
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+}));
+
+// ==============================
+// 3. Security Middleware
+// ==============================
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false,
 }));
 
 // ==============================
@@ -120,14 +127,17 @@ app.get("/api/health", securityHeaders, (req, res) => {
     timestamp: new Date().toISOString(),
     database: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
     uptime: process.uptime(),
-    version: "1.0.0"
+    version: "1.0.0",
+    cors: {
+      allowedOrigins: allowedOrigins
+    }
   };
 
   res.status(200).json(healthCheck);
 });
 
 // ==============================
-// 7. Authentication Routes
+// 7. Authentication Routes (Updated JWT config)
 // ==============================
 app.post("/api/auth/register", authLimiter, securityHeaders, async (req, res) => {
   try {
@@ -167,7 +177,7 @@ app.post("/api/auth/register", authLimiter, securityHeaders, async (req, res) =>
 
     await user.save();
 
-    // Generate JWT token
+    // Generate JWT token with environment config
     const token = jwt.sign(
       { 
         userId: user._id, 
@@ -175,7 +185,7 @@ app.post("/api/auth/register", authLimiter, securityHeaders, async (req, res) =>
         email: user.email
       },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
     res.status(201).json({
@@ -242,7 +252,7 @@ app.post("/api/auth/login", authLimiter, securityHeaders, async (req, res) => {
     user.lastLogin = new Date();
     await user.save({ validateBeforeSave: false });
 
-    // Generate JWT token
+    // Generate JWT token with environment config
     const token = jwt.sign(
       { 
         userId: user._id, 
@@ -250,7 +260,7 @@ app.post("/api/auth/login", authLimiter, securityHeaders, async (req, res) => {
         email: user.email
       },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
     res.json({
@@ -397,6 +407,14 @@ app.use((err, req, res, next) => {
     });
   }
 
+  // CORS errors
+  if (err.message.includes('CORS')) {
+    return res.status(403).json({
+      error: "CORS policy violation",
+      code: "CORS_ERROR"
+    });
+  }
+
   const statusCode = err.statusCode || 500;
   const message = isProduction && statusCode === 500 
     ? "Internal server error" 
@@ -417,6 +435,8 @@ const server = app.listen(port, "0.0.0.0", () => {
 📍 Port: ${port}
 🌍 Environment: ${process.env.NODE_ENV || 'development'}
 📊 Health: http://localhost:${port}/api/health
+🔑 JWT Expires In: ${process.env.JWT_EXPIRES_IN || '7d'}
+🌐 CORS Origins: ${allowedOrigins.join(', ')}
 🕒 Started: ${new Date().toISOString()}
   `);
 });
