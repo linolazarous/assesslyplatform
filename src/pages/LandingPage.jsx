@@ -9,8 +9,7 @@ import {
   Card,
   CardContent,
   useTheme,
-  useMediaQuery,
-  Chip
+  useMediaQuery
 } from '@mui/material';
 import { 
   People, 
@@ -19,8 +18,10 @@ import {
   Sync, 
   CheckCircle 
 } from '@mui/icons-material';
-import { Logo } from '../components/brand';
 import { useNavigate } from 'react-router-dom';
+import Navbar from '../components/common/Navbar.jsx';
+import Footer from '../components/common/Footer.jsx';
+import { Logo } from '../components/brand';
 
 export default function LandingPage() {
   const theme = useTheme();
@@ -62,6 +63,13 @@ export default function LandingPage() {
     'Certification Tests'
   ];
 
+  const NAVBAR_LINKS = [
+    { label: 'Features', href: '#features' },
+    { label: 'Pricing', href: '/pricing' },
+    { label: 'Documentation', href: 'https://docs.assessly.com', external: true },
+    { label: 'Contact', href: '/contact' },
+  ];
+
   const scrollToFeatures = () => {
     const featuresSection = document.getElementById('features-section');
     if (featuresSection) {
@@ -74,235 +82,225 @@ export default function LandingPage() {
       className="app-container landing-page"
       sx={{ 
         minHeight: '100vh', 
-        bgcolor: theme.palette.background.default,
+        bgcolor: 'background.default',
         display: 'flex',
         flexDirection: 'column',
         width: '100%',
         overflowX: 'hidden'
       }}
     >
-      {/* Hero Section with Video Background */}
+      {/* Navigation */}
+      <Navbar links={NAVBAR_LINKS} />
+
+      {/* Hero Section */}
       <Box
         component="section"
         className="hero-section"
         sx={{
+          background: theme.palette.mode === 'dark' 
+            ? 'linear-gradient(135deg, #0c4a6e 0%, #1e40af 50%, #3730a3 100%)'
+            : 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 50%, #3730a3 100%)',
+          color: 'white',
+          py: { xs: 8, md: 12 },
           position: 'relative',
-          minHeight: { xs: '70vh', md: '80vh' },
-          display: 'flex',
-          alignItems: 'center',
           overflow: 'hidden',
-          background: theme.palette.background.default,
-          width: '100%'
         }}
       >
-        {/* Video Background */}
-        <Box
-          component="video"
-          src="/Assessly.mp4"
-          autoPlay
-          loop
-          muted
-          playsInline
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            zIndex: 0,
-          }}
-        />
-
-        {/* Dark overlay for better text readability */}
+        {/* Background Pattern */}
         <Box
           sx={{
             position: 'absolute',
             top: 0,
             left: 0,
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            right: 0,
+            bottom: 0,
+            background: 'radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%)',
             zIndex: 1,
           }}
         />
 
-        {/* Content */}
         <Container 
-          maxWidth="xl" 
+          maxWidth="lg" 
           className="section-container"
           sx={{ 
             position: 'relative', 
-            zIndex: 2, 
-            width: '100%', 
-            py: 8 
+            zIndex: 2,
+            textAlign: 'center' 
           }}
         >
-          <Grid container spacing={4} alignItems="center">
-            {/* Text Content */}
-            <Grid item xs={12} md={6}>
-              <Box sx={{ textAlign: { xs: 'center', md: 'left' } }}>
-                {/* Logo for mobile */}
-                {isMobile && (
-                  <Box sx={{ mb: 3, display: 'flex', justifyContent: 'center' }}>
-                    <Logo size={60} />
-                  </Box>
-                )}
+          {/* Logo */}
+          <Box sx={{ mb: 4 }}>
+            <Logo size={isMobile ? 60 : 80} variant="light" />
+          </Box>
 
-                <Typography
-                  variant="h1"
-                  sx={{
-                    fontWeight: 800,
-                    mb: 3,
-                    fontSize: { xs: '2.5rem', sm: '3rem', md: '3.5rem' },
-                    lineHeight: 1.1,
-                    color: 'white',
-                    textShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                  }}
-                >
-                  Measure Smarter, Not Harder
-                </Typography>
+          {/* Main Heading */}
+          <Typography
+            variant="h1"
+            sx={{
+              fontWeight: 800,
+              mb: 3,
+              fontSize: { xs: '2.5rem', sm: '3rem', md: '3.5rem' },
+              lineHeight: 1.1,
+              textShadow: '0 2px 4px rgba(0,0,0,0.3)',
+            }}
+          >
+            Measure Smarter,{' '}
+            <Box
+              component="span"
+              sx={{
+                background: 'linear-gradient(45deg, #fbbf24, #f59e0b)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                color: 'transparent',
+              }}
+            >
+              Not Harder
+            </Box>
+          </Typography>
 
-                <Typography
-                  variant="h5"
-                  sx={{
-                    mb: 4,
-                    color: 'rgba(255, 255, 255, 0.9)',
-                    fontSize: { xs: '1.1rem', md: '1.25rem' },
-                    maxWidth: 500,
-                    mx: { xs: 'auto', md: 0 },
-                    textShadow: '0 1px 2px rgba(0,0,0,0.3)',
-                  }}
-                >
-                  From Questions to Insights, Anywhere — A modern assessment SaaS platform.
-                </Typography>
+          {/* Subtitle */}
+          <Typography
+            variant="h5"
+            sx={{
+              mb: 4,
+              opacity: 0.9,
+              fontSize: { xs: '1.1rem', md: '1.25rem' },
+              maxWidth: 600,
+              mx: 'auto',
+              textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+              fontWeight: 400,
+            }}
+          >
+            From Questions to Insights, Anywhere — A modern assessment SaaS platform.
+          </Typography>
 
-                <Box 
-                  sx={{ 
-                    display: 'flex', 
-                    gap: 2, 
-                    justifyContent: { xs: 'center', md: 'flex-start' },
-                    flexWrap: isMobile ? 'wrap' : 'nowrap',
-                    width: '100%'
-                  }}
-                >
-                  <Button
-                    variant="contained"
-                    size="large"
-                    onClick={() => navigate('/auth?tab=signup')}
-                    sx={{ 
-                      px: 4,
-                      py: 1.5,
-                      fontSize: '1.1rem',
-                      fontWeight: 600,
-                      flex: isMobile ? '1 1 100%' : 'none',
-                      minWidth: isMobile ? '200px' : 'auto'
-                    }}
-                  >
-                    Get Started Free
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="large"
-                    onClick={scrollToFeatures}
-                    sx={{
-                      px: 4,
-                      py: 1.5,
-                      fontSize: '1.1rem',
-                      fontWeight: 600,
-                      color: 'white',
-                      borderColor: 'white',
-                      '&:hover': {
-                        borderColor: 'white',
-                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                      },
-                      flex: isMobile ? '1 1 100%' : 'none',
-                      minWidth: isMobile ? '200px' : 'auto'
-                    }}
-                  >
-                    See Features
-                  </Button>
-                </Box>
-              </Box>
-            </Grid>
+          {/* CTA Buttons */}
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              gap: 2, 
+              justifyContent: 'center',
+              flexWrap: 'wrap',
+              mb: 2
+            }}
+          >
+            <Button
+              variant="contained"
+              size="large"
+              onClick={() => navigate('/auth?tab=signup')}
+              sx={{ 
+                px: 4,
+                py: 1.5,
+                fontSize: '1.1rem',
+                fontWeight: 600,
+                backgroundColor: 'white',
+                color: 'primary.main',
+                '&:hover': {
+                  backgroundColor: 'grey.50',
+                  transform: 'translateY(-2px)',
+                  boxShadow: 4,
+                },
+                transition: 'all 0.3s ease',
+                minWidth: { xs: '200px', md: 'auto' }
+              }}
+            >
+              Get Started Free
+            </Button>
+            <Button
+              variant="outlined"
+              size="large"
+              onClick={scrollToFeatures}
+              sx={{
+                px: 4,
+                py: 1.5,
+                fontSize: '1.1rem',
+                fontWeight: 600,
+                color: 'white',
+                borderColor: 'white',
+                '&:hover': {
+                  borderColor: 'white',
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  transform: 'translateY(-2px)',
+                },
+                transition: 'all 0.3s ease',
+                minWidth: { xs: '200px', md: 'auto' }
+              }}
+            >
+              See Features
+            </Button>
+          </Box>
 
-            {/* Video Preview for desktop */}
-            {!isMobile && (
-              <Grid item xs={12} md={6}>
-                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                  <Box
-                    component="video"
-                    src="/Assessly.mp4"
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    sx={{
-                      width: '100%',
-                      maxWidth: 500,
-                      borderRadius: 2,
-                      boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-                      border: `2px solid ${theme.palette.primary.main}`,
-                    }}
-                  />
-                </Box>
-              </Grid>
-            )}
-          </Grid>
+          {/* Trust Indicator */}
+          <Typography
+            variant="body2"
+            sx={{
+              opacity: 0.8,
+              mt: 4,
+            }}
+          >
+            Trusted by 500+ companies worldwide
+          </Typography>
         </Container>
       </Box>
 
       {/* Platform Capabilities Section */}
       <Container 
-        maxWidth="xl" 
+        maxWidth="lg" 
         className="capabilities-section section-container"
         component="section"
         id="features-section"
         sx={{ 
-          py: 10,
+          py: { xs: 8, md: 12 },
           width: '100%'
         }}
       >
         <Typography 
-          variant="h3" 
+          variant="h2" 
           component="h2"
           align="center" 
           sx={{ 
-            mb: 6, 
+            mb: 2, 
             fontWeight: 700,
-            width: '100%'
+            fontSize: { xs: '2rem', md: '2.5rem' }
           }}
         >
           Platform Capabilities
         </Typography>
 
+        <Typography 
+          variant="h6" 
+          align="center" 
+          color="text.secondary"
+          sx={{ mb: 6, maxWidth: 600, mx: 'auto' }}
+        >
+          Everything you need to create, manage, and analyze assessments at scale
+        </Typography>
+
         {/* Core Features Grid */}
-        <Grid container spacing={4} sx={{ mb: 8, width: '100%', margin: 0 }}>
+        <Grid container spacing={4} sx={{ mb: 8 }}>
           {CORE_FEATURES.map((feature, index) => (
-            <Grid item xs={12} sm={6} md={3} key={feature.title} sx={{ display: 'flex' }}>
+            <Grid item xs={12} sm={6} md={3} key={feature.title}>
               <Card 
                 elevation={2}
                 sx={{ 
                   height: '100%',
-                  width: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
                   transition: 'all 0.3s ease',
                   '&:hover': {
-                    transform: 'translateY(-4px)',
-                    boxShadow: theme.shadows[8],
+                    transform: 'translateY(-8px)',
+                    boxShadow: 6,
                   },
+                  border: `1px solid ${theme.palette.divider}`,
                 }}
               >
-                <CardContent sx={{ textAlign: 'center', p: 4, flex: 1 }}>
+                <CardContent sx={{ textAlign: 'center', p: 4 }}>
                   <feature.icon 
                     sx={{ 
                       fontSize: 48, 
                       color: `${feature.color}.main`, 
-                      mb: 2 
+                      mb: 3,
                     }} 
                   />
-                  <Typography variant="h6" fontWeight="bold" gutterBottom>
+                  <Typography variant="h5" fontWeight="bold" gutterBottom>
                     {feature.title}
                   </Typography>
                   <Typography color="text.secondary" sx={{ lineHeight: 1.6 }}>
@@ -315,47 +313,59 @@ export default function LandingPage() {
         </Grid>
 
         {/* Additional Features */}
-        <Grid container spacing={4} alignItems="stretch" sx={{ width: '100%', margin: 0 }}>
+        <Grid container spacing={4} alignItems="stretch">
           {/* Assessment Types */}
-          <Grid item xs={12} md={5}>
+          <Grid item xs={12} md={6}>
             <Card 
               elevation={2}
               sx={{ 
                 height: '100%',
-                p: 4, 
-                borderRadius: 2 
+                p: 4,
+                border: `1px solid ${theme.palette.divider}`,
               }}
             >
-              <Typography variant="h5" fontWeight="bold" sx={{ mb: 3 }}>
+              <Typography variant="h4" fontWeight="bold" sx={{ mb: 3 }}>
                 Diverse Assessment Types
+              </Typography>
+              <Typography color="text.secondary" sx={{ mb: 3 }}>
+                Support for various assessment formats to meet your specific needs
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                 {ASSESSMENT_TYPES.map(type => (
-                  <Chip 
-                    key={type} 
-                    label={type} 
-                    icon={<CheckCircle fontSize="small" />} 
-                    color="secondary" 
-                    variant="outlined" 
-                    sx={{ mb: 1 }} 
-                  />
+                  <Box
+                    key={type}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      bgcolor: 'primary.light',
+                      color: 'primary.contrastText',
+                      px: 2,
+                      py: 1,
+                      borderRadius: 2,
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
+                    }}
+                  >
+                    <CheckCircle sx={{ fontSize: 16, mr: 1 }} />
+                    {type}
+                  </Box>
                 ))}
               </Box>
             </Card>
           </Grid>
 
           {/* Assessment Lifecycle */}
-          <Grid item xs={12} md={7}>
+          <Grid item xs={12} md={6}>
             <Card 
               elevation={2}
               sx={{ 
                 height: '100%',
-                p: 4, 
-                borderRadius: 2 
+                p: 4,
+                border: `1px solid ${theme.palette.divider}`,
               }}
             >
-              <Typography variant="h5" fontWeight="bold" sx={{ mb: 3 }}>
-                Assessment Lifecycle
+              <Typography variant="h4" fontWeight="bold" sx={{ mb: 3 }}>
+                Complete Assessment Lifecycle
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {[
@@ -365,15 +375,28 @@ export default function LandingPage() {
                   "Generate Reports (PDF & actionable data)",
                   "Analyze Insights (Data-driven decisions)"
                 ].map((step, i) => (
-                  <Box key={i} sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Typography 
-                      variant="h4" 
-                      color="primary" 
-                      sx={{ fontWeight: 'bold', mr: 2, minWidth: '40px' }}
+                  <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                    <Box
+                      sx={{
+                        bgcolor: 'primary.main',
+                        color: 'white',
+                        borderRadius: '50%',
+                        width: 24,
+                        height: 24,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        flexShrink: 0,
+                        mt: 0.25,
+                      }}
                     >
-                      {i + 1}.
+                      {i + 1}
+                    </Box>
+                    <Typography variant="body1" sx={{ lineHeight: 1.5 }}>
+                      {step}
                     </Typography>
-                    <Typography variant="body1">{step}</Typography>
                   </Box>
                 ))}
               </Box>
@@ -386,18 +409,18 @@ export default function LandingPage() {
       <Box 
         className="section-container"
         sx={{ 
-          py: 12, 
-          bgcolor: theme.palette.background.paper,
+          py: { xs: 8, md: 12 }, 
+          bgcolor: 'background.paper',
           width: '100%'
         }} 
         component="section"
       >
-        <Container maxWidth="md" sx={{ textAlign: 'center', width: '100%' }}>
-          <Typography variant="h3" component="h2" sx={{ mb: 3, fontWeight: 700 }}>
+        <Container maxWidth="md" sx={{ textAlign: 'center' }}>
+          <Typography variant="h2" sx={{ mb: 3, fontWeight: 700 }}>
             Ready to Transform Your Assessments?
           </Typography>
           <Typography variant="h6" color="text.secondary" sx={{ mb: 5 }}>
-            Join Assessly today and start building reliable, actionable assessments.
+            Join thousands of organizations using Assessly to make data-driven decisions.
           </Typography>
           <Button 
             variant="contained" 
@@ -406,14 +429,35 @@ export default function LandingPage() {
               px: 6, 
               py: 1.5, 
               fontSize: '1.1rem',
-              minWidth: '200px'
+              fontWeight: 600,
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: 4,
+              },
+              transition: 'all 0.3s ease',
             }}
             onClick={() => navigate('/auth?tab=signup')}
           >
             Start Your Free Trial
           </Button>
+          
+          {/* Additional Info */}
+          <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center', gap: 4, flexWrap: 'wrap' }}>
+            <Typography variant="body2" color="text.secondary">
+              ✅ No credit card required
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              🚀 Free 14-day trial
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              💬 24/7 Support
+            </Typography>
+          </Box>
         </Container>
       </Box>
+
+      {/* Footer */}
+      <Footer />
 
       {/* Scroll-to-Top Button */}
       <Box
@@ -434,7 +478,12 @@ export default function LandingPage() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          '&:hover': { bgcolor: 'primary.dark' },
+          '&:hover': { 
+            bgcolor: 'primary.dark',
+            transform: 'translateY(-2px)',
+            boxShadow: 6,
+          },
+          transition: 'all 0.3s ease',
           zIndex: 999,
         }}
         aria-label="Scroll to top"
@@ -443,4 +492,4 @@ export default function LandingPage() {
       </Box>
     </Box>
   );
-                                           }
+}
