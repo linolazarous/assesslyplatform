@@ -3,29 +3,20 @@ import mongoose from "mongoose";
 
 const connectDB = async () => {
   try {
-    // Use MONGO_URI from environment variables
-    const mongoUri = process.env.MONGO_URI || process.env.DATABASE_URL;
+    const mongoUri = process.env.MONGO_URI;
     
     if (!mongoUri) {
-      throw new Error("MONGO_URI or DATABASE_URL environment variable is required");
+      throw new Error("MONGO_URI environment variable is required");
     }
 
-    console.log(`🔗 Connecting to MongoDB: ${mongoUri.split('@')[1] || mongoUri}`);
+    console.log(`🔗 Connecting to MongoDB...`);
 
-    const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
-      maxPoolSize: 10,
-      minPoolSize: 5,
-    };
-
-    await mongoose.connect(mongoUri, options);
+    // Modern mongoose connection - no deprecated options needed
+    await mongoose.connect(mongoUri);
     
     console.log("✅ MongoDB Connected Successfully");
     
-    // Event handlers for production monitoring
+    // Event handlers for monitoring
     mongoose.connection.on('connected', () => {
       console.log('✅ MongoDB connected');
     });
