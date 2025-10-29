@@ -33,6 +33,91 @@ const stripeInstance = stripe(process.env.STRIPE_SECRET_KEY);
 app.use(cookieParser());
 
 // ==============================
+// Organization Routes
+// ==============================
+
+// Get organization details
+app.get("/api/organizations/:orgId", authenticateToken, securityHeaders, async (req, res) => {
+  try {
+    const { orgId } = req.params;
+
+    // Verify user has access to this organization
+    const organization = await Organization.findOne({ 
+      _id: orgId,
+      $or: [
+        { owner: req.user.userId },
+        { 'members.user': req.user.userId }
+      ]
+    }).populate('owner', 'name email')
+      .populate('members.user', 'name email role');
+
+    if (!organization) {
+      return res.status(404).json({
+        error: "Organization not found or access denied",
+        code: "ORGANIZATION_NOT_FOUND"
+      });
+    }
+
+    res.json({
+      organization: {
+        id: organization._id,
+        name: organization.name,
+        slug: organization.slug,
+        owner: organization.owner,
+        members: organization.members,
+        subscription: organization.subscription,
+        settings: organization.settings,
+        createdAt: organization.createdAt
+      },
+      code: "ORGANIZATION_RETRIEVED"
+    });
+  } catch (error) {
+    console.error("Organization fetch error:", error);
+    res.status(500).json({
+      error: "Failed to retrieve organization",
+      code: "ORGANIZATION_RETRIEVAL_FAILED"
+    });
+  }
+});
+
+// Get user's organizations
+app.get("/api/organizations", authenticateToken, securityHeaders, async (req, res) => {
+  try {
+    const organizations = await Organization.find({
+      $or: [
+        { owner: req.user.userId },
+        { 'members.user': req.user.userId }
+      ]
+    })
+    .populate('owner', 'name email')
+    .populate('members.user', 'name email role')
+    .sort({ createdAt: -1 });
+
+    res.json({
+      organizations: organizations.map(org => ({
+        id: org._id,
+        name: org.name,
+        slug: org.slug,
+        owner: org.owner,
+        role: org.owner._id.toString() === req.user.userId ? 'owner' : 
+              org.members.find(m => m.user._id.toString() === req.user.userId)?.role || 'member',
+        subscription: org.subscription,
+        memberCount: org.members.length + 1, // +1 for owner
+        createdAt: org.createdAt
+      })),
+      code: "ORGANIZATIONS_RETRIEVED"
+    });
+  } catch (error) {
+    console.error("Organizations fetch error:", error);
+    res.status(500).json({
+      error: "Failed to retrieve organizations",
+      code: "ORGANIZATIONS_RETRIEVAL_FAILED"
+    });
+  }
+});
+
+
+// ==============================
 // Add these routes AFTER your existing routes but BEFORE 404 handler
 // ==============================
 
