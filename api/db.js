@@ -3,9 +3,14 @@ import mongoose from "mongoose";
 
 const connectDB = async () => {
   try {
-    if (!process.env.MONGO_URI) {
-      throw new Error("MONGO_URI environment variable is required");
+    // Use MONGO_URI from environment variables
+    const mongoUri = process.env.MONGO_URI || process.env.DATABASE_URL;
+    
+    if (!mongoUri) {
+      throw new Error("MONGO_URI or DATABASE_URL environment variable is required");
     }
+
+    console.log(`🔗 Connecting to MongoDB: ${mongoUri.split('@')[1] || mongoUri}`);
 
     const options = {
       useNewUrlParser: true,
@@ -16,7 +21,7 @@ const connectDB = async () => {
       minPoolSize: 5,
     };
 
-    await mongoose.connect(process.env.MONGO_URI, options);
+    await mongoose.connect(mongoUri, options);
     
     console.log("✅ MongoDB Connected Successfully");
     
