@@ -9,7 +9,7 @@ import compression from "compression";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
-import stripePackage from "stripe";
+import Stripe from "stripe"; // ✅ Correct import
 
 // Database and Models
 import connectDB from "./db.js";
@@ -32,7 +32,7 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
-const stripeInstance = stripePackage(process.env.STRIPE_SECRET_KEY);
+const stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY); // ✅ Correct initialization
 
 // ==============================
 // 1. Database Connection
