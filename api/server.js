@@ -880,6 +880,300 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Add these constants at the top of api/server.js (after imports)
+const SUBSCRIPTION_PLANS = {
+  basic: {
+    name: 'Basic',
+    price: 0,
+    stripePriceId: process.env.STRIPE_BASIC_PRICE_ID, // You'll set this in env
+    features: [
+      'Up to 10 assessments',
+      'Basic analytics',
+      'Email support',
+      '1 organization'
+    ],
+    limits: {
+      assessments: 10,
+      users: 5,
+      storage: '1GB'
+    }
+  },
+  professional: {
+    name: 'Professional', 
+    price: 50,
+    stripePriceId: process.env.STRIPE_PROFESSIONAL_PRICE_ID,
+    features: [
+      'Unlimited assessments',
+      'Advanced analytics',
+      'Priority support',
+      'Multiple organizations',
+      'Custom branding',
+      'API access'
+    ],
+    limits: {
+      assessments: -1, // -1 means unlimited
+      users: 50,
+      storage: '10GB'
+    }
+  },
+  enterprise: {
+    name: 'Enterprise',
+    price: 100,
+    stripePriceId: process.env.STRIPE_ENTERPRISE_PRICE_ID,
+    features: [
+      'Everything in Professional',
+      'Dedicated account manager',
+      'SLA guarantee',
+      'Custom integrations',
+      'On-premise deployment',
+      'White-label solution'
+    ],
+    limits: {
+      assessments: -1,
+      users: -1,
+      storage: '100GB'
+    }
+  }
+};
+
+// ==============================
+// Subscription Management Routes
+// ==============================
+
+// Get available subscription plans
+app.get("/api/subscriptions/plans", securityHeaders, (req, res) => {
+  res.json({
+    plans: SUBSCRIPTION_PLANS,
+    code: "PLANS_RETRIEVED"
+  });
+});
+
+// Get organization's current subscription
+app.get("/api/subscriptions/current", authenticateToken, securityHeaders, async (req, res) => {
+  try {
+    const organization = await Organization.findOne({ owner: req.user.userId })
+      .populate('owner', 'name email');
+    
+    if (!organization) {
+      return res.status(404).json({
+        error: "Organization not found",
+        code: "ORGANIZATION_NOT_FOUND"
+      });
+    }
+
+    const currentPlan = SUBSCRIPTION_PLANS[organization.subscription.plan] || SUBSCRIPTION_PLANS.basic;
+    
+    res.json({
+      subscription: organization.subscription,
+      plan: currentPlan,
+      usage: await getOrganizationUsage(organization._id),
+      code: "SUBSCRIPTION_RETRIEVED"
+    });
+  } catch (error) {
+    console.error("Subscription retrieval error:", error);
+    res.status(500).json({
+      error: "Failed to retrieve subscription",
+      code: "SUBSCRIPTION_RETRIEVAL_FAILED"
+    });
+  }
+});
+
+// Update checkout session to handle free plan
+app.post("/api/billing/checkout-session", authenticateToken, securityHeaders, async (req, res) => {
+  try {
+    const { priceId, plan, successUrl, cancelUrl } = req.body;
+
+    // Handle free plan (no Stripe payment needed)
+    if (plan === 'basic') {
+      const organization = await Organization.findOne({ owner: req.user.userId });
+      if (organization) {
+        // Update to basic plan immediately
+        await Organization.findByIdAndUpdate(organization._id, {
+          'subscription.plan': 'basic',
+          'subscription.status': 'active'
+        });
+
+        return res.json({
+          sessionId: null,
+          url: successUrl || `${process.env.CLIENT_URL}/billing/success`,
+          isFree: true,
+          code: "FREE_PLAN_ACTIVATED"
+        });
+      }
+    }
+
+    // Paid plans - create Stripe checkout session
+    const organization = await Organization.findOne({ owner: req.user.userId });
+    if (!organization) {
+      return res.status(404).json({ 
+        error: "Organization not found",
+        code: "ORGANIZATION_NOT_FOUND"
+      });
+    }
+
+    let customerId = organization.subscription?.stripeCustomerId;
+
+    // Create customer if doesn't exist
+    if (!customerId) {
+      const customer = await stripeInstance.customers.create({
+        email: req.user.email,
+        name: req.user.name,
+        metadata: {
+          userId: req.user.userId,
+          organizationId: organization._id.toString()
+        }
+      });
+      customerId = customer.id;
+
+      await Organization.findByIdAndUpdate(organization._id, {
+        'subscription.stripeCustomerId': customerId
+      });
+    }
+
+    const session = await stripeInstance.checkout.sessions.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      mode: 'subscription',
+      success_url: successUrl || `${process.env.CLIENT_URL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: cancelUrl || `${process.env.CLIENT_URL}/billing`,
+      metadata: {
+        userId: req.user.userId,
+        organizationId: organization._id.toString(),
+        plan: plan
+      },
+      subscription_data: {
+        metadata: {
+          organizationId: organization._id.toString(),
+          plan: plan
+        }
+      }
+    });
+
+    res.json({
+      sessionId: session.id,
+      url: session.url,
+      isFree: false,
+      code: "CHECKOUT_SESSION_CREATED"
+    });
+  } catch (error) {
+    console.error("Checkout session error:", error);
+    res.status(500).json({ 
+      error: "Failed to create checkout session",
+      code: "CHECKOUT_SESSION_FAILED"
+    });
+  }
+});
+
+// Create customer portal session
+app.post("/api/billing/portal-session", authenticateToken, securityHeaders, async (req, res) => {
+  try {
+    const { returnUrl } = req.body;
+
+    const organization = await Organization.findOne({ owner: req.user.userId });
+    if (!organization?.subscription?.stripeCustomerId) {
+      return res.status(404).json({
+        error: "No active subscription found",
+        code: "NO_SUBSCRIPTION_FOUND"
+      });
+    }
+
+    const session = await stripeInstance.billingPortal.sessions.create({
+      customer: organization.subscription.stripeCustomerId,
+      return_url: returnUrl || `${process.env.CLIENT_URL}/billing`
+    });
+
+    res.json({
+      url: session.url,
+      code: "PORTAL_SESSION_CREATED"
+    });
+  } catch (error) {
+    console.error("Portal session error:", error);
+    res.status(500).json({
+      error: "Failed to create portal session",
+      code: "PORTAL_SESSION_FAILED"
+    });
+  }
+});
+
+// Check subscription limits
+app.get("/api/subscriptions/limits", authenticateToken, securityHeaders, async (req, res) => {
+  try {
+    const organization = await Organization.findOne({ owner: req.user.userId });
+    if (!organization) {
+      return res.status(404).json({
+        error: "Organization not found",
+        code: "ORGANIZATION_NOT_FOUND"
+      });
+    }
+
+    const currentPlan = SUBSCRIPTION_PLANS[organization.subscription.plan] || SUBSCRIPTION_PLANS.basic;
+    const usage = await getOrganizationUsage(organization._id);
+
+    res.json({
+      plan: currentPlan,
+      usage: usage,
+      canCreateAssessment: canCreateAssessment(usage.assessmentsCount, currentPlan.limits.assessments),
+      canAddUser: canAddUser(usage.usersCount, currentPlan.limits.users),
+      code: "LIMITS_RETRIEVED"
+    });
+  } catch (error) {
+    console.error("Limits check error:", error);
+    res.status(500).json({
+      error: "Failed to check subscription limits",
+      code: "LIMITS_CHECK_FAILED"
+    });
+  }
+});
+
+// ==============================
+// Helper Functions
+// ==============================
+
+const getOrganizationUsage = async (organizationId) => {
+  const [assessmentsCount, usersCount] = await Promise.all([
+    Assessment.countDocuments({ organization: organizationId }),
+    User.countDocuments({ organization: organizationId, isActive: true })
+  ]);
+
+  return {
+    assessmentsCount,
+    usersCount
+  };
+};
+
+const canCreateAssessment = (currentCount, limit) => {
+  return limit === -1 || currentCount < limit;
+};
+
+const canAddUser = (currentCount, limit) => {
+  return limit === -1 || currentCount < limit;
+};
+
+// Update webhook handler to set correct plan
+const handleCheckoutSessionCompleted = async (session) => {
+  try {
+    const { userId, organizationId, plan } = session.metadata;
+    const selectedPlan = plan || 'professional'; // Default to professional if not specified
+    
+    await Organization.findByIdAndUpdate(organizationId, {
+      'subscription.status': 'active',
+      'subscription.plan': selectedPlan,
+      'subscription.stripeSubscriptionId': session.subscription,
+      'subscription.currentPeriodEnd': new Date(session.subscription.current_period_end * 1000)
+    });
+
+    console.log(`✅ ${selectedPlan} subscription activated for organization: ${organizationId}`);
+  } catch (error) {
+    console.error('Error handling checkout session:', error);
+  }
+};
+
 // ==============================
 // 11. Start Server
 // ==============================
