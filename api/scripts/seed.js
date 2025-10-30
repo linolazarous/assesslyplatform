@@ -11,7 +11,6 @@ const seedDatabase = async () => {
   try {
     console.log('🌱 Starting database seeding...');
     
-    // Use MONGODB_URI instead of MONGO_URI to match your environment variable
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('✅ Connected to database');
 
@@ -44,13 +43,13 @@ const seedDatabase = async () => {
     // Create default organization for admin - FIXED: Provide initial slug
     const organization = new Organization({
       name: 'Assessly Headquarters',
-      slug: 'assessly-headquarters', // ADDED: Initial slug to pass validation
+      slug: 'assessly-headquarters',
       description: 'Default organization for system administrator',
       owner: admin._id,
       subscription: {
         plan: 'enterprise',
         status: 'active',
-        currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year from now
+        currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
       }
     });
 
@@ -122,7 +121,7 @@ const seedDatabaseWithOptions = async (options = {}) => {
     // Create organization - FIXED: Provide initial slug
     const organization = new Organization({
       name: organizationName,
-      slug: slugify(organizationName, { lower: true, strict: true }), // ADDED: Generate slug
+      slug: slugify(organizationName, { lower: true, strict: true }),
       description: `Default organization for ${adminName}`,
       owner: admin._id,
       subscription: {
