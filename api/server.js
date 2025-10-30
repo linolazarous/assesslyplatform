@@ -28,6 +28,26 @@ import UserActivity from "./models/UserActivity.js";
 // Load environment variables
 dotenv.config();
 
+// Add this after database connection in server.js
+const seedIfNeeded = async () => {
+  try {
+    const adminExists = await User.findOne({ email: 'admin@assessly.com' });
+    if (!adminExists && process.env.AUTO_SEED === 'true') {
+      console.log('🌱 Auto-seeding database...');
+      const { seedDatabase } = await import('./scripts/seed.js');
+      await seedDatabase();
+    }
+  } catch (error) {
+    console.error('Auto-seeding failed:', error);
+  }
+};
+
+// Call it after database connection
+connectDB().then(() => {
+  console.log('✅ Database connection established');
+  seedIfNeeded();
+});
+
 // Initialize Express app
 const app = express();
 const port = process.env.PORT || 3000;
