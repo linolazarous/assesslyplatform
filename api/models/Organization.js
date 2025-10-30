@@ -13,14 +13,14 @@ const organizationSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    lowercase: true,
-    index: true
+    lowercase: true
+    // REMOVED: index: true to avoid duplicate indexes
   },
   owner: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
-    index: true
+    required: true
+    // REMOVED: index: true to avoid duplicate indexes
   },
   members: [{
     user: {
@@ -54,12 +54,12 @@ const organizationSchema = new mongoose.Schema({
       default: 'active'
     },
     stripeCustomerId: {
-      type: String,
-      index: true
+      type: String
+      // REMOVED: index: true to avoid duplicate indexes
     },
     stripeSubscriptionId: {
-      type: String,
-      index: true
+      type: String
+      // REMOVED: index: true to avoid duplicate indexes
     },
     currentPeriodStart: Date,
     currentPeriodEnd: Date,
@@ -125,9 +125,9 @@ const organizationSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Generate slug before saving
+// Generate slug before saving - ENHANCED VERSION
 organizationSchema.pre('save', function(next) {
-  if (this.isModified('name') && !this.slug) {
+  if (this.isModified('name') || !this.slug) {
     this.slug = slugify(this.name, {
       lower: true,
       strict: true,
@@ -137,11 +137,13 @@ organizationSchema.pre('save', function(next) {
   next();
 });
 
-// Indexes for better performance
+// SINGLE SET OF INDEXES - No duplicates
 organizationSchema.index({ slug: 1 });
 organizationSchema.index({ owner: 1 });
 organizationSchema.index({ 'members.user': 1 });
 organizationSchema.index({ 'subscription.plan': 1, 'subscription.status': 1 });
+organizationSchema.index({ 'subscription.stripeCustomerId': 1 });
+organizationSchema.index({ 'subscription.stripeSubscriptionId': 1 });
 
 // Virtual for member count (including owner)
 organizationSchema.virtual('totalMembers').get(function() {
@@ -171,6 +173,17 @@ organizationSchema.methods.getUserRole = function(userId) {
 // Static method to find organizations by plan
 organizationSchema.statics.findByPlan = function(plan) {
   return this.find({ 'subscription.plan': plan });
+};
+
+// Static method to find organization by slug
+organizationSchema.statics.findBySlug = function(slug) {
+  return this.findOne({ slug }).populate('owner', 'name email').populate('members.user', 'name email');
+};
+
+// Static method to check if slug exists
+organizationSchema.statics.slugExists = async function(slug) {
+  const count = await this.countDocuments({ slug });
+  return count > 0;
 };
 
 export default mongoose.model('Organization', organizationSchema);
