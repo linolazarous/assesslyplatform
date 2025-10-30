@@ -14,13 +14,11 @@ const organizationSchema = new mongoose.Schema({
     required: true,
     unique: true,
     lowercase: true
-    // REMOVED: index: true to avoid duplicate indexes
   },
   owner: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
-    // REMOVED: index: true to avoid duplicate indexes
   },
   members: [{
     user: {
@@ -55,11 +53,9 @@ const organizationSchema = new mongoose.Schema({
     },
     stripeCustomerId: {
       type: String
-      // REMOVED: index: true to avoid duplicate indexes
     },
     stripeSubscriptionId: {
       type: String
-      // REMOVED: index: true to avoid duplicate indexes
     },
     currentPeriodStart: Date,
     currentPeriodEnd: Date,
@@ -100,7 +96,7 @@ const organizationSchema = new mongoose.Schema({
         default: false
       },
       sessionTimeout: {
-        type: Number, // in minutes
+        type: Number,
         default: 120
       }
     }
@@ -125,7 +121,7 @@ const organizationSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Generate slug before saving - ENHANCED VERSION
+// Generate slug before saving
 organizationSchema.pre('save', function(next) {
   if (this.isModified('name') || !this.slug) {
     this.slug = slugify(this.name, {
@@ -147,7 +143,7 @@ organizationSchema.index({ 'subscription.stripeSubscriptionId': 1 });
 
 // Virtual for member count (including owner)
 organizationSchema.virtual('totalMembers').get(function() {
-  return this.members.length + 1; // +1 for owner
+  return this.members.length + 1;
 });
 
 // Virtual for active subscription
