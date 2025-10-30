@@ -14,7 +14,8 @@ import {
   Divider,
 } from "@mui/material";
 import { Menu as MenuIcon } from "@mui/icons-material";
-import Logo from "../brand/Logo.jsx"; // ✅ Correct, case-sensitive import
+import { useNavigate, useLocation } from "react-router-dom"; // ✅ Added for proper navigation
+import Logo from "../brand/Logo.jsx";
 
 /**
  * Navbar Component
@@ -24,15 +25,42 @@ import Logo from "../brand/Logo.jsx"; // ✅ Correct, case-sensitive import
  */
 function Navbar({ links = [] }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const navigate = useNavigate(); // ✅ Added for proper navigation
+  const location = useLocation(); // ✅ Added to track current page
 
   const handleDrawerToggle = () => setMobileOpen((prev) => !prev);
 
   const handleNavigate = (href) => {
-    if (href.startsWith("http")) {
-      window.open(href, "_blank");
+    if (href.startsWith("http") || href.startsWith("#")) {
+      // External links or anchor links
+      if (href.startsWith("http")) {
+        window.open(href, "_blank");
+      } else if (href.startsWith("#")) {
+        // Handle anchor links (like #features-section)
+        if (location.pathname === "/") {
+          // If we're already on home page, scroll to section
+          const sectionId = href.substring(1);
+          const element = document.getElementById(sectionId);
+          if (element) {
+            element.scrollIntoView({ behavior: "smooth" });
+          }
+        } else {
+          // If we're on another page, navigate to home then scroll
+          navigate("/");
+          setTimeout(() => {
+            const sectionId = href.substring(1);
+            const element = document.getElementById(sectionId);
+            if (element) {
+              element.scrollIntoView({ behavior: "smooth" });
+            }
+          }, 100);
+        }
+      }
     } else {
-      window.location.href = href;
+      // Internal navigation
+      navigate(href);
     }
+    setMobileOpen(false);
   };
 
   const drawerContent = (
@@ -57,10 +85,7 @@ function Navbar({ links = [] }) {
         {links.map((link, idx) => (
           <ListItem
             key={idx}
-            onClick={() => {
-              handleNavigate(link.href);
-              setMobileOpen(false);
-            }}
+            onClick={() => handleNavigate(link.href)}
             sx={{
               cursor: "pointer",
               "&:hover": { backgroundColor: "action.hover" },
@@ -112,7 +137,7 @@ function Navbar({ links = [] }) {
               alignItems="center"
               gap={1.2}
               sx={{ cursor: "pointer" }}
-              onClick={() => handleNavigate("/")}
+              onClick={() => navigate("/")} // ✅ Updated to use navigate
             >
               <Logo size={34} />
               <Typography
