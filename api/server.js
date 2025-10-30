@@ -12,15 +12,15 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-const MONGO_URI = process.env.MONGO_URI;
+const MONGODB_URI = process.env.MONGODB_URI; // Changed from MONGO_URI to MONGODB_URI
 const AUTO_SEED = process.env.AUTO_SEED === 'true';
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [];
 
 // ─────────────────────────────────────────────
 // Validate essential environment variables
 // ─────────────────────────────────────────────
-if (!MONGO_URI) {
-  console.error(chalk.red('❌ Missing required environment variable: MONGO_URI'));
+if (!MONGODB_URI) { // Changed from MONGO_URI to MONGODB_URI
+  console.error(chalk.red('❌ Missing required environment variable: MONGODB_URI'));
   process.exit(1);
 }
 
@@ -71,7 +71,7 @@ async function startServer() {
 
   try {
     // Modern MongoDB connection (remove deprecated options)
-    const conn = await mongoose.connect(MONGO_URI);
+    const conn = await mongoose.connect(MONGODB_URI); // Changed from MONGO_URI to MONGODB_URI
     
     console.log(chalk.green('✅ MongoDB connected successfully'));
     console.log(chalk.gray(`📡 Database: ${conn.connection.name}`));
@@ -91,7 +91,7 @@ async function startServer() {
   } catch (err) {
     console.error(chalk.red('❌ Failed to start server:'), err.message);
     console.log(chalk.yellow('🔧 Troubleshooting tips:'));
-    console.log(chalk.yellow('   1. Check if MONGO_URI environment variable is set correctly'));
+    console.log(chalk.yellow('   1. Check if MONGODB_URI environment variable is set correctly'));
     console.log(chalk.yellow('   2. Verify MongoDB Atlas network access (IP whitelist)'));
     console.log(chalk.yellow('   3. Check if MongoDB Atlas cluster is running'));
     process.exit(1);
