@@ -5,8 +5,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import chalk from 'chalk';
 import dotenv from 'dotenv';
-import routes from './routes/index.js'; // Fixed path
-import { seedDatabase } from './utils/seedDatabase.js'; // Fixed path
+import routes from './routes/index.js';
+import { seedDatabase } from './utils/seedDatabase.js';
 
 dotenv.config();
 
@@ -27,8 +27,8 @@ if (!MONGO_URI) {
 // ─────────────────────────────────────────────
 // Middleware setup
 // ─────────────────────────────────────────────
-app.use(helmet()); // Security headers
-app.use(express.json({ limit: '10mb' })); // Parse JSON with size limit
+app.use(helmet());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(
   cors({
@@ -36,7 +36,7 @@ app.use(
     credentials: true,
   })
 );
-app.use(morgan('combined')); // Production logging format
+app.use(morgan('combined'));
 
 // ─────────────────────────────────────────────
 // Health & Debug Endpoints
@@ -70,13 +70,12 @@ async function startServer() {
   console.log(chalk.cyan('\n🚀 Starting Assessly Backend Server...\n'));
 
   try {
-    const conn = await mongoose.connect(MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-
+    // Modern MongoDB connection (remove deprecated options)
+    const conn = await mongoose.connect(MONGO_URI);
+    
     console.log(chalk.green('✅ MongoDB connected successfully'));
-    console.log(chalk.gray(`📡 Host: ${conn.connection.host}`));
+    console.log(chalk.gray(`📡 Database: ${conn.connection.name}`));
+    console.log(chalk.gray(`🏠 Host: ${conn.connection.host}`));
 
     if (AUTO_SEED) {
       console.log(chalk.yellow('🌱 Auto-seeding enabled'));
@@ -86,11 +85,15 @@ async function startServer() {
     app.listen(PORT, () => {
       console.log(chalk.green(`📍 Server running on port: ${PORT}`));
       console.log(chalk.blue(`🌍 Environment: ${process.env.NODE_ENV || 'production'}`));
-      console.log(chalk.magenta(`📊 Health: /api/health`));
+      console.log(chalk.magenta(`📊 Health: http://localhost:${PORT}/api/health`));
       console.log(chalk.green('✅ Server started successfully\n'));
     });
   } catch (err) {
     console.error(chalk.red('❌ Failed to start server:'), err.message);
+    console.log(chalk.yellow('🔧 Troubleshooting tips:'));
+    console.log(chalk.yellow('   1. Check if MONGO_URI environment variable is set correctly'));
+    console.log(chalk.yellow('   2. Verify MongoDB Atlas network access (IP whitelist)'));
+    console.log(chalk.yellow('   3. Check if MongoDB Atlas cluster is running'));
     process.exit(1);
   }
 }
