@@ -15,7 +15,6 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    index: true,
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
   },
   password: {
@@ -27,18 +26,15 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     enum: ['admin', 'assessor', 'candidate'],
-    default: 'candidate',
-    index: true
+    default: 'candidate'
   },
   organization: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Organization',
-    index: true
+    ref: 'Organization'
   },
   isActive: {
     type: Boolean,
-    default: true,
-    index: true
+    default: true
   },
   emailVerified: {
     type: Boolean,
@@ -103,11 +99,12 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for optimal query performance
+// SINGLE SET OF INDEXES - No duplicates
 userSchema.index({ email: 1 });
 userSchema.index({ role: 1, isActive: 1 });
 userSchema.index({ organization: 1, role: 1 });
 userSchema.index({ lastActivity: -1 });
+userSchema.index({ isActive: 1 });
 
 // Virtual for isLocked
 userSchema.virtual('isLocked').get(function() {
@@ -184,6 +181,11 @@ userSchema.statics.findActive = function() {
 // Static method to find by role
 userSchema.statics.findByRole = function(role) {
   return this.find({ role, isActive: true });
+};
+
+// Static method to find by organization
+userSchema.statics.findByOrganization = function(organizationId) {
+  return this.find({ organization: organizationId, isActive: true });
 };
 
 export default mongoose.model('User', userSchema);
