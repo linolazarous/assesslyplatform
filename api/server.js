@@ -12,14 +12,22 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-const MONGODB_URI = process.env.MONGODB_URI; // Changed from MONGO_URI to MONGODB_URI
+const MONGODB_URI = process.env.MONGODB_URI;
 const AUTO_SEED = process.env.AUTO_SEED === 'true';
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [];
+
+// ─────────────────────────────────────────────
+// CORS Configuration for Production
+// ─────────────────────────────────────────────
+const isProduction = process.env.NODE_ENV === 'production';
+const FRONTEND_URL = 'https://assessly-frontend.onrender.com';
+const ALLOWED_ORIGINS = isProduction 
+  ? [FRONTEND_URL]  // Use frontend URL in production
+  : process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:5173']; // Local development
 
 // ─────────────────────────────────────────────
 // Validate essential environment variables
 // ─────────────────────────────────────────────
-if (!MONGODB_URI) { // Changed from MONGO_URI to MONGODB_URI
+if (!MONGODB_URI) {
   console.error(chalk.red('❌ Missing required environment variable: MONGODB_URI'));
   process.exit(1);
 }
@@ -32,8 +40,20 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(
   cors({
-    origin: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : '*',
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      if (ALLOWED_ORIGINS.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        console.log(chalk.yellow(`⚠️  Blocked by CORS: ${origin}`));
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
   })
 );
 app.use(morgan('combined'));
@@ -41,8 +61,17 @@ app.use(morgan('combined'));
 // ─────────────────────────────────────────────
 // Health & Debug Endpoints
 // ─────────────────────────────────────────────
-app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
-app.get('/api/debug', (req, res) => res.json({ env: process.env.NODE_ENV || 'production' }));
+app.get('/api/health', (req, res) => res.json({ 
+  status: 'ok', 
+  timestamp: new Date(),
+  environment: process.env.NODE_ENV || 'production',
+  frontend: FRONTEND_URL
+}));
+app.get('/api/debug', (req, res) => res.json({ 
+  env: process.env.NODE_ENV || 'production',
+  allowedOrigins: ALLOWED_ORIGINS,
+  corsEnabled: true
+}));
 
 // ─────────────────────────────────────────────
 // API Routes
@@ -70,12 +99,15 @@ async function startServer() {
   console.log(chalk.cyan('\n🚀 Starting Assessly Backend Server...\n'));
 
   try {
-    // Modern MongoDB connection (remove deprecated options)
-    const conn = await mongoose.connect(MONGODB_URI); // Changed from MONGO_URI to MONGODB_URI
+    // Modern MongoDB connection
+    const conn = await mongoose.connect(MONGODB_URI);
     
     console.log(chalk.green('✅ MongoDB connected successfully'));
     console.log(chalk.gray(`📡 Database: ${conn.connection.name}`));
     console.log(chalk.gray(`🏠 Host: ${conn.connection.host}`));
+    console.log(chalk.blue(`🌍 Environment: ${process.env.NODE_ENV || 'production'}`));
+    console.log(chalk.magenta(`🎯 Frontend URL: ${FRONTEND_URL}`));
+    console.log(chalk.cyan(`🔒 CORS enabled for: ${ALLOWED_ORIGINS.join(', ')}`));
 
     if (AUTO_SEED) {
       console.log(chalk.yellow('🌱 Auto-seeding enabled'));
@@ -84,8 +116,7 @@ async function startServer() {
 
     app.listen(PORT, () => {
       console.log(chalk.green(`📍 Server running on port: ${PORT}`));
-      console.log(chalk.blue(`🌍 Environment: ${process.env.NODE_ENV || 'production'}`));
-      console.log(chalk.magenta(`📊 Health: http://localhost:${PORT}/api/health`));
+      console.log(chalk.magenta(`📊 Health: https://your-backend-url.onrender.com/api/health`));
       console.log(chalk.green('✅ Server started successfully\n'));
     });
   } catch (err) {
