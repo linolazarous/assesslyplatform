@@ -1,6 +1,5 @@
 import React from "react";
-import { Box, Typography, Container, IconButton } from "@mui/material";
-import { Facebook, Twitter, LinkedIn } from "@mui/icons-material";
+import { Box, Typography, Container } from "@mui/material";
 
 function Footer() {
   return (
@@ -13,17 +12,7 @@ function Footer() {
       }}
     >
       <Container maxWidth="xl" sx={{ textAlign: "center" }}>
-        <Box sx={{ mb: 1 }}>
-          <IconButton aria-label="Visit our Facebook page" href="https://facebook.com" target="_blank">
-            <Facebook />
-          </IconButton>
-          <IconButton aria-label="Visit our Twitter page" href="https://twitter.com" target="_blank">
-            <Twitter />
-          </IconButton>
-          <IconButton aria-label="Visit our LinkedIn page" href="https://linkedin.com" target="_blank">
-            <LinkedIn />
-          </IconButton>
-        </Box>
+        {/* ✅ Social media icons removed */}
         <Typography variant="body2" color="text.secondary">
           &copy; {new Date().getFullYear()} Assessly. All rights reserved.
         </Typography>
