@@ -5,8 +5,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import chalk from 'chalk';
 import dotenv from 'dotenv';
+import routes from './api/routes/index.js';
 import { seedDatabase } from './api/utils/seedDatabase.js';
-import routes from './api/routes/index.js'; // Adjust as per your project
 
 dotenv.config();
 
@@ -16,7 +16,9 @@ const MONGO_URI = process.env.MONGO_URI;
 const AUTO_SEED = process.env.AUTO_SEED === 'true';
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [];
 
+// ─────────────────────────────────────────────
 // Validate essential environment variables
+// ─────────────────────────────────────────────
 if (!MONGO_URI) {
   console.error(chalk.red('❌ Missing required environment variable: MONGO_URI'));
   process.exit(1);
@@ -25,53 +27,70 @@ if (!MONGO_URI) {
 // ─────────────────────────────────────────────
 // Middleware setup
 // ─────────────────────────────────────────────
-app.use(helmet());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(helmet()); // Security headers
+app.use(express.json({ limit: '10mb' })); // Parse JSON with size limit
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(
   cors({
     origin: ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : '*',
     credentials: true,
   })
 );
-app.use(morgan('dev'));
+app.use(morgan('combined')); // Production logging format
 
 // ─────────────────────────────────────────────
-// Routes
+// Health & Debug Endpoints
+// ─────────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
+app.get('/api/debug', (req, res) => res.json({ env: process.env.NODE_ENV || 'production' }));
+
+// ─────────────────────────────────────────────
+// API Routes
 // ─────────────────────────────────────────────
 app.use('/api', routes);
 
-app.get('/', (req, res) => {
-  res.status(200).send('🚀 Assessly Backend Running');
+// 404 handler
+app.use((req, res, next) => {
+  res.status(404).json({ message: 'Route not found' });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error(chalk.red('❌ Error:'), err);
+  res.status(err.status || 500).json({
+    message: err.message || 'Internal Server Error',
+    stack: process.env.NODE_ENV === 'production' ? undefined : err.stack,
+  });
 });
 
 // ─────────────────────────────────────────────
-// Database connection and initialization
+// Database connection and server start
 // ─────────────────────────────────────────────
 async function startServer() {
   console.log(chalk.cyan('\n🚀 Starting Assessly Backend Server...\n'));
 
   try {
-    const conn = await mongoose.connect(MONGO_URI);
+    const conn = await mongoose.connect(MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+
     console.log(chalk.green('✅ MongoDB connected successfully'));
-    console.log(chalk.gray(`📡 Host: ${conn.connection.host}\n`));
+    console.log(chalk.gray(`📡 Host: ${conn.connection.host}`));
 
     if (AUTO_SEED) {
       console.log(chalk.yellow('🌱 Auto-seeding enabled'));
       await seedDatabase();
-    } else {
-      console.log(chalk.gray('🌱 Auto-seeding disabled'));
     }
 
     app.listen(PORT, () => {
-      console.log(chalk.green(`📍 Port: ${PORT}`));
+      console.log(chalk.green(`📍 Server running on port: ${PORT}`));
       console.log(chalk.blue(`🌍 Environment: ${process.env.NODE_ENV || 'production'}`));
-      console.log(chalk.magenta(`📊 Health: https://assesslyplatform.onrender.com/api/health`));
-      console.log(chalk.magenta(`🔍 Debug: https://assesslyplatform.onrender.com/api/debug\n`));
+      console.log(chalk.magenta(`📊 Health: /api/health`));
       console.log(chalk.green('✅ Server started successfully\n'));
     });
   } catch (err) {
-    console.error(chalk.red('❌ Failed to connect to MongoDB:'), err.message);
+    console.error(chalk.red('❌ Failed to start server:'), err.message);
     process.exit(1);
   }
 }
@@ -79,21 +98,17 @@ async function startServer() {
 // ─────────────────────────────────────────────
 // Graceful shutdown
 // ─────────────────────────────────────────────
-process.on('SIGINT', async () => {
-  console.log(chalk.yellow('\n🛑 Gracefully shutting down...'));
+const gracefulShutdown = async (signal) => {
+  console.log(chalk.yellow(`\n🛑 ${signal} received. Shutting down gracefully...`));
   await mongoose.connection.close();
   console.log(chalk.green('✅ MongoDB connection closed.'));
   process.exit(0);
-});
+};
 
-process.on('SIGTERM', async () => {
-  console.log(chalk.yellow('\n🛑 Termination signal received.'));
-  await mongoose.connection.close();
-  console.log(chalk.green('✅ MongoDB connection closed.'));
-  process.exit(0);
-});
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // ─────────────────────────────────────────────
-// Start server
+// Start the server
 // ─────────────────────────────────────────────
 startServer();
