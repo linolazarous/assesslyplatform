@@ -14,11 +14,13 @@ const organizationSchema = new mongoose.Schema({
     required: true,
     unique: true,
     lowercase: true
+    // NO index: true - handled by explicit index below
   },
   owner: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
+    // NO index: true - handled by explicit index below
   },
   members: [{
     user: {
@@ -53,9 +55,11 @@ const organizationSchema = new mongoose.Schema({
     },
     stripeCustomerId: {
       type: String
+      // NO index: true - handled by explicit index below
     },
     stripeSubscriptionId: {
       type: String
+      // NO index: true - handled by explicit index below
     },
     currentPeriodStart: Date,
     currentPeriodEnd: Date,
@@ -133,13 +137,14 @@ organizationSchema.pre('save', function(next) {
   next();
 });
 
-// SINGLE SET OF INDEXES - No duplicates
+// SINGLE SET OF EXPLICIT INDEXES - NO DUPLICATES
 organizationSchema.index({ slug: 1 });
 organizationSchema.index({ owner: 1 });
 organizationSchema.index({ 'members.user': 1 });
 organizationSchema.index({ 'subscription.plan': 1, 'subscription.status': 1 });
 organizationSchema.index({ 'subscription.stripeCustomerId': 1 });
 organizationSchema.index({ 'subscription.stripeSubscriptionId': 1 });
+organizationSchema.index({ createdAt: -1 });
 
 // Virtual for member count (including owner)
 organizationSchema.virtual('totalMembers').get(function() {
@@ -173,13 +178,37 @@ organizationSchema.statics.findByPlan = function(plan) {
 
 // Static method to find organization by slug
 organizationSchema.statics.findBySlug = function(slug) {
-  return this.findOne({ slug }).populate('owner', 'name email').populate('members.user', 'name email');
+  return this.findOne({ slug })
+    .populate('owner', 'name email')
+    .populate('members.user', 'name email');
 };
 
 // Static method to check if slug exists
 organizationSchema.statics.slugExists = async function(slug) {
   const count = await this.countDocuments({ slug });
   return count > 0;
+};
+
+// Static method to find organizations by owner
+organizationSchema.statics.findByOwner = function(ownerId) {
+  return this.find({ owner: ownerId })
+    .populate('owner', 'name email')
+    .sort({ createdAt: -1 });
+};
+
+// Static method to get organization statistics
+organizationSchema.statics.getStats = async function(organizationId) {
+  const organization = await this.findById(organizationId);
+  if (!organization) {
+    throw new Error('Organization not found');
+  }
+  
+  return {
+    totalMembers: organization.totalMembers,
+    hasActiveSubscription: organization.hasActiveSubscription,
+    subscriptionPlan: organization.subscription.plan,
+    subscriptionStatus: organization.subscription.status
+  };
 };
 
 export default mongoose.model('Organization', organizationSchema);
