@@ -64,10 +64,10 @@ export default function LandingPage() {
   ];
 
   const NAVBAR_LINKS = [
-    { label: 'Features', href: '#features' },
+    { label: 'Features', href: '#features-section' },
     { label: 'Pricing', href: '/pricing' },
-    { label: 'Documentation', href: 'https://docs.assessly.com', external: true },
     { label: 'Contact', href: '/contact' },
+    { label: 'Documentation', href: 'https://docs.assessly.com', external: true },
   ];
 
   const scrollToFeatures = () => {
@@ -92,21 +92,42 @@ export default function LandingPage() {
       {/* Navigation */}
       <Navbar links={NAVBAR_LINKS} />
 
-      {/* Hero Section */}
+      {/* Hero Section with Video Background */}
       <Box
         component="section"
         className="hero-section"
         sx={{
-          background: theme.palette.mode === 'dark' 
-            ? 'linear-gradient(135deg, #0c4a6e 0%, #1e40af 50%, #3730a3 100%)'
-            : 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 50%, #3730a3 100%)',
-          color: 'white',
-          py: { xs: 8, md: 12 },
           position: 'relative',
+          height: { xs: '70vh', md: '80vh' },
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           overflow: 'hidden',
+          color: 'white',
         }}
       >
-        {/* Background Pattern */}
+        {/* Video Background */}
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 0,
+          }}
+        >
+          <source src="/Assessly.mp4" type="video/mp4" />
+          Your browser does not support the video tag.
+        </video>
+
+        {/* Dark Overlay for Better Text Readability */}
         <Box
           sx={{
             position: 'absolute',
@@ -114,11 +135,12 @@ export default function LandingPage() {
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%)',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
             zIndex: 1,
           }}
         />
 
+        {/* Content */}
         <Container 
           maxWidth="lg" 
           className="section-container"
