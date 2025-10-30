@@ -32,6 +32,8 @@ const AuthPage = lazyWithRetry(() => import("./pages/Auth.jsx"));
 const LandingPage = lazyWithRetry(() => import("./pages/LandingPage.jsx"));
 const BillingPage = lazyWithRetry(() => import("./pages/Billing.jsx"));
 const AdminDashboard = lazyWithRetry(() => import("./pages/Admin/Dashboard.jsx"));
+// ✅ ADDED: Pricing page import
+const PricingPage = lazyWithRetry(() => import("./pages/Pricing.jsx"));
 
 // Production theme hook with persistence
 const useThemeMode = () => {
@@ -134,6 +136,9 @@ export default function App() {
               <Routes>
                 {/* ✅ FIXED: Landing page without MainLayout wrapper */}
                 <Route path="/" element={<LandingPage />} />
+                
+                {/* ✅ ADDED: Pricing page route (public, no layout wrapper) */}
+                <Route path="/pricing" element={<PricingPage />} />
                 
                 <Route path="/auth" element={
                   <AuthLayout>
