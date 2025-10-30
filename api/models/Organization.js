@@ -12,105 +12,45 @@ const organizationSchema = new mongoose.Schema({
   slug: {
     type: String,
     required: true,
-    unique: true,
+    unique: true, // creates a single unique index
     lowercase: true
-    // NO index: true - handled by explicit index below
   },
   owner: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
-    // NO index: true - handled by explicit index below
   },
   members: [{
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
-    },
-    role: {
-      type: String,
-      enum: ['admin', 'assessor', 'viewer'],
-      default: 'assessor'
-    },
-    joinedAt: {
-      type: Date,
-      default: Date.now
-    },
-    invitedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    }
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    role: { type: String, enum: ['admin', 'assessor', 'viewer'], default: 'assessor' },
+    joinedAt: { type: Date, default: Date.now },
+    invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
   }],
   subscription: {
-    plan: {
-      type: String,
-      enum: ['basic', 'professional', 'enterprise'],
-      default: 'basic'
-    },
-    status: {
-      type: String,
-      enum: ['active', 'inactive', 'canceled', 'past_due', 'trialing'],
-      default: 'active'
-    },
-    stripeCustomerId: {
-      type: String
-      // NO index: true - handled by explicit index below
-    },
-    stripeSubscriptionId: {
-      type: String
-      // NO index: true - handled by explicit index below
-    },
+    plan: { type: String, enum: ['basic', 'professional', 'enterprise'], default: 'basic' },
+    status: { type: String, enum: ['active', 'inactive', 'canceled', 'past_due', 'trialing'], default: 'active' },
+    stripeCustomerId: String,
+    stripeSubscriptionId: String,
     currentPeriodStart: Date,
     currentPeriodEnd: Date,
-    cancelAtPeriodEnd: {
-      type: Boolean,
-      default: false
-    }
+    cancelAtPeriodEnd: { type: Boolean, default: false }
   },
   settings: {
-    allowRegistrations: {
-      type: Boolean,
-      default: true
-    },
-    maxUsers: {
-      type: Number,
-      default: 10,
-      min: [1, 'Maximum users must be at least 1']
-    },
-    maxAssessments: {
-      type: Number,
-      default: 5,
-      min: [0, 'Maximum assessments cannot be negative']
-    },
+    allowRegistrations: { type: Boolean, default: true },
+    maxUsers: { type: Number, default: 10, min: 1 },
+    maxAssessments: { type: Number, default: 5, min: 0 },
     branding: {
       logo: String,
-      primaryColor: {
-        type: String,
-        default: '#3B82F6'
-      },
-      secondaryColor: {
-        type: String,
-        default: '#1E40AF'
-      }
+      primaryColor: { type: String, default: '#3B82F6' },
+      secondaryColor: { type: String, default: '#1E40AF' }
     },
     security: {
-      requireMFA: {
-        type: Boolean,
-        default: false
-      },
-      sessionTimeout: {
-        type: Number,
-        default: 120
-      }
+      requireMFA: { type: Boolean, default: false },
+      sessionTimeout: { type: Number, default: 120 }
     }
   },
   contact: {
-    email: {
-      type: String,
-      trim: true,
-      lowercase: true
-    },
+    email: { type: String, trim: true, lowercase: true },
     phone: String,
     website: String,
     address: {
@@ -121,24 +61,17 @@ const organizationSchema = new mongoose.Schema({
       zipCode: String
     }
   }
-}, {
-  timestamps: true
-});
+}, { timestamps: true });
 
-// Generate slug before saving
+// Generate slug
 organizationSchema.pre('save', function(next) {
   if (this.isModified('name') || !this.slug) {
-    this.slug = slugify(this.name, {
-      lower: true,
-      strict: true,
-      remove: /[*+~.()'"!:@]/g
-    });
+    this.slug = slugify(this.name, { lower: true, strict: true });
   }
   next();
 });
 
-// SINGLE SET OF EXPLICIT INDEXES - NO DUPLICATES
-organizationSchema.index({ slug: 1 });
+// Clean index set
 organizationSchema.index({ owner: 1 });
 organizationSchema.index({ 'members.user': 1 });
 organizationSchema.index({ 'subscription.plan': 1, 'subscription.status': 1 });
@@ -146,68 +79,55 @@ organizationSchema.index({ 'subscription.stripeCustomerId': 1 });
 organizationSchema.index({ 'subscription.stripeSubscriptionId': 1 });
 organizationSchema.index({ createdAt: -1 });
 
-// Virtual for member count (including owner)
+// Virtuals & Methods
 organizationSchema.virtual('totalMembers').get(function() {
   return this.members.length + 1;
 });
 
-// Virtual for active subscription
 organizationSchema.virtual('hasActiveSubscription').get(function() {
-  return this.subscription.status === 'active' || this.subscription.status === 'trialing';
+  return ['active', 'trialing'].includes(this.subscription.status);
 });
 
-// Method to check if user is member
 organizationSchema.methods.isMember = function(userId) {
-  return this.owner.toString() === userId.toString() || 
-         this.members.some(member => member.user.toString() === userId.toString());
+  return this.owner.toString() === userId.toString() ||
+         this.members.some(m => m.user.toString() === userId.toString());
 };
 
-// Method to get user role
 organizationSchema.methods.getUserRole = function(userId) {
-  if (this.owner.toString() === userId.toString()) {
-    return 'owner';
-  }
+  if (this.owner.toString() === userId.toString()) return 'owner';
   const member = this.members.find(m => m.user.toString() === userId.toString());
   return member ? member.role : null;
 };
 
-// Static method to find organizations by plan
+// Statics
 organizationSchema.statics.findByPlan = function(plan) {
   return this.find({ 'subscription.plan': plan });
 };
 
-// Static method to find organization by slug
 organizationSchema.statics.findBySlug = function(slug) {
   return this.findOne({ slug })
     .populate('owner', 'name email')
     .populate('members.user', 'name email');
 };
 
-// Static method to check if slug exists
 organizationSchema.statics.slugExists = async function(slug) {
-  const count = await this.countDocuments({ slug });
-  return count > 0;
+  return (await this.countDocuments({ slug })) > 0;
 };
 
-// Static method to find organizations by owner
 organizationSchema.statics.findByOwner = function(ownerId) {
   return this.find({ owner: ownerId })
     .populate('owner', 'name email')
     .sort({ createdAt: -1 });
 };
 
-// Static method to get organization statistics
-organizationSchema.statics.getStats = async function(organizationId) {
-  const organization = await this.findById(organizationId);
-  if (!organization) {
-    throw new Error('Organization not found');
-  }
-  
+organizationSchema.statics.getStats = async function(id) {
+  const org = await this.findById(id);
+  if (!org) throw new Error('Organization not found');
   return {
-    totalMembers: organization.totalMembers,
-    hasActiveSubscription: organization.hasActiveSubscription,
-    subscriptionPlan: organization.subscription.plan,
-    subscriptionStatus: organization.subscription.status
+    totalMembers: org.totalMembers,
+    hasActiveSubscription: org.hasActiveSubscription,
+    subscriptionPlan: org.subscription.plan,
+    subscriptionStatus: org.subscription.status
   };
 };
 
