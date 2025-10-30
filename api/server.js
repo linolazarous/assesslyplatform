@@ -14,15 +14,18 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const AUTO_SEED = process.env.AUTO_SEED === 'true';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://assessly-frontend.onrender.com';
+const NODE_ENV = process.env.NODE_ENV || 'production';
 
 // ─────────────────────────────────────────────
-// CORS Configuration for Production
+// CORS Configuration
 // ─────────────────────────────────────────────
-const isProduction = process.env.NODE_ENV === 'production';
-const FRONTEND_URL = 'https://assessly-frontend.onrender.com';
-const ALLOWED_ORIGINS = isProduction 
-  ? [FRONTEND_URL]  // Use frontend URL in production
-  : process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:5173']; // Local development
+const isProduction = NODE_ENV === 'production';
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',') 
+  : isProduction 
+    ? [FRONTEND_URL]
+    : ['http://localhost:3000', 'http://localhost:5173'];
 
 // ─────────────────────────────────────────────
 // Validate essential environment variables
@@ -64,14 +67,29 @@ app.use(morgan('combined'));
 app.get('/api/health', (req, res) => res.json({ 
   status: 'ok', 
   timestamp: new Date(),
-  environment: process.env.NODE_ENV || 'production',
-  frontend: FRONTEND_URL
+  environment: NODE_ENV,
+  frontend: FRONTEND_URL,
+  service: 'Assessly Backend API'
 }));
+
 app.get('/api/debug', (req, res) => res.json({ 
-  env: process.env.NODE_ENV || 'production',
+  env: NODE_ENV,
   allowedOrigins: ALLOWED_ORIGINS,
-  corsEnabled: true
+  corsEnabled: true,
+  autoSeed: AUTO_SEED,
+  frontendUrl: FRONTEND_URL
 }));
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Assessly Platform API Server',
+    version: '1.0.0',
+    status: 'running',
+    documentation: '/api/health',
+    environment: NODE_ENV
+  });
+});
 
 // ─────────────────────────────────────────────
 // API Routes
@@ -105,9 +123,10 @@ async function startServer() {
     console.log(chalk.green('✅ MongoDB connected successfully'));
     console.log(chalk.gray(`📡 Database: ${conn.connection.name}`));
     console.log(chalk.gray(`🏠 Host: ${conn.connection.host}`));
-    console.log(chalk.blue(`🌍 Environment: ${process.env.NODE_ENV || 'production'}`));
+    console.log(chalk.blue(`🌍 Environment: ${NODE_ENV}`));
     console.log(chalk.magenta(`🎯 Frontend URL: ${FRONTEND_URL}`));
     console.log(chalk.cyan(`🔒 CORS enabled for: ${ALLOWED_ORIGINS.join(', ')}`));
+    console.log(chalk.yellow(`🌱 Auto-seed: ${AUTO_SEED}`));
 
     if (AUTO_SEED) {
       console.log(chalk.yellow('🌱 Auto-seeding enabled'));
@@ -116,7 +135,7 @@ async function startServer() {
 
     app.listen(PORT, () => {
       console.log(chalk.green(`📍 Server running on port: ${PORT}`));
-      console.log(chalk.magenta(`📊 Health: https://your-backend-url.onrender.com/api/health`));
+      console.log(chalk.magenta(`📊 Health: https://assesslyplatform.onrender.com/api/health`));
       console.log(chalk.green('✅ Server started successfully\n'));
     });
   } catch (err) {
