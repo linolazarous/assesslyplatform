@@ -5,8 +5,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import chalk from 'chalk';
 import dotenv from 'dotenv';
-import routes from './api/routes/index.js';
-import { seedDatabase } from './api/utils/seedDatabase.js';
+import routes from './routes/index.js'; // Fixed path
+import { seedDatabase } from './utils/seedDatabase.js'; // Fixed path
 
 dotenv.config();
 
