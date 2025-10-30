@@ -1,6 +1,7 @@
 // api/scripts/seed.js
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import slugify from 'slugify';
 import User from '../models/User.js';
 import Organization from '../models/Organization.js';
 
@@ -40,9 +41,10 @@ const seedDatabase = async () => {
     await admin.save();
     console.log('✅ Admin user created:', admin.email);
 
-    // Create default organization for admin
+    // Create default organization for admin - FIXED: Provide initial slug
     const organization = new Organization({
       name: 'Assessly Headquarters',
+      slug: 'assessly-headquarters', // ADDED: Initial slug to pass validation
       description: 'Default organization for system administrator',
       owner: admin._id,
       subscription: {
@@ -117,9 +119,10 @@ const seedDatabaseWithOptions = async (options = {}) => {
     await admin.save();
     console.log(`✅ Admin user created: ${admin.email}`);
 
-    // Create organization
+    // Create organization - FIXED: Provide initial slug
     const organization = new Organization({
       name: organizationName,
+      slug: slugify(organizationName, { lower: true, strict: true }), // ADDED: Generate slug
       description: `Default organization for ${adminName}`,
       owner: admin._id,
       subscription: {
