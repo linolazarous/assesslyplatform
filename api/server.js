@@ -14,7 +14,7 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const AUTO_SEED = process.env.AUTO_SEED === 'true';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://assessly-frontend.onrender.com';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://assessly-gedp.onrender.com';
 const NODE_ENV = process.env.NODE_ENV || 'production';
 
 // ─────────────────────────────────────────────
