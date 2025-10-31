@@ -97,18 +97,19 @@ const HeroSection = ({
     [theme]
   );
 
+  // Fixed: Remove TypeScript 'as const' assertions for JavaScript
   const ctaButtons = useMemo(() => [
     {
       label: 'Get Started Free',
-      variant: 'contained' as const,
+      variant: 'contained',
       onClick: () => handleCTAClick('signup'),
-      color: 'primary' as const
+      color: 'primary'
     },
     {
       label: 'See Features',
-      variant: 'outlined' as const,
+      variant: 'outlined',
       onClick: () => handleCTAClick('features'),
-      color: 'inherit' as const
+      color: 'inherit'
     }
   ], [handleCTAClick]);
 
