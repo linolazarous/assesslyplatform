@@ -13,7 +13,7 @@ import PropTypes from "prop-types";
 import axios from "axios";
 
 // ✅ Adjust this to your deployed backend URL
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://assesslyplatform.onrender.com";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://assesslyplatform-t49h.onrender.com";
 
 const AuthContext = createContext();
 
@@ -156,3 +156,4 @@ export const AuthProvider = ({ children }) => {
 AuthProvider.propTypes = {
   children: PropTypes.node.isRequired,
 };
+
