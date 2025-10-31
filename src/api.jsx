@@ -16,7 +16,7 @@ const getApiBaseUrl = () => {
   
   return isLocalhost 
     ? "http://localhost:3000/api" 
-    : "https://assesslyplatform.onrender.com/api";
+    : "https://assesslyplatform-t49h.onrender.com/api"; // ✅ UPDATED BACKEND URL
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -93,18 +93,32 @@ api.interceptors.response.use(
     if (status === 401) {
       // Token expired or invalid
       localStorage.removeItem("token");
+      localStorage.removeItem("user");
       // Don't redirect automatically in production - let components handle
       console.warn('Authentication failed - token removed');
+      
+      // Optional: Redirect to login if not already there
+      if (!window.location.pathname.includes('/auth') && !window.location.pathname.includes('/login')) {
+        window.location.href = '/auth';
+      }
     }
     
     if (status === 429) {
       // Rate limiting
       console.warn('Rate limit exceeded');
+      // Show user-friendly message
+      error.message = "Too many requests. Please try again later.";
     }
     
     if (status >= 500) {
       // Server errors
       console.error('Server error occurred');
+      error.message = "Service temporarily unavailable. Please try again later.";
+    }
+    
+    // Network errors
+    if (error.code === 'NETWORK_ERROR' || error.code === 'ECONNREFUSED') {
+      error.message = "Network error. Please check your connection and try again.";
     }
     
     // Return consistent error format
@@ -143,16 +157,16 @@ const handleRequest = (promise, maxRetries = 1) => {
 export const AuthAPI = {
   register: (data) => handleRequest(api.post("/auth/register", data)),
   login: (data) => 
-    handleRequest(api.post("/auth/login", data).then((res) => {
-      if (res.data.token) {
-        localStorage.setItem("token", res.data.token);
-        // Also store user info if available
-        if (res.data.user) {
-          localStorage.setItem("user", JSON.stringify(res.data.user));
+    api.post("/auth/login", data).then((response) => {
+      const { token, user } = response.data;
+      if (token) {
+        localStorage.setItem("token", token);
+        if (user) {
+          localStorage.setItem("user", JSON.stringify(user));
         }
       }
-      return res;
-    })),
+      return response.data;
+    }),
   profile: () => handleRequest(api.get("/user/profile")),
   logout: () => {
     localStorage.removeItem("token");
@@ -160,6 +174,8 @@ export const AuthAPI = {
     return Promise.resolve();
   },
   refreshToken: () => handleRequest(api.post("/auth/refresh")),
+  forgotPassword: (email) => handleRequest(api.post("/auth/forgot-password", { email })),
+  resetPassword: (token, password) => handleRequest(api.post("/auth/reset-password", { token, password })),
 };
 
 // Organizations
@@ -168,13 +184,15 @@ export const OrganizationAPI = {
   details: (id) => handleRequest(api.get(`/organizations/${id}`)),
   create: (data) => handleRequest(api.post("/organizations", data)),
   update: (id, data) => handleRequest(api.put(`/organizations/${id}`, data)),
+  delete: (id) => handleRequest(api.delete(`/organizations/${id}`)),
+  members: (id) => handleRequest(api.get(`/organizations/${id}/members`)),
+  invite: (id, email, role) => handleRequest(api.post(`/organizations/${id}/invite`, { email, role })),
 };
 
 // Assessments
 export const AssessmentAPI = {
   list: (status = "", page = 1, limit = 10) => 
-    handleRequest(api.get(`/assessments?status=${status}&page=${page}&limit=${limit}`))
-      .then((data) => data.assessments || []),
+    handleRequest(api.get(`/assessments?status=${status}&page=${page}&limit=${limit}`)),
   details: (id) => handleRequest(api.get(`/assessments/${id}`)),
   create: (data) => handleRequest(api.post("/assessments/create", data)),
   update: (id, data) => handleRequest(api.put(`/assessments/${id}`, data)),
@@ -183,6 +201,17 @@ export const AssessmentAPI = {
   submit: (id, data) => handleRequest(api.post(`/assessments/${id}/submit`, data)),
   aiScore: (answers) => handleRequest(api.post("/assessments/ai-score", { answers })),
   results: (id) => handleRequest(api.get(`/assessments/${id}/results`)),
+  candidates: (id) => handleRequest(api.get(`/assessments/${id}/candidates`)),
+  inviteCandidate: (id, email) => handleRequest(api.post(`/assessments/${id}/invite`, { email })),
+};
+
+// Questions
+export const QuestionAPI = {
+  list: (assessmentId) => handleRequest(api.get(`/assessments/${assessmentId}/questions`)),
+  create: (assessmentId, data) => handleRequest(api.post(`/assessments/${assessmentId}/questions`, data)),
+  update: (id, data) => handleRequest(api.put(`/questions/${id}`, data)),
+  delete: (id) => handleRequest(api.delete(`/questions/${id}`)),
+  reorder: (assessmentId, questionIds) => handleRequest(api.put(`/assessments/${assessmentId}/questions/reorder`, { questionIds })),
 };
 
 // Billing
@@ -192,6 +221,7 @@ export const BillingAPI = {
   portalLink: () => handleRequest(api.post("/billing/portal-link")),
   invoices: () => handleRequest(api.get("/billing/invoices")),
   subscription: () => handleRequest(api.get("/billing/subscription")),
+  plans: () => handleRequest(api.get("/billing/plans")),
 };
 
 // Admin
@@ -200,25 +230,38 @@ export const AdminAPI = {
   users: (page = 1, limit = 20) => 
     handleRequest(api.get(`/admin/users?page=${page}&limit=${limit}`)),
   organizations: () => handleRequest(api.get("/admin/organizations")),
+  assessments: () => handleRequest(api.get("/admin/assessments")),
+  systemHealth: () => handleRequest(api.get("/admin/system-health")),
 };
 
 // Search
 export const SearchAPI = {
   query: (query, type = "all") => 
-    handleRequest(api.post("/search", { query, type }))
-      .then((data) => data.results || []),
+    handleRequest(api.post("/search", { query, type })),
+  assessments: (query) => handleRequest(api.get(`/search/assessments?q=${encodeURIComponent(query)}`)),
+  candidates: (query) => handleRequest(api.get(`/search/candidates?q=${encodeURIComponent(query)}`)),
 };
 
 // Health Check
 export const HealthAPI = {
   check: () => handleRequest(api.get("/health")),
   ping: () => handleRequest(api.get("/health/ping")),
+  deep: () => handleRequest(api.get("/health/deep")),
 };
 
 // System
 export const SystemAPI = {
   config: () => handleRequest(api.get("/system/config")),
   maintenance: () => handleRequest(api.get("/system/maintenance")),
+  features: () => handleRequest(api.get("/system/features")),
+};
+
+// Analytics
+export const AnalyticsAPI = {
+  dashboard: () => handleRequest(api.get("/analytics/dashboard")),
+  assessment: (id) => handleRequest(api.get(`/analytics/assessments/${id}`)),
+  candidate: (id) => handleRequest(api.get(`/analytics/candidates/${id}`)),
+  export: (type, filters = {}) => handleRequest(api.post("/analytics/export", { type, filters })),
 };
 
 // Export all APIs
@@ -226,9 +269,14 @@ export default {
   AuthAPI,
   OrganizationAPI,
   AssessmentAPI,
+  QuestionAPI,
   BillingAPI,
   AdminAPI,
   SearchAPI,
   HealthAPI,
   SystemAPI,
+  AnalyticsAPI,
 };
+
+// Export base API instance for custom requests
+export { api, API_BASE_URL };
