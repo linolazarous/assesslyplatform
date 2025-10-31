@@ -6,7 +6,7 @@ import { AuthProvider } from "./contexts/AuthContext.jsx";
 import MainLayout from "./layouts/MainLayout.jsx";
 import AuthLayout from "./layouts/AuthLayout.jsx";
 import { getAppTheme } from "./styles/theme.jsx";
-import LoadingScreen from "./components/ui/LoadingScreen.jsx"; 
+import LoadingScreen from "./components/ui/LoadingScreen.jsx";
 import ProtectedRoute from "./components/common/ProtectedRoute.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 
@@ -16,9 +16,9 @@ const lazyWithRetry = (componentImport) =>
     try {
       return await componentImport();
     } catch (error) {
-      console.error('Lazy loading failed:', error);
+      console.error("Lazy loading failed:", error);
       // Retry once after 2 seconds
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       return componentImport();
     }
   });
@@ -32,28 +32,25 @@ const AuthPage = lazyWithRetry(() => import("./pages/Auth.jsx"));
 const LandingPage = lazyWithRetry(() => import("./pages/LandingPage.jsx"));
 const BillingPage = lazyWithRetry(() => import("./pages/Billing.jsx"));
 const AdminDashboard = lazyWithRetry(() => import("./pages/Admin/Dashboard.jsx"));
-// ✅ ADDED: Pricing page import
 const PricingPage = lazyWithRetry(() => import("./pages/Pricing.jsx"));
+const ContactPage = lazyWithRetry(() => import("./pages/Contact.jsx")); // ✅ Added
 
 // Production theme hook with persistence
 const useThemeMode = () => {
   const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('darkMode');
+    const saved = localStorage.getItem("darkMode");
     return saved ? JSON.parse(saved) : false;
   });
 
   const toggleDarkMode = () => {
-    setDarkMode(prev => {
+    setDarkMode((prev) => {
       const newMode = !prev;
-      localStorage.setItem('darkMode', JSON.stringify(newMode));
+      localStorage.setItem("darkMode", JSON.stringify(newMode));
       return newMode;
     });
   };
 
-  const theme = useMemo(() => 
-    getAppTheme(darkMode ? "dark" : "light"), 
-    [darkMode]
-  );
+  const theme = useMemo(() => getAppTheme(darkMode ? "dark" : "light"), [darkMode]);
 
   return { theme, darkMode, toggleDarkMode };
 };
@@ -71,12 +68,12 @@ const MainLayoutWrapper = ({ darkMode, toggleDarkMode, children }) => {
 
 // Production loading component
 const ProductionLoading = () => (
-  <Box 
-    sx={{ 
-      display: 'flex', 
-      justifyContent: 'center', 
-      alignItems: 'center', 
-      minHeight: '60vh' 
+  <Box
+    sx={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      minHeight: "60vh",
     }}
   >
     <CircularProgress size={40} />
@@ -91,12 +88,12 @@ export default function App() {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
     };
   }, []);
 
@@ -104,7 +101,7 @@ export default function App() {
     <ErrorBoundary>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Router 
+        <Router
           future={{
             v7_startTransition: true,
             v7_relativeSplatPath: true,
@@ -115,105 +112,127 @@ export default function App() {
             {!isOnline && (
               <Box
                 sx={{
-                  position: 'fixed',
+                  position: "fixed",
                   top: 0,
                   left: 0,
                   right: 0,
-                  backgroundColor: 'warning.main',
-                  color: 'warning.contrastText',
-                  textAlign: 'center',
+                  backgroundColor: "warning.main",
+                  color: "warning.contrastText",
+                  textAlign: "center",
                   padding: 1,
                   zIndex: 9999,
-                  fontSize: '0.875rem',
+                  fontSize: "0.875rem",
                   fontWeight: 500,
                 }}
               >
                 You are currently offline. Some features may not be available.
               </Box>
             )}
-            
+
             <Suspense fallback={<LoadingScreen fullScreen />}>
               <Routes>
-                {/* ✅ FIXED: Landing page without MainLayout wrapper */}
+                {/* Public routes (no main layout) */}
                 <Route path="/" element={<LandingPage />} />
-                
-                {/* ✅ ADDED: Pricing page route (public, no layout wrapper) */}
                 <Route path="/pricing" element={<PricingPage />} />
-                
-                <Route path="/auth" element={
-                  <AuthLayout>
-                    <AuthPage />
-                  </AuthLayout>
-                } />
-                
-                <Route path="/login" element={
-                  <AuthLayout>
-                    <AuthPage />
-                  </AuthLayout>
-                } />
+                <Route path="/contact" element={<ContactPage />} /> {/* ✅ Added route */}
 
-                {/* Protected routes with main layout */}
-                <Route path="/dashboard" element={
-                  <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                    <ProtectedRoute>
-                      <Suspense fallback={<ProductionLoading />}>
-                        <AssessmentDashboard />
-                      </Suspense>
-                    </ProtectedRoute>
-                  </MainLayoutWrapper>
-                } />
-                
-                <Route path="/create" element={
-                  <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                    <ProtectedRoute>
-                      <Suspense fallback={<ProductionLoading />}>
-                        <CreateAssessment />
-                      </Suspense>
-                    </ProtectedRoute>
-                  </MainLayoutWrapper>
-                } />
-                
-                <Route path="/take/:id" element={
-                  <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                    <ProtectedRoute>
-                      <Suspense fallback={<ProductionLoading />}>
-                        <TakeAssessment />
-                      </Suspense>
-                    </ProtectedRoute>
-                  </MainLayoutWrapper>
-                } />
-                
-                <Route path="/report/:id" element={
-                  <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                    <ProtectedRoute>
-                      <Suspense fallback={<ProductionLoading />}>
-                        <PdfReport />
-                      </Suspense>
-                    </ProtectedRoute>
-                  </MainLayoutWrapper>
-                } />
-                
-                <Route path="/billing" element={
-                  <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                    <ProtectedRoute>
-                      <Suspense fallback={<ProductionLoading />}>
-                        <BillingPage />
-                      </Suspense>
-                    </ProtectedRoute>
-                  </MainLayoutWrapper>
-                } />
-                
-                <Route path="/admin" element={
-                  <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                    <ProtectedRoute roles={['admin']}>
-                      <Suspense fallback={<ProductionLoading />}>
-                        <AdminDashboard />
-                      </Suspense>
-                    </ProtectedRoute>
-                  </MainLayoutWrapper>
-                } />
+                <Route
+                  path="/auth"
+                  element={
+                    <AuthLayout>
+                      <AuthPage />
+                    </AuthLayout>
+                  }
+                />
+                <Route
+                  path="/login"
+                  element={
+                    <AuthLayout>
+                      <AuthPage />
+                    </AuthLayout>
+                  }
+                />
 
-                {/* 404 catch-all - redirect to home */}
+                {/* Protected routes */}
+                <Route
+                  path="/dashboard"
+                  element={
+                    <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+                      <ProtectedRoute>
+                        <Suspense fallback={<ProductionLoading />}>
+                          <AssessmentDashboard />
+                        </Suspense>
+                      </ProtectedRoute>
+                    </MainLayoutWrapper>
+                  }
+                />
+
+                <Route
+                  path="/create"
+                  element={
+                    <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+                      <ProtectedRoute>
+                        <Suspense fallback={<ProductionLoading />}>
+                          <CreateAssessment />
+                        </Suspense>
+                      </ProtectedRoute>
+                    </MainLayoutWrapper>
+                  }
+                />
+
+                <Route
+                  path="/take/:id"
+                  element={
+                    <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+                      <ProtectedRoute>
+                        <Suspense fallback={<ProductionLoading />}>
+                          <TakeAssessment />
+                        </Suspense>
+                      </ProtectedRoute>
+                    </MainLayoutWrapper>
+                  }
+                />
+
+                <Route
+                  path="/report/:id"
+                  element={
+                    <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+                      <ProtectedRoute>
+                        <Suspense fallback={<ProductionLoading />}>
+                          <PdfReport />
+                        </Suspense>
+                      </ProtectedRoute>
+                    </MainLayoutWrapper>
+                  }
+                />
+
+                <Route
+                  path="/billing"
+                  element={
+                    <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+                      <ProtectedRoute>
+                        <Suspense fallback={<ProductionLoading />}>
+                          <BillingPage />
+                        </Suspense>
+                      </ProtectedRoute>
+                    </MainLayoutWrapper>
+                  }
+                />
+
+                <Route
+                  path="/admin"
+                  element={
+                    <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+                      <ProtectedRoute roles={["admin"]}>
+                        <Suspense fallback={<ProductionLoading />}>
+                          <AdminDashboard />
+                        </Suspense>
+                      </ProtectedRoute>
+                    </MainLayoutWrapper>
+                  }
+                />
+
+                {/* 404 fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
