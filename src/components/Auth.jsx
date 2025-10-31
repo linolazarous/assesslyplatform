@@ -33,7 +33,7 @@ export default function Auth({ disableSignup = false }) {
   const navigate = useNavigate();
 
   // ✅ FIXED: Remove /api from base URL to avoid double /api/api
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'https://assesslyplatform.onrender.com';
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'https://assesslyplatform-t49h.onrender.com';
 
   const validateForm = () => {
     if (!email || !email.includes("@")) {
@@ -214,3 +214,4 @@ export default function Auth({ disableSignup = false }) {
 Auth.propTypes = {
   disableSignup: PropTypes.bool,
 };
+
