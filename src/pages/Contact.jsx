@@ -8,6 +8,7 @@ import {
   Snackbar,
   Alert,
   Paper,
+  CircularProgress,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 
@@ -33,12 +34,11 @@ export default function Contact() {
     e.preventDefault();
 
     if (!formData.name || !formData.email || !formData.message) {
-      setSnackbar({
+      return setSnackbar({
         open: true,
         message: "Please fill in all fields before submitting.",
         severity: "warning",
       });
-      return;
     }
 
     try {
@@ -56,7 +56,7 @@ export default function Contact() {
       if (res.ok) {
         setSnackbar({
           open: true,
-          message: "Message sent successfully! We'll get back to you soon.",
+          message: "✅ Message sent successfully! We’ll get back to you soon.",
           severity: "success",
         });
         setFormData({ name: "", email: "", message: "" });
@@ -66,7 +66,7 @@ export default function Contact() {
     } catch (err) {
       setSnackbar({
         open: true,
-        message: err.message || "Something went wrong.",
+        message: err.message || "Something went wrong. Please try again.",
         severity: "error",
       });
     } finally {
@@ -77,34 +77,39 @@ export default function Contact() {
   return (
     <Box
       sx={{
-        py: 10,
-        background: "linear-gradient(135deg, #f9f9f9, #f0f4ff)",
+        py: { xs: 6, md: 10 },
+        background: "linear-gradient(145deg, #eef2ff 0%, #f9fafb 100%)",
         minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
       }}
     >
       <Container maxWidth="sm">
         <Paper
-          elevation={4}
+          elevation={6}
           sx={{
-            p: 5,
+            p: { xs: 4, sm: 5 },
             borderRadius: 4,
             backgroundColor: "background.paper",
+            boxShadow: "0px 8px 24px rgba(0,0,0,0.05)",
           }}
         >
           <Typography
             variant="h4"
             align="center"
             gutterBottom
-            sx={{ fontWeight: 700 }}
+            sx={{ fontWeight: 700, color: "primary.main" }}
           >
             Contact Us
           </Typography>
+
           <Typography
             variant="body1"
             align="center"
             sx={{ mb: 3, color: "text.secondary" }}
           >
-            Have questions, feedback, or need help? Send us a message below.
+            Have a question, suggestion, or need support?  
+            We’d love to hear from you.
           </Typography>
 
           <form onSubmit={handleSubmit}>
@@ -117,7 +122,9 @@ export default function Contact() {
               variant="outlined"
               margin="normal"
               required
+              autoComplete="name"
             />
+
             <TextField
               fullWidth
               label="Email Address"
@@ -128,7 +135,9 @@ export default function Contact() {
               margin="normal"
               required
               type="email"
+              autoComplete="email"
             />
+
             <TextField
               fullWidth
               label="Your Message"
@@ -149,16 +158,24 @@ export default function Contact() {
               color="primary"
               size="large"
               disabled={loading}
-              endIcon={<SendIcon />}
+              endIcon={!loading && <SendIcon />}
               sx={{
                 mt: 3,
                 borderRadius: 3,
                 textTransform: "none",
                 fontWeight: 600,
-                py: 1.2,
+                py: 1.4,
               }}
             >
-              {loading ? "Sending..." : "Send Message"}
+              {loading ? (
+                <CircularProgress
+                  size={26}
+                  sx={{ color: "white" }}
+                  thickness={5}
+                />
+              ) : (
+                "Send Message"
+              )}
             </Button>
           </form>
         </Paper>
@@ -172,7 +189,7 @@ export default function Contact() {
       >
         <Alert
           severity={snackbar.severity}
-          sx={{ width: "100%" }}
+          sx={{ width: "100%", fontWeight: 500 }}
           onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
         >
           {snackbar.message}
