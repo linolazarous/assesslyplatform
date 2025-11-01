@@ -6,8 +6,12 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import chalk from 'chalk';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
+
 import routes from './routes/index.js';
 import { seedDatabase } from './utils/seedDatabase.js';
+import { securityHeaders } from './middleware/auth.js';
 
 dotenv.config();
 
@@ -15,7 +19,7 @@ dotenv.config();
    🚀 Server Configuration
 ───────────────────────────────────────────── */
 const app = express();
-app.set('trust proxy', 1); // ✅ Required for Render HTTPS cookies
+app.set('trust proxy', 1); // Required behind proxies like Render
 
 const PORT = process.env.PORT || 10000;
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -29,7 +33,7 @@ const isProduction = NODE_ENV === 'production';
    🌍 Allowed Origins (CORS)
 ───────────────────────────────────────────── */
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : isProduction
   ? [FRONTEND_URL]
   : ['http://localhost:3000', 'http://localhost:5173'];
@@ -43,19 +47,22 @@ if (!MONGODB_URI) {
    🧩 Middleware Setup
 ───────────────────────────────────────────── */
 app.use(helmet());
+app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Additional security headers
+app.use(securityHeaders);
+
+// CORS
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       const allowed = ALLOWED_ORIGINS.some((o) => origin.includes(o));
-      if (allowed) callback(null, true);
-      else {
-        console.warn(chalk.yellow(`⚠️ Blocked by CORS: ${origin}`));
-        callback(new Error('Not allowed by CORS'));
-      }
+      if (allowed) return callback(null, true);
+      console.warn(chalk.yellow(`⚠️ Blocked by CORS: ${origin}`));
+      return callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -63,9 +70,24 @@ app.use(
   })
 );
 
-// ✅ Handle Preflight (important for POST /login, /signup)
+// Preflight
 app.options('*', cors());
 app.use(morgan('combined'));
+
+/* ─────────────────────────────────────────────
+   🔐 Rate limiting for auth endpoints
+   - Prevents brute-force on /api/auth/*
+───────────────────────────────────────────── */
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // limit each IP to 10 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests from this IP, please try again later.' },
+});
+
+// Apply auth limiter to auth routes before mounting /api routes
+app.use('/api/auth', authLimiter);
 
 /* ─────────────────────────────────────────────
    🩺 Health & Debug Routes
