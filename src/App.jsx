@@ -10,20 +10,24 @@ import LoadingScreen from "./components/ui/LoadingScreen.jsx";
 import ProtectedRoute from "./components/common/ProtectedRoute.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 
-// Lazy imports with production error handling
+/* ============================================================
+   Lazy Import Utility with Retry (Prevents white-screen errors)
+============================================================ */
 const lazyWithRetry = (componentImport) =>
   lazy(async () => {
     try {
       return await componentImport();
     } catch (error) {
       console.error("Lazy loading failed:", error);
-      // Retry once after 2 seconds
+      // Retry once after delay
       await new Promise((resolve) => setTimeout(resolve, 2000));
       return componentImport();
     }
   });
 
-// Lazy loaded components
+/* ============================================================
+   Lazy-Loaded Pages
+============================================================ */
 const AssessmentDashboard = lazyWithRetry(() => import("./components/AssessmentDashboard.jsx"));
 const CreateAssessment = lazyWithRetry(() => import("./components/CreateAssessment.jsx"));
 const TakeAssessment = lazyWithRetry(() => import("./components/TakeAssessment.jsx"));
@@ -33,9 +37,11 @@ const LandingPage = lazyWithRetry(() => import("./pages/LandingPage.jsx"));
 const BillingPage = lazyWithRetry(() => import("./pages/Billing.jsx"));
 const AdminDashboard = lazyWithRetry(() => import("./pages/Admin/Dashboard.jsx"));
 const PricingPage = lazyWithRetry(() => import("./pages/Pricing.jsx"));
-const ContactPage = lazyWithRetry(() => import("./pages/Contact.jsx")); // ✅ Added
+const ContactPage = lazyWithRetry(() => import("./pages/Contact.jsx")); // ✅ Contact Page Added
 
-// Production theme hook with persistence
+/* ============================================================
+   Custom Theme Hook with Local Persistence
+============================================================ */
 const useThemeMode = () => {
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem("darkMode");
@@ -50,23 +56,28 @@ const useThemeMode = () => {
     });
   };
 
-  const theme = useMemo(() => getAppTheme(darkMode ? "dark" : "light"), [darkMode]);
+  const theme = useMemo(
+    () => getAppTheme(darkMode ? "dark" : "light"),
+    [darkMode]
+  );
 
   return { theme, darkMode, toggleDarkMode };
 };
 
-// Layout wrapper with error boundary
-const MainLayoutWrapper = ({ darkMode, toggleDarkMode, children }) => {
-  return (
-    <ErrorBoundary>
-      <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-        {children}
-      </MainLayout>
-    </ErrorBoundary>
-  );
-};
+/* ============================================================
+   Layout Wrapper
+============================================================ */
+const MainLayoutWrapper = ({ darkMode, toggleDarkMode, children }) => (
+  <ErrorBoundary>
+    <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+      {children}
+    </MainLayout>
+  </ErrorBoundary>
+);
 
-// Production loading component
+/* ============================================================
+   Reusable Loading Component
+============================================================ */
 const ProductionLoading = () => (
   <Box
     sx={{
@@ -80,6 +91,9 @@ const ProductionLoading = () => (
   </Box>
 );
 
+/* ============================================================
+   MAIN APP COMPONENT
+============================================================ */
 export default function App() {
   const { theme, darkMode, toggleDarkMode } = useThemeMode();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -87,10 +101,8 @@ export default function App() {
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
-
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
@@ -108,7 +120,7 @@ export default function App() {
           }}
         >
           <AuthProvider>
-            {/* Offline indicator */}
+            {/* 🔶 Offline Notification */}
             {!isOnline && (
               <Box
                 sx={{
@@ -129,13 +141,15 @@ export default function App() {
               </Box>
             )}
 
+            {/* 🔷 Routes */}
             <Suspense fallback={<LoadingScreen fullScreen />}>
               <Routes>
-                {/* Public routes (no main layout) */}
+                {/* 🌍 Public Pages */}
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/pricing" element={<PricingPage />} />
-                <Route path="/contact" element={<ContactPage />} /> {/* ✅ Added route */}
+                <Route path="/contact" element={<ContactPage />} /> {/* ✅ Contact Route */}
 
+                {/* 🔑 Auth Pages */}
                 <Route
                   path="/auth"
                   element={
@@ -153,7 +167,7 @@ export default function App() {
                   }
                 />
 
-                {/* Protected routes */}
+                {/* 🧠 Protected Routes */}
                 <Route
                   path="/dashboard"
                   element={
@@ -232,7 +246,7 @@ export default function App() {
                   }
                 />
 
-                {/* 404 fallback */}
+                {/* 🚫 404 Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
