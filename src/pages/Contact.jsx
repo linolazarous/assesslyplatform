@@ -11,6 +11,8 @@ import {
   CircularProgress,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
+import { motion, AnimatePresence } from "framer-motion";
+import Confetti from "react-confetti";
 
 export default function Contact() {
   const [formData, setFormData] = useState({
@@ -19,6 +21,7 @@ export default function Contact() {
     message: "",
   });
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -60,6 +63,10 @@ export default function Contact() {
           severity: "success",
         });
         setFormData({ name: "", email: "", message: "" });
+        setSuccess(true);
+
+        // Reset confetti after 5 seconds
+        setTimeout(() => setSuccess(false), 5000);
       } else {
         throw new Error(data?.message || "Failed to send message.");
       }
@@ -82,103 +89,123 @@ export default function Contact() {
         minHeight: "100vh",
         display: "flex",
         alignItems: "center",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
+      {/* 🎉 Confetti effect */}
+      <AnimatePresence>
+        {success && (
+          <Confetti
+            numberOfPieces={250}
+            recycle={false}
+            gravity={0.3}
+            tweenDuration={4000}
+          />
+        )}
+      </AnimatePresence>
+
       <Container maxWidth="sm">
-        <Paper
-          elevation={6}
-          sx={{
-            p: { xs: 4, sm: 5 },
-            borderRadius: 4,
-            backgroundColor: "background.paper",
-            boxShadow: "0px 8px 24px rgba(0,0,0,0.05)",
-          }}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
         >
-          <Typography
-            variant="h4"
-            align="center"
-            gutterBottom
-            sx={{ fontWeight: 700, color: "primary.main" }}
+          <Paper
+            elevation={6}
+            sx={{
+              p: { xs: 4, sm: 5 },
+              borderRadius: 4,
+              backgroundColor: "background.paper",
+              boxShadow: "0px 8px 24px rgba(0,0,0,0.05)",
+            }}
           >
-            Contact Us
-          </Typography>
-
-          <Typography
-            variant="body1"
-            align="center"
-            sx={{ mb: 3, color: "text.secondary" }}
-          >
-            Have a question, suggestion, or need support?  
-            We’d love to hear from you.
-          </Typography>
-
-          <form onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="Full Name"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              variant="outlined"
-              margin="normal"
-              required
-              autoComplete="name"
-            />
-
-            <TextField
-              fullWidth
-              label="Email Address"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              variant="outlined"
-              margin="normal"
-              required
-              type="email"
-              autoComplete="email"
-            />
-
-            <TextField
-              fullWidth
-              label="Your Message"
-              name="message"
-              value={formData.message}
-              onChange={handleChange}
-              variant="outlined"
-              margin="normal"
-              required
-              multiline
-              rows={5}
-            />
-
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              color="primary"
-              size="large"
-              disabled={loading}
-              endIcon={!loading && <SendIcon />}
-              sx={{
-                mt: 3,
-                borderRadius: 3,
-                textTransform: "none",
-                fontWeight: 600,
-                py: 1.4,
-              }}
+            <Typography
+              variant="h4"
+              align="center"
+              gutterBottom
+              sx={{ fontWeight: 700, color: "primary.main" }}
             >
-              {loading ? (
-                <CircularProgress
-                  size={26}
-                  sx={{ color: "white" }}
-                  thickness={5}
-                />
-              ) : (
-                "Send Message"
-              )}
-            </Button>
-          </form>
-        </Paper>
+              Contact Us
+            </Typography>
+
+            <Typography
+              variant="body1"
+              align="center"
+              sx={{ mb: 3, color: "text.secondary" }}
+            >
+              Have a question, suggestion, or need support?  
+              We’d love to hear from you.
+            </Typography>
+
+            <form onSubmit={handleSubmit}>
+              <TextField
+                fullWidth
+                label="Full Name"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                variant="outlined"
+                margin="normal"
+                required
+                autoComplete="name"
+              />
+
+              <TextField
+                fullWidth
+                label="Email Address"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                variant="outlined"
+                margin="normal"
+                required
+                type="email"
+                autoComplete="email"
+              />
+
+              <TextField
+                fullWidth
+                label="Your Message"
+                name="message"
+                value={formData.message}
+                onChange={handleChange}
+                variant="outlined"
+                margin="normal"
+                required
+                multiline
+                rows={5}
+              />
+
+              <Button
+                type="submit"
+                fullWidth
+                variant="contained"
+                color="primary"
+                size="large"
+                disabled={loading}
+                endIcon={!loading && <SendIcon />}
+                sx={{
+                  mt: 3,
+                  borderRadius: 3,
+                  textTransform: "none",
+                  fontWeight: 600,
+                  py: 1.4,
+                }}
+              >
+                {loading ? (
+                  <CircularProgress
+                    size={26}
+                    sx={{ color: "white" }}
+                    thickness={5}
+                  />
+                ) : (
+                  "Send Message"
+                )}
+              </Button>
+            </form>
+          </Paper>
+        </motion.div>
       </Container>
 
       <Snackbar
