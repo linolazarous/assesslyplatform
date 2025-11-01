@@ -11,15 +11,12 @@ import {
   CircularProgress,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import { motion, AnimatePresence } from "framer-motion";
 import Confetti from "react-confetti";
 
 export default function Contact() {
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    message: "",
-  });
+  const [formData, setFormData] = useState({ name: "", email: "", message: "" });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [snackbar, setSnackbar] = useState({
@@ -35,7 +32,6 @@ export default function Contact() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!formData.name || !formData.email || !formData.message) {
       return setSnackbar({
         open: true,
@@ -46,30 +42,25 @@ export default function Contact() {
 
     try {
       setLoading(true);
-      const res = await fetch(
-        "https://assesslyplatform-t49h.onrender.com/api/contact",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        }
-      );
-
+      const res = await fetch("https://assesslyplatform-t49h.onrender.com/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
       const data = await res.json();
+
       if (res.ok) {
+        setSuccess(true);
         setSnackbar({
           open: true,
-          message: "✅ Message sent successfully! We’ll get back to you soon.",
+          message: "✅ Message sent successfully! We'll get back to you soon.",
           severity: "success",
         });
         setFormData({ name: "", email: "", message: "" });
-        setSuccess(true);
 
-        // Reset confetti after 5 seconds
+        // Stop success animation after 5s
         setTimeout(() => setSuccess(false), 5000);
-      } else {
-        throw new Error(data?.message || "Failed to send message.");
-      }
+      } else throw new Error(data?.message || "Failed to send message.");
     } catch (err) {
       setSnackbar({
         open: true,
@@ -85,57 +76,54 @@ export default function Contact() {
     <Box
       sx={{
         py: { xs: 6, md: 10 },
-        background: "linear-gradient(145deg, #eef2ff 0%, #f9fafb 100%)",
         minHeight: "100vh",
+        background:
+          "linear-gradient(135deg, #f8faff 0%, #e0e7ff 50%, #eef2ff 100%)",
         display: "flex",
         alignItems: "center",
+        justifyContent: "center",
         position: "relative",
         overflow: "hidden",
       }}
     >
-      {/* 🎉 Confetti effect */}
-      <AnimatePresence>
-        {success && (
-          <Confetti
-            numberOfPieces={250}
-            recycle={false}
-            gravity={0.3}
-            tweenDuration={4000}
-          />
-        )}
-      </AnimatePresence>
+      {/* 🎉 Confetti on success */}
+      <AnimatePresence>{success && <Confetti recycle={false} gravity={0.3} />}</AnimatePresence>
 
       <Container maxWidth="sm">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.5 }}
         >
           <Paper
-            elevation={6}
+            elevation={10}
             sx={{
               p: { xs: 4, sm: 5 },
               borderRadius: 4,
-              backgroundColor: "background.paper",
-              boxShadow: "0px 8px 24px rgba(0,0,0,0.05)",
+              backdropFilter: "blur(15px)",
+              background:
+                "rgba(255,255,255,0.75) linear-gradient(145deg, rgba(255,255,255,0.3), rgba(245,247,255,0.4))",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
             }}
           >
             <Typography
               variant="h4"
               align="center"
               gutterBottom
-              sx={{ fontWeight: 700, color: "primary.main" }}
+              sx={{
+                fontWeight: 800,
+                color: "primary.main",
+                letterSpacing: "-0.5px",
+              }}
             >
-              Contact Us
+              Get in Touch
             </Typography>
-
             <Typography
               variant="body1"
               align="center"
               sx={{ mb: 3, color: "text.secondary" }}
             >
-              Have a question, suggestion, or need support?  
-              We’d love to hear from you.
+              We'd love to hear from you. Fill out the form below and we’ll reply soon.
             </Typography>
 
             <form onSubmit={handleSubmit}>
@@ -148,9 +136,7 @@ export default function Contact() {
                 variant="outlined"
                 margin="normal"
                 required
-                autoComplete="name"
               />
-
               <TextField
                 fullWidth
                 label="Email Address"
@@ -161,9 +147,7 @@ export default function Contact() {
                 margin="normal"
                 required
                 type="email"
-                autoComplete="email"
               />
-
               <TextField
                 fullWidth
                 label="Your Message"
@@ -187,18 +171,20 @@ export default function Contact() {
                 endIcon={!loading && <SendIcon />}
                 sx={{
                   mt: 3,
+                  py: 1.3,
                   borderRadius: 3,
+                  fontWeight: 700,
                   textTransform: "none",
-                  fontWeight: 600,
-                  py: 1.4,
+                  background:
+                    "linear-gradient(90deg, #3b82f6 0%, #6366f1 100%)",
+                  "&:hover": {
+                    background:
+                      "linear-gradient(90deg, #2563eb 0%, #4f46e5 100%)",
+                  },
                 }}
               >
                 {loading ? (
-                  <CircularProgress
-                    size={26}
-                    sx={{ color: "white" }}
-                    thickness={5}
-                  />
+                  <CircularProgress size={26} sx={{ color: "white" }} />
                 ) : (
                   "Send Message"
                 )}
@@ -208,6 +194,48 @@ export default function Contact() {
         </motion.div>
       </Container>
 
+      {/* ✅ Success Popup Animation */}
+      <AnimatePresence>
+        {success && (
+          <motion.div
+            initial={{ scale: 0, opacity: 0, y: -20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ type: "spring", stiffness: 200, damping: 20 }}
+            style={{
+              position: "fixed",
+              top: "40%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              zIndex: 2000,
+              background: "rgba(255,255,255,0.95)",
+              backdropFilter: "blur(12px)",
+              padding: "2rem 3rem",
+              borderRadius: "20px",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
+              textAlign: "center",
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1.2 }}
+              transition={{ type: "spring", stiffness: 250, damping: 12 }}
+            >
+              <CheckCircleIcon
+                sx={{ color: "#22c55e", fontSize: 80, mb: 2 }}
+              />
+            </motion.div>
+            <Typography variant="h5" fontWeight={700} gutterBottom>
+              Message Sent!
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Thanks for reaching out — we’ll get back to you shortly.
+            </Typography>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Snackbar Notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={4000}
