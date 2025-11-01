@@ -1,33 +1,31 @@
-// api/routes/contact.js
 import express from "express";
-import { contactForm } from "../controllers/contactController.js";
+import ContactMessage from "../models/ContactMessage.js";
 
 const router = express.Router();
 
-/**
- * @route   POST /api/contact
- * @desc    Handle contact form submissions from the frontend
- * @access  Public
- */
-router.post("/", async (req, res, next) => {
+// GET all contact messages (admin)
+router.get("/", async (req, res) => {
   try {
-    await contactForm(req, res);
+    const messages = await ContactMessage.find().sort({ createdAt: -1 });
+    res.json(messages);
   } catch (error) {
-    console.error("❌ Contact form submission error:", error);
-    next(error);
+    res.status(500).json({ message: error.message });
   }
 });
 
-/**
- * @route   GET /api/contact/health
- * @desc    Simple health check for contact route
- */
-router.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    message: "Contact route operational",
-    timestamp: new Date(),
-  });
+// PATCH to mark as read/responded
+router.patch("/:id", async (req, res) => {
+  try {
+    const { status, responseNote } = req.body;
+    const updated = await ContactMessage.findByIdAndUpdate(
+      req.params.id,
+      { status, responseNote },
+      { new: true }
+    );
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 export default router;
