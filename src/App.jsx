@@ -1,7 +1,8 @@
+// src/App.jsx
 import React, { Suspense, lazy, useState, useMemo, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@mui/material/styles";
-import { CssBaseline, Box, CircularProgress } from "@mui/material";
+import { CssBaseline, Box, CircularProgress, Snackbar, Alert } from "@mui/material";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import MainLayout from "./layouts/MainLayout.jsx";
 import AuthLayout from "./layouts/AuthLayout.jsx";
@@ -11,22 +12,23 @@ import ProtectedRoute from "./components/common/ProtectedRoute.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 
 /* ============================================================
-   Lazy Import Utility with Retry (Prevents white-screen errors)
+   ✅ Lazy Import Utility with Retry
 ============================================================ */
-const lazyWithRetry = (componentImport) =>
+const lazyWithRetry = (importFunc, retries = 2, interval = 1500) =>
   lazy(async () => {
-    try {
-      return await componentImport();
-    } catch (error) {
-      console.error("Lazy loading failed:", error);
-      // Retry once after delay
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      return componentImport();
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        return await importFunc();
+      } catch (err) {
+        console.warn(`Lazy load attempt ${attempt + 1} failed. Retrying...`);
+        await new Promise((res) => setTimeout(res, interval));
+      }
     }
+    throw new Error("Component failed to load after multiple retries.");
   });
 
 /* ============================================================
-   Lazy-Loaded Pages
+   ✅ Lazy-Loaded Pages
 ============================================================ */
 const AssessmentDashboard = lazyWithRetry(() => import("./components/AssessmentDashboard.jsx"));
 const CreateAssessment = lazyWithRetry(() => import("./components/CreateAssessment.jsx"));
@@ -37,16 +39,13 @@ const LandingPage = lazyWithRetry(() => import("./pages/LandingPage.jsx"));
 const BillingPage = lazyWithRetry(() => import("./pages/Billing.jsx"));
 const AdminDashboard = lazyWithRetry(() => import("./pages/Admin/Dashboard.jsx"));
 const PricingPage = lazyWithRetry(() => import("./pages/Pricing.jsx"));
-const ContactPage = lazyWithRetry(() => import("./pages/Contact.jsx")); // ✅ Contact Page Added
+const ContactPage = lazyWithRetry(() => import("./pages/Contact.jsx"));
 
 /* ============================================================
-   Custom Theme Hook with Local Persistence
+   ✅ Custom Theme Hook with Local Persistence
 ============================================================ */
 const useThemeMode = () => {
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem("darkMode");
-    return saved ? JSON.parse(saved) : false;
-  });
+  const [darkMode, setDarkMode] = useState(() => JSON.parse(localStorage.getItem("darkMode") || "false"));
 
   const toggleDarkMode = () => {
     setDarkMode((prev) => {
@@ -56,16 +55,12 @@ const useThemeMode = () => {
     });
   };
 
-  const theme = useMemo(
-    () => getAppTheme(darkMode ? "dark" : "light"),
-    [darkMode]
-  );
-
+  const theme = useMemo(() => getAppTheme(darkMode ? "dark" : "light"), [darkMode]);
   return { theme, darkMode, toggleDarkMode };
 };
 
 /* ============================================================
-   Layout Wrapper
+   ✅ Layout Wrapper
 ============================================================ */
 const MainLayoutWrapper = ({ darkMode, toggleDarkMode, children }) => (
   <ErrorBoundary>
@@ -76,31 +71,31 @@ const MainLayoutWrapper = ({ darkMode, toggleDarkMode, children }) => (
 );
 
 /* ============================================================
-   Reusable Loading Component
+   ✅ Loading State Component
 ============================================================ */
 const ProductionLoading = () => (
-  <Box
-    sx={{
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      minHeight: "60vh",
-    }}
-  >
-    <CircularProgress size={40} />
+  <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
+    <CircularProgress size={42} />
   </Box>
 );
 
 /* ============================================================
-   MAIN APP COMPONENT
+   ✅ Main Application Component
 ============================================================ */
 export default function App() {
   const { theme, darkMode, toggleDarkMode } = useThemeMode();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "info" });
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleOnline = () => {
+      setIsOnline(true);
+      setSnackbar({ open: true, message: "Back online!", severity: "success" });
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      setSnackbar({ open: true, message: "You are offline. Some features may not work.", severity: "warning" });
+    };
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     return () => {
@@ -113,143 +108,68 @@ export default function App() {
     <ErrorBoundary>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Router
-          future={{
-            v7_startTransition: true,
-            v7_relativeSplatPath: true,
-          }}
-        >
+        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <AuthProvider>
-            {/* 🔶 Offline Notification */}
-            {!isOnline && (
-              <Box
-                sx={{
-                  position: "fixed",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  backgroundColor: "warning.main",
-                  color: "warning.contrastText",
-                  textAlign: "center",
-                  padding: 1,
-                  zIndex: 9999,
-                  fontSize: "0.875rem",
-                  fontWeight: 500,
-                }}
-              >
-                You are currently offline. Some features may not be available.
-              </Box>
-            )}
-
-            {/* 🔷 Routes */}
             <Suspense fallback={<LoadingScreen fullScreen />}>
               <Routes>
                 {/* 🌍 Public Pages */}
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/pricing" element={<PricingPage />} />
-                <Route path="/contact" element={<ContactPage />} /> {/* ✅ Contact Route */}
+                <Route path="/contact" element={<ContactPage />} />
 
                 {/* 🔑 Auth Pages */}
-                <Route
-                  path="/auth"
-                  element={
-                    <AuthLayout>
-                      <AuthPage />
-                    </AuthLayout>
-                  }
-                />
-                <Route
-                  path="/login"
-                  element={
-                    <AuthLayout>
-                      <AuthPage />
-                    </AuthLayout>
-                  }
-                />
+                {["/auth", "/login"].map((path) => (
+                  <Route
+                    key={path}
+                    path={path}
+                    element={
+                      <AuthLayout>
+                        <AuthPage />
+                      </AuthLayout>
+                    }
+                  />
+                ))}
 
-                {/* 🧠 Protected Routes */}
-                <Route
-                  path="/dashboard"
-                  element={
-                    <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                      <ProtectedRoute>
-                        <Suspense fallback={<ProductionLoading />}>
-                          <AssessmentDashboard />
-                        </Suspense>
-                      </ProtectedRoute>
-                    </MainLayoutWrapper>
-                  }
-                />
+                {/* 🧠 Protected Pages */}
+                {[
+                  { path: "/dashboard", component: AssessmentDashboard },
+                  { path: "/create", component: CreateAssessment },
+                  { path: "/take/:id", component: TakeAssessment },
+                  { path: "/report/:id", component: PdfReport },
+                  { path: "/billing", component: BillingPage },
+                  { path: "/admin", component: AdminDashboard, roles: ["admin"] },
+                ].map(({ path, component: Component, roles }) => (
+                  <Route
+                    key={path}
+                    path={path}
+                    element={
+                      <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+                        <ProtectedRoute roles={roles}>
+                          <Suspense fallback={<ProductionLoading />}>
+                            <Component />
+                          </Suspense>
+                        </ProtectedRoute>
+                      </MainLayoutWrapper>
+                    }
+                  />
+                ))}
 
-                <Route
-                  path="/create"
-                  element={
-                    <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                      <ProtectedRoute>
-                        <Suspense fallback={<ProductionLoading />}>
-                          <CreateAssessment />
-                        </Suspense>
-                      </ProtectedRoute>
-                    </MainLayoutWrapper>
-                  }
-                />
-
-                <Route
-                  path="/take/:id"
-                  element={
-                    <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                      <ProtectedRoute>
-                        <Suspense fallback={<ProductionLoading />}>
-                          <TakeAssessment />
-                        </Suspense>
-                      </ProtectedRoute>
-                    </MainLayoutWrapper>
-                  }
-                />
-
-                <Route
-                  path="/report/:id"
-                  element={
-                    <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                      <ProtectedRoute>
-                        <Suspense fallback={<ProductionLoading />}>
-                          <PdfReport />
-                        </Suspense>
-                      </ProtectedRoute>
-                    </MainLayoutWrapper>
-                  }
-                />
-
-                <Route
-                  path="/billing"
-                  element={
-                    <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                      <ProtectedRoute>
-                        <Suspense fallback={<ProductionLoading />}>
-                          <BillingPage />
-                        </Suspense>
-                      </ProtectedRoute>
-                    </MainLayoutWrapper>
-                  }
-                />
-
-                <Route
-                  path="/admin"
-                  element={
-                    <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                      <ProtectedRoute roles={["admin"]}>
-                        <Suspense fallback={<ProductionLoading />}>
-                          <AdminDashboard />
-                        </Suspense>
-                      </ProtectedRoute>
-                    </MainLayoutWrapper>
-                  }
-                />
-
-                {/* 🚫 404 Fallback */}
+                {/* 🚫 Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
+
+            {/* 🔔 Snackbar Notifications */}
+            <Snackbar
+              open={snackbar.open}
+              autoHideDuration={4000}
+              onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+              anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+            >
+              <Alert severity={snackbar.severity} onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}>
+                {snackbar.message}
+              </Alert>
+            </Snackbar>
           </AuthProvider>
         </Router>
       </ThemeProvider>
