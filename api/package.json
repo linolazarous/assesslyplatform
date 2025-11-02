@@ -13,7 +13,8 @@
     "seed:force": "node scripts/seed.js --force",
     "seed:test": "node scripts/seed.js --test-data",
     "seed:custom": "node scripts/seed.js --email custom@admin.com --name \"Custom Admin\"",
-    "seed:help": "node scripts/seed.js --help"
+    "seed:help": "node scripts/seed.js --help",
+    "check-deps": "npm list cors"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -52,7 +53,8 @@
     "seeding",
     "database",
     "email",
-    "nodemailer"
+    "nodemailer",
+    "cors"
   ],
   "author": "Assessly Platform",
   "license": "MIT"
