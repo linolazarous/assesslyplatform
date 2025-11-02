@@ -33,6 +33,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.3",
     "morgan": "^1.10.0",
+    "mustache": "^4.2.0",
     "nodemailer": "^6.9.17",
     "slugify": "^1.6.6",
     "stripe": "^14.9.0",
@@ -61,7 +62,9 @@
     "jwt",
     "nodemailer",
     "stripe",
-    "rate-limit"
+    "rate-limit",
+    "mustache",
+    "templates"
   ],
   "author": "Assessly Platform Team",
   "license": "MIT"
