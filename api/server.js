@@ -25,12 +25,10 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import statusMonitor from 'express-status-monitor';
-import swaggerUi from 'swagger-ui-express';
-import swaggerJsdoc from 'swagger-jsdoc';
 import routes from './routes/index.js';
 import { seedDatabase } from './utils/seedDatabase.js';
 import { securityHeaders } from './middleware/auth.js';
-import { setupSwagger } from './config/swagger.js';
+import { setupSwagger } from './config/swagger.js'; // Remove swaggerUi and swaggerJsdoc imports
 
 dotenv.config();
 
@@ -69,28 +67,6 @@ const logCorsBlocked = (origin) => {
   console.log(chalk.green('Allowed origins:'), ALLOWED_ORIGINS);
   console.groupEnd();
 };
-
-// =====================
-// Swagger (OpenAPI) setup
-// =====================
-const swaggerOptions = {
-  definition: {
-    openapi: '3.0.3',
-    info: {
-      title: 'Assessly API',
-      version: process.env.npm_package_version || '1.0.0',
-      description: 'Assessly - API documentation (auto-generated)',
-    },
-    servers: [
-      { url: `${BACKEND_URL}/api/v1`, description: 'Production server' },
-      { url: 'http://localhost:10000/api/v1', description: 'Local dev' },
-    ],
-  },
-  // Scan routes for JSDoc comments (adjust paths if needed)
-  apis: ['./routes/*.js', './controllers/*.js', './models/*.js'],
-};
-
-const swaggerSpec = swaggerJsdoc(swaggerOptions);
 
 // =====================
 // Middleware
@@ -178,9 +154,9 @@ app.get('/api/v1/debug', (req, res) => {
 });
 
 // =====================
-// Swagger UI route
+// Setup Swagger Documentation
 // =====================
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: true }));
+setupSwagger(app); // Call this once to set up Swagger
 
 // =====================
 // Mount versioned API
@@ -190,7 +166,7 @@ app.use('/api/v1', routes);
 
 // =====================
 // 404 handler (structured)
-//// =====================
+// =====================
 app.use((req, res) => {
   res.status(404).json({
     error: 'Endpoint not found',
@@ -202,7 +178,7 @@ app.use((req, res) => {
 
 // =====================
 // Error handler (centralized & structured)
-//// =====================
+// =====================
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   // If CORS error, handle specifically
   if (err && err.message && /cors/i.test(err.message)) {
@@ -254,6 +230,7 @@ async function start() {
     app.listen(PORT, () => {
       console.log(chalk.green(`📍 Server listening on port ${PORT}`));
       console.log(chalk.magenta(`📊 Health: ${BACKEND_URL}/api/v1/health`));
+      console.log(chalk.blue(`📚 API Docs: ${BACKEND_URL}/api/docs`));
       console.log(chalk.green('✅ Server ready.'));
     });
   } catch (err) {
@@ -289,7 +266,5 @@ process.on('uncaughtException', (err) => {
   // In production you may want to restart process manager or exit
   process.exit(1);
 });
-
-setupSwagger(app);
 
 start();
