@@ -1,4 +1,6 @@
 {
+  "id": "/",
+  "lang": "en",
   "name": "Assessly",
   "short_name": "Assessly",
   "description": "AI-Powered Assessment Platform for creating, managing, and analyzing assessments.",
