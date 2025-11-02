@@ -35,8 +35,11 @@ const isProduction = NODE_ENV === 'production';
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : isProduction
-  ? [FRONTEND_URL]
-  : ['http://localhost:3000', 'http://localhost:5173'];
+  ? [
+      'https://assessly-gedp.onrender.com'
+      FRONTEND_URL
+    ]
+  : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'];
 
 if (!MONGODB_URI) {
   console.error(chalk.red('❌ Missing required environment variable: MONGODB_URI'));
@@ -46,7 +49,32 @@ if (!MONGODB_URI) {
 /* ─────────────────────────────────────────────
    🧩 Middleware Setup
 ───────────────────────────────────────────── */
-app.use(helmet());
+
+// CORS MUST BE FIRST MIDDLEWARE
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin is in allowed list
+    if (ALLOWED_ORIGINS.some(allowedOrigin => origin === allowedOrigin)) {
+      return callback(null, true);
+    } else {
+      console.log(chalk.yellow(`⚠️  CORS blocked: ${origin}`));
+      return callback(new Error('Not allowed by CORS'), false);
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie'],
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -54,29 +82,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Additional security headers
 app.use(securityHeaders);
 
-// CORS
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      const allowed = ALLOWED_ORIGINS.some((o) => origin.includes(o));
-      if (allowed) return callback(null, true);
-      console.warn(chalk.yellow(`⚠️ Blocked by CORS: ${origin}`));
-      return callback(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  })
-);
-
-// Preflight
-app.options('*', cors());
-app.use(morgan('combined'));
+// Morgan logging
+app.use(morgan(isProduction ? 'combined' : 'dev'));
 
 /* ─────────────────────────────────────────────
    🔐 Rate limiting for auth endpoints
-   - Prevents brute-force on /api/auth/*
 ───────────────────────────────────────────── */
 const authLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -100,6 +110,10 @@ app.get('/api/health', (req, res) => {
     frontend: FRONTEND_URL,
     backend: BACKEND_URL,
     service: 'Assessly Backend API',
+    cors: {
+      allowedOrigins: ALLOWED_ORIGINS,
+      credentials: true
+    }
   });
 });
 
@@ -110,6 +124,7 @@ app.get('/api/debug', (req, res) => {
     corsEnabled: true,
     autoSeed: AUTO_SEED,
     frontendUrl: FRONTEND_URL,
+    headers: req.headers,
   });
 });
 
@@ -121,6 +136,7 @@ app.get('/', (req, res) => {
     status: 'running',
     documentation: '/api/health',
     environment: NODE_ENV,
+    cors: 'enabled'
   });
 });
 
@@ -137,6 +153,15 @@ app.use((req, res) => {
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error(chalk.red('❌ Error:'), err);
+  
+  // CORS errors
+  if (err.message.includes('CORS')) {
+    return res.status(403).json({
+      message: 'CORS Error: Request blocked',
+      allowedOrigins: ALLOWED_ORIGINS
+    });
+  }
+  
   res.status(err.status || 500).json({
     message: err.message || 'Internal Server Error',
     stack: NODE_ENV === 'production' ? undefined : err.stack,
@@ -172,10 +197,6 @@ async function startServer() {
     });
   } catch (err) {
     console.error(chalk.red('❌ Failed to start server:'), err.message);
-    console.log(chalk.yellow('🔧 Troubleshooting tips:'));
-    console.log(chalk.yellow('   1. Check if MONGODB_URI is correct'));
-    console.log(chalk.yellow('   2. Verify MongoDB Atlas network access (IP whitelist)'));
-    console.log(chalk.yellow('   3. Ensure the MongoDB cluster is active'));
     process.exit(1);
   }
 }
