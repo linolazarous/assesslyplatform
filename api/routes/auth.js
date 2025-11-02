@@ -1,168 +1,166 @@
 // api/routes/auth.js
-import express from 'express';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import User from '../models/User.js'; // You'll need to create this model
+import express from "express";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import User from "../models/User.js";
+import dotenv from "dotenv";
 
+dotenv.config();
 const router = express.Router();
 
-// JWT Secret - use environment variable in production
-const JWT_SECRET = process.env.JWT_SECRET || 'your-fallback-secret-key-for-development';
+// =======================
+// CONFIGURATION
+// =======================
+const JWT_SECRET = process.env.JWT_SECRET || "fallback-dev-secret";
+const JWT_EXPIRES_IN = "7d";
 
-// ✅ Login endpoint
-router.post('/login', async (req, res) => {
+// =======================
+// UTILITY FUNCTIONS
+// =======================
+
+// Generate JWT token
+const generateToken = (user) => {
+  return jwt.sign(
+    { userId: user._id, email: user.email, role: user.role },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  );
+};
+
+// Centralized error response
+const sendError = (res, code, message) => {
+  return res.status(code).json({ success: false, message });
+};
+
+// =======================
+// ROUTES
+// =======================
+
+// ✅ LOGIN
+router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate input
-    if (!email || !password) {
-      return res.status(400).json({ 
-        message: 'Email and password are required' 
-      });
-    }
+    if (!email || !password)
+      return sendError(res, 400, "Email and password are required.");
 
-    // For now, create a simple admin user if none exists
-    let user = await User.findOne({ email });
-    
+    let user = await User.findOne({ email }).select("+password");
+
+    // Auto-create default admin if no users exist
     if (!user) {
-      // Create default admin user if no users exist
       const userCount = await User.countDocuments();
       if (userCount === 0) {
-        const hashedPassword = await bcrypt.hash('admin123', 12);
+        const hashedPassword = await bcrypt.hash("admin123", 12);
         user = await User.create({
-          email: 'admin@assessly.com',
+          name: "Admin User",
+          email: "admin@assessly.com",
           password: hashedPassword,
-          role: 'admin',
-          name: 'Admin User'
+          role: "admin",
         });
       } else {
-        return res.status(401).json({ 
-          message: 'Invalid email or password' 
-        });
+        return sendError(res, 401, "Invalid email or password.");
       }
     }
 
-    // Check password
+    // Check password validity
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ 
-        message: 'Invalid email or password' 
-      });
-    }
+    if (!isPasswordValid) return sendError(res, 401, "Invalid email or password.");
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { 
-        userId: user._id, 
-        email: user.email, 
-        role: user.role 
-      },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    // Generate token
+    const token = generateToken(user);
 
-    // Return success response
-    res.json({
-      message: 'Login successful',
+    // Update login metadata
+    user.lastLogin = new Date();
+    user.lastActivity = new Date();
+    await user.save({ validateBeforeSave: false });
+
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
       token,
       user: {
         id: user._id,
+        name: user.name,
         email: user.email,
         role: user.role,
-        name: user.name
-      }
+      },
     });
-
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ 
-      message: 'Internal server error' 
-    });
+    console.error("🔥 Login error:", error);
+    sendError(res, 500, "Server error during login.");
   }
 });
 
-// ✅ Register endpoint
-router.post('/register', async (req, res) => {
+// ✅ REGISTER
+router.post("/register", async (req, res) => {
   try {
-    const { email, password, role = 'assessor', name } = req.body;
+    const { name, email, password, role = "candidate" } = req.body;
 
-    // Validate input
-    if (!email || !password || !name) {
-      return res.status(400).json({ 
-        message: 'Email, password, and name are required' 
-      });
-    }
+    if (!name || !email || !password)
+      return sendError(res, 400, "Name, email, and password are required.");
 
-    if (password.length < 6) {
-      return res.status(400).json({ 
-        message: 'Password must be at least 6 characters' 
-      });
-    }
+    if (password.length < 8)
+      return sendError(res, 400, "Password must be at least 8 characters long.");
 
-    // Check if user already exists
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({ 
-        message: 'User already exists with this email' 
-      });
-    }
+    if (existingUser)
+      return sendError(res, 409, "An account with this email already exists.");
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create user
     const user = await User.create({
+      name,
       email,
       password: hashedPassword,
       role,
-      name
     });
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { 
-        userId: user._id, 
-        email: user.email, 
-        role: user.role 
-      },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = generateToken(user);
 
-    // Return success response
     res.status(201).json({
-      message: 'User registered successfully',
+      success: true,
+      message: "Registration successful",
       token,
       user: {
         id: user._id,
+        name: user.name,
         email: user.email,
         role: user.role,
-        name: user.name
-      }
+      },
     });
-
   } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ 
-      message: 'Internal server error' 
-    });
+    console.error("🔥 Registration error:", error);
+    sendError(res, 500, "Server error during registration.");
   }
 });
 
-// ✅ Get user profile (protected route)
-router.get('/profile', async (req, res) => {
+// ✅ PROFILE (Protected route example)
+router.get("/profile", async (req, res) => {
   try {
-    // This would require authentication middleware
-    // For now, return a simple response
-    res.json({ 
-      message: 'Profile endpoint - authentication required' 
+    // For production, use auth middleware to decode JWT
+    return res.json({
+      success: true,
+      message: "Profile endpoint - authentication required.",
     });
   } catch (error) {
-    console.error('Profile error:', error);
-    res.status(500).json({ 
-      message: 'Internal server error' 
-    });
+    console.error("🔥 Profile error:", error);
+    sendError(res, 500, "Server error retrieving profile.");
   }
+});
+
+// =======================
+// HEALTH CHECK ROUTE
+// =======================
+router.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "Auth routes active.",
+    availableEndpoints: [
+      { method: "POST", path: "/api/auth/login" },
+      { method: "POST", path: "/api/auth/register" },
+      { method: "GET", path: "/api/auth/profile" },
+    ],
+  });
 });
 
 export default router;
