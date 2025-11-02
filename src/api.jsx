@@ -1,282 +1,64 @@
-// src/api.jsx
 import axios from "axios";
 
-/**
- * 🌍 Dynamic Base URL Configuration for Production
- */
 const getApiBaseUrl = () => {
-  // Always use environment variable in production
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
-  }
-  
-  // Fallback for different environments
-  const isLocalhost = window.location.hostname === "localhost" || 
-                      window.location.hostname === "127.0.0.1";
-  
-  return isLocalhost 
-    ? "http://localhost:3000/api" 
-    : "https://assesslyplatform-t49h.onrender.com/api"; // ✅ UPDATED BACKEND URL
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl) return envUrl;
+
+  const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  return isLocal
+    ? "http://localhost:3000/api"
+    : "https://assesslyplatform-t49h.onrender.com/api";
 };
 
-const API_BASE_URL = getApiBaseUrl();
+export const API_BASE_URL = getApiBaseUrl();
 
-/**
- * 🔐 Production Axios Instance
- */
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: { 
+  headers: {
     "Content-Type": "application/json",
-    "X-Client": "assessly-frontend" 
+    "X-Client": "assessly-frontend"
   },
-  withCredentials: false,
-  timeout: 15000, // 15 second timeout for production
+  timeout: 20000
 });
 
-/**
- * ✅ Production Request Interceptor
- */
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      // Verify token format before attaching
-      if (token.startsWith('eyJ') && token.length > 50) {
-        config.headers.Authorization = `Bearer ${token}`;
-      } else {
-        console.warn('Invalid token format detected');
-        localStorage.removeItem("token");
-      }
-    }
-    
-    // Add request ID for tracking
-    config.headers['X-Request-ID'] = Date.now().toString();
-    
-    return config;
-  },
-  (error) => {
-    console.error('Request interceptor error:', error);
-    return Promise.reject(error);
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem("token");
+  if (token?.startsWith("eyJ") && token.length > 50) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-);
+  config.headers["X-Request-ID"] = Date.now().toString();
+  return config;
+});
 
-/**
- * 🚨 Production Response Interceptor with Enhanced Error Handling
- */
 api.interceptors.response.use(
-  (response) => {
-    // Log successful API calls in development
-    if (import.meta.env.DEV) {
-      console.log(`✅ API Success: ${response.config.method?.toUpperCase()} ${response.config.url}`);
-    }
-    return response;
-  },
-  (error) => {
-    const message = error.response?.data?.message || error.message;
-    const status = error.response?.status;
-    const url = error.config?.url;
-    
-    // Production error logging (avoid verbose logging in production)
-    if (import.meta.env.PROD) {
-      console.error(`API Error [${status}]: ${url} - ${message}`);
-    } else {
-      console.error("❌ API Error:", { 
-        url, 
-        status, 
-        message,
-        config: error.config 
-      });
-    }
-    
-    // Handle specific status codes
+  res => res,
+  err => {
+    const status = err.response?.status;
     if (status === 401) {
-      // Token expired or invalid
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-      // Don't redirect automatically in production - let components handle
-      console.warn('Authentication failed - token removed');
-      
-      // Optional: Redirect to login if not already there
-      if (!window.location.pathname.includes('/auth') && !window.location.pathname.includes('/login')) {
-        window.location.href = '/auth';
+      if (!window.location.pathname.includes("/auth")) {
+        window.location.href = "/auth";
       }
     }
-    
-    if (status === 429) {
-      // Rate limiting
-      console.warn('Rate limit exceeded');
-      // Show user-friendly message
-      error.message = "Too many requests. Please try again later.";
-    }
-    
-    if (status >= 500) {
-      // Server errors
-      console.error('Server error occurred');
-      error.message = "Service temporarily unavailable. Please try again later.";
-    }
-    
-    // Network errors
-    if (error.code === 'NETWORK_ERROR' || error.code === 'ECONNREFUSED') {
-      error.message = "Network error. Please check your connection and try again.";
-    }
-    
-    // Return consistent error format
-    return Promise.reject({ 
-      message: message || "Service temporarily unavailable", 
-      status: status || 0,
-      code: error.code,
-      url: url
-    });
+    if (status === 429) err.message = "Too many requests. Try again later.";
+    if (status >= 500) err.message = "Server unavailable. Please retry.";
+    if (!status) err.message = "Network error. Check connection.";
+    return Promise.reject(err);
   }
 );
 
-/**
- * 🛡️ Safe API Call Wrapper with Retry Logic
- */
-const handleRequest = (promise, maxRetries = 1) => {
-  return promise
-    .then((res) => res.data)
-    .catch(async (error) => {
-      // Only retry on network errors, not auth or validation errors
-      if (maxRetries > 0 && (!error.status || error.status >= 500)) {
-        console.warn(`Retrying request, ${maxRetries} attempts left`);
-        await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
-        return handleRequest(promise, maxRetries - 1);
-      }
-      
-      throw error;
-    });
+export const handleRequest = async (promise, retries = 2, delay = 1000) => {
+  try {
+    const res = await promise;
+    return res.data;
+  } catch (err) {
+    if (retries > 0 && (!err.status || err.status >= 500)) {
+      await new Promise(r => setTimeout(r, delay));
+      return handleRequest(promise, retries - 1, delay * 2);
+    }
+    throw err;
+  }
 };
 
-// =================================================================
-// ======================== PRODUCTION API ENDPOINTS ===============
-// =================================================================
-
-// Authentication
-export const AuthAPI = {
-  register: (data) => handleRequest(api.post("/auth/register", data)),
-  login: (data) => 
-    api.post("/auth/login", data).then((response) => {
-      const { token, user } = response.data;
-      if (token) {
-        localStorage.setItem("token", token);
-        if (user) {
-          localStorage.setItem("user", JSON.stringify(user));
-        }
-      }
-      return response.data;
-    }),
-  profile: () => handleRequest(api.get("/user/profile")),
-  logout: () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    return Promise.resolve();
-  },
-  refreshToken: () => handleRequest(api.post("/auth/refresh")),
-  forgotPassword: (email) => handleRequest(api.post("/auth/forgot-password", { email })),
-  resetPassword: (token, password) => handleRequest(api.post("/auth/reset-password", { token, password })),
-};
-
-// Organizations
-export const OrganizationAPI = {
-  list: () => handleRequest(api.get("/organizations")),
-  details: (id) => handleRequest(api.get(`/organizations/${id}`)),
-  create: (data) => handleRequest(api.post("/organizations", data)),
-  update: (id, data) => handleRequest(api.put(`/organizations/${id}`, data)),
-  delete: (id) => handleRequest(api.delete(`/organizations/${id}`)),
-  members: (id) => handleRequest(api.get(`/organizations/${id}/members`)),
-  invite: (id, email, role) => handleRequest(api.post(`/organizations/${id}/invite`, { email, role })),
-};
-
-// Assessments
-export const AssessmentAPI = {
-  list: (status = "", page = 1, limit = 10) => 
-    handleRequest(api.get(`/assessments?status=${status}&page=${page}&limit=${limit}`)),
-  details: (id) => handleRequest(api.get(`/assessments/${id}`)),
-  create: (data) => handleRequest(api.post("/assessments/create", data)),
-  update: (id, data) => handleRequest(api.put(`/assessments/${id}`, data)),
-  delete: (id) => handleRequest(api.delete(`/assessments/${id}`)),
-  start: (id) => handleRequest(api.post(`/assessments/${id}/start`)),
-  submit: (id, data) => handleRequest(api.post(`/assessments/${id}/submit`, data)),
-  aiScore: (answers) => handleRequest(api.post("/assessments/ai-score", { answers })),
-  results: (id) => handleRequest(api.get(`/assessments/${id}/results`)),
-  candidates: (id) => handleRequest(api.get(`/assessments/${id}/candidates`)),
-  inviteCandidate: (id, email) => handleRequest(api.post(`/assessments/${id}/invite`, { email })),
-};
-
-// Questions
-export const QuestionAPI = {
-  list: (assessmentId) => handleRequest(api.get(`/assessments/${assessmentId}/questions`)),
-  create: (assessmentId, data) => handleRequest(api.post(`/assessments/${assessmentId}/questions`, data)),
-  update: (id, data) => handleRequest(api.put(`/questions/${id}`, data)),
-  delete: (id) => handleRequest(api.delete(`/questions/${id}`)),
-  reorder: (assessmentId, questionIds) => handleRequest(api.put(`/assessments/${assessmentId}/questions/reorder`, { questionIds })),
-};
-
-// Billing
-export const BillingAPI = {
-  checkoutSession: (plan) => 
-    handleRequest(api.post("/billing/checkout-session", { plan })),
-  portalLink: () => handleRequest(api.post("/billing/portal-link")),
-  invoices: () => handleRequest(api.get("/billing/invoices")),
-  subscription: () => handleRequest(api.get("/billing/subscription")),
-  plans: () => handleRequest(api.get("/billing/plans")),
-};
-
-// Admin
-export const AdminAPI = {
-  stats: () => handleRequest(api.get("/admin/stats")),
-  users: (page = 1, limit = 20) => 
-    handleRequest(api.get(`/admin/users?page=${page}&limit=${limit}`)),
-  organizations: () => handleRequest(api.get("/admin/organizations")),
-  assessments: () => handleRequest(api.get("/admin/assessments")),
-  systemHealth: () => handleRequest(api.get("/admin/system-health")),
-};
-
-// Search
-export const SearchAPI = {
-  query: (query, type = "all") => 
-    handleRequest(api.post("/search", { query, type })),
-  assessments: (query) => handleRequest(api.get(`/search/assessments?q=${encodeURIComponent(query)}`)),
-  candidates: (query) => handleRequest(api.get(`/search/candidates?q=${encodeURIComponent(query)}`)),
-};
-
-// Health Check
-export const HealthAPI = {
-  check: () => handleRequest(api.get("/health")),
-  ping: () => handleRequest(api.get("/health/ping")),
-  deep: () => handleRequest(api.get("/health/deep")),
-};
-
-// System
-export const SystemAPI = {
-  config: () => handleRequest(api.get("/system/config")),
-  maintenance: () => handleRequest(api.get("/system/maintenance")),
-  features: () => handleRequest(api.get("/system/features")),
-};
-
-// Analytics
-export const AnalyticsAPI = {
-  dashboard: () => handleRequest(api.get("/analytics/dashboard")),
-  assessment: (id) => handleRequest(api.get(`/analytics/assessments/${id}`)),
-  candidate: (id) => handleRequest(api.get(`/analytics/candidates/${id}`)),
-  export: (type, filters = {}) => handleRequest(api.post("/analytics/export", { type, filters })),
-};
-
-// Export all APIs
-export default {
-  AuthAPI,
-  OrganizationAPI,
-  AssessmentAPI,
-  QuestionAPI,
-  BillingAPI,
-  AdminAPI,
-  SearchAPI,
-  HealthAPI,
-  SystemAPI,
-  AnalyticsAPI,
-};
-
-// Export base API instance for custom requests
-export { api, API_BASE_URL };
+export default api;
