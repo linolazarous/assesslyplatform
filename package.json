@@ -43,7 +43,9 @@
     "react",
     "vite",
     "education",
-    "frontend"
+    "frontend",
+    "cors",
+    "axios"
   ],
   "license": "MIT"
 }
