@@ -55,14 +55,3 @@ export function setupSwagger(app) {
     res.send(swaggerSpec);
   });
 }
-
-components: {
-  securitySchemes: {
-    bearerAuth: {
-      type: "http",
-      scheme: "bearer",
-      bearerFormat: "JWT",
-    },
-  },
-},
-security: [{ bearerAuth: [] }],
