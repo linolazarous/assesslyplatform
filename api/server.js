@@ -19,7 +19,7 @@ dotenv.config();
    🚀 Server Configuration
 ───────────────────────────────────────────── */
 const app = express();
-app.set('trust proxy', 1); // Required behind proxies like Render
+app.set('trust proxy', 1);
 
 const PORT = process.env.PORT || 10000;
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -29,192 +29,137 @@ const BACKEND_URL = process.env.BACKEND_URL || 'https://assesslyplatform-t49h.on
 const NODE_ENV = process.env.NODE_ENV || 'production';
 const isProduction = NODE_ENV === 'production';
 
-/* ─────────────────────────────────────────────
-   🌍 Allowed Origins (CORS)
-───────────────────────────────────────────── */
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
-  : isProduction
-  ? [
-      'https://assessly-gedp.onrender.com',
-      FRONTEND_URL
-    ]
-  : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'];
-
 if (!MONGODB_URI) {
   console.error(chalk.red('❌ Missing required environment variable: MONGODB_URI'));
   process.exit(1);
 }
 
 /* ─────────────────────────────────────────────
-   🧩 Middleware Setup
+   🌍 CORS Configuration
 ───────────────────────────────────────────── */
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : [
+      'https://assessly-gedp.onrender.com',
+      FRONTEND_URL,
+      'http://localhost:5173',
+      'http://localhost:5174',
+    ];
 
-// CORS MUST BE FIRST MIDDLEWARE
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    // Check if origin is in allowed list
-    if (ALLOWED_ORIGINS.some(allowedOrigin => origin === allowedOrigin)) {
-      return callback(null, true);
-    } else {
-      console.log(chalk.yellow(`⚠️  CORS blocked: ${origin}`));
-      return callback(new Error('Not allowed by CORS'), false);
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie'],
-}));
-
-// Handle preflight requests
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+      console.warn(chalk.yellow(`⚠️  CORS blocked: ${origin}`));
+      return callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  })
+);
 app.options('*', cors());
 
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
+/* ─────────────────────────────────────────────
+   🧩 Middleware
+───────────────────────────────────────────── */
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Additional security headers
 app.use(securityHeaders);
-
-// Morgan logging
 app.use(morgan(isProduction ? 'combined' : 'dev'));
 
 /* ─────────────────────────────────────────────
-   🔐 Rate limiting for auth endpoints
+   🔐 Rate Limiting
 ───────────────────────────────────────────── */
 const authLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // limit each IP to 10 requests per windowMs
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: 'Too many requests from this IP, please try again later.' },
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { message: 'Too many requests from this IP. Please try again later.' },
 });
-
-// Apply auth limiter to auth routes before mounting /api routes
 app.use('/api/auth', authLimiter);
 
 /* ─────────────────────────────────────────────
-   🩺 Health & Debug Routes
+   🩺 Health & Debug
 ───────────────────────────────────────────── */
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_, res) =>
   res.json({
     status: 'ok',
-    timestamp: new Date(),
+    timestamp: new Date().toISOString(),
     environment: NODE_ENV,
     frontend: FRONTEND_URL,
     backend: BACKEND_URL,
-    service: 'Assessly Backend API',
-    cors: {
-      allowedOrigins: ALLOWED_ORIGINS,
-      credentials: true
-    }
-  });
-});
-
-app.get('/api/debug', (req, res) => {
-  res.json({
-    environment: NODE_ENV,
     allowedOrigins: ALLOWED_ORIGINS,
-    corsEnabled: true,
-    autoSeed: AUTO_SEED,
-    frontendUrl: FRONTEND_URL,
-    headers: req.headers,
-  });
-});
+  })
+);
 
-// Root endpoint
-app.get('/', (req, res) => {
+app.get('/api/debug', (req, res) =>
+  res.json({
+    env: NODE_ENV,
+    frontend: FRONTEND_URL,
+    backend: BACKEND_URL,
+    headers: req.headers,
+  })
+);
+
+app.get('/', (_, res) =>
   res.json({
     message: 'Assessly Platform API Server',
     version: '1.0.0',
     status: 'running',
-    documentation: '/api/health',
-    environment: NODE_ENV,
-    cors: 'enabled'
-  });
-});
+    docs: '/api/health',
+  })
+);
 
 /* ─────────────────────────────────────────────
-   🧭 API Routes
+   🧭 Routes & Errors
 ───────────────────────────────────────────── */
 app.use('/api', routes);
+app.use((_, res) => res.status(404).json({ message: 'Route not found' }));
 
-// 404 Handler
-app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
-});
-
-// Global Error Handler
-app.use((err, req, res, next) => {
+app.use((err, _, res, __) => {
   console.error(chalk.red('❌ Error:'), err);
-  
-  // CORS errors
-  if (err.message.includes('CORS')) {
-    return res.status(403).json({
-      message: 'CORS Error: Request blocked',
-      allowedOrigins: ALLOWED_ORIGINS
-    });
-  }
-  
-  res.status(err.status || 500).json({
+  const status = err.message.includes('CORS') ? 403 : err.status || 500;
+  res.status(status).json({
     message: err.message || 'Internal Server Error',
-    stack: NODE_ENV === 'production' ? undefined : err.stack,
+    allowedOrigins: ALLOWED_ORIGINS,
   });
 });
 
 /* ─────────────────────────────────────────────
-   ⚙️ Database Connection & Server Start
+   ⚙️ Start Server
 ───────────────────────────────────────────── */
 async function startServer() {
   console.log(chalk.cyan('\n🚀 Starting Assessly Backend Server...\n'));
-
   try {
     const conn = await mongoose.connect(MONGODB_URI);
-
-    console.log(chalk.green('✅ MongoDB connected successfully'));
-    console.log(chalk.gray(`📡 Database: ${conn.connection.name}`));
-    console.log(chalk.gray(`🏠 Host: ${conn.connection.host}`));
-    console.log(chalk.blue(`🌍 Environment: ${NODE_ENV}`));
-    console.log(chalk.magenta(`🎯 Frontend URL: ${FRONTEND_URL}`));
-    console.log(chalk.cyan(`🔒 CORS enabled for: ${ALLOWED_ORIGINS.join(', ')}`));
-    console.log(chalk.yellow(`🌱 Auto-seed: ${AUTO_SEED}`));
+    console.log(chalk.green('✅ MongoDB connected:'), conn.connection.name);
+    console.log(chalk.blue(`🌍 Env: ${NODE_ENV}`));
+    console.log(chalk.magenta(`🎯 Frontend: ${FRONTEND_URL}`));
 
     if (AUTO_SEED) {
       console.log(chalk.yellow('🌱 Auto-seeding database...'));
       await seedDatabase();
     }
 
-    app.listen(PORT, () => {
-      console.log(chalk.green(`📍 Server running on port: ${PORT}`));
-      console.log(chalk.magenta(`📊 Health: ${BACKEND_URL}/api/health`));
-      console.log(chalk.green('✅ Server started successfully\n'));
-    });
+    app.listen(PORT, () =>
+      console.log(chalk.green(`📍 Server running on port ${PORT}`))
+    );
   } catch (err) {
     console.error(chalk.red('❌ Failed to start server:'), err.message);
     process.exit(1);
   }
 }
 
-/* ─────────────────────────────────────────────
-   🛑 Graceful Shutdown
-───────────────────────────────────────────── */
-const gracefulShutdown = async (signal) => {
-  console.log(chalk.yellow(`\n🛑 ${signal} received. Shutting down gracefully...`));
-  await mongoose.connection.close();
-  console.log(chalk.green('✅ MongoDB connection closed.'));
-  process.exit(0);
-};
+['SIGINT', 'SIGTERM'].forEach(sig =>
+  process.on(sig, async () => {
+    console.log(chalk.yellow(`\n🛑 ${sig} received. Shutting down...`));
+    await mongoose.connection.close();
+    console.log(chalk.green('✅ MongoDB connection closed.'));
+    process.exit(0);
+  })
+);
 
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-
-/* ─────────────────────────────────────────────
-   🚦 Start Server
-───────────────────────────────────────────── */
 startServer();
