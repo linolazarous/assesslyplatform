@@ -30,6 +30,7 @@ import swaggerJsdoc from 'swagger-jsdoc';
 import routes from './routes/index.js';
 import { seedDatabase } from './utils/seedDatabase.js';
 import { securityHeaders } from './middleware/auth.js';
+import { setupSwagger } from './config/swagger.js';
 
 dotenv.config();
 
@@ -288,5 +289,7 @@ process.on('uncaughtException', (err) => {
   // In production you may want to restart process manager or exit
   process.exit(1);
 });
+
+setupSwagger(app);
 
 start();
