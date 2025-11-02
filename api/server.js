@@ -15,11 +15,8 @@ import { securityHeaders } from './middleware/auth.js';
 
 dotenv.config();
 
-/* ─────────────────────────────────────────────
-   🚀 Server Configuration
-───────────────────────────────────────────── */
 const app = express();
-app.set('trust proxy', 1);
+app.set('trust proxy', 1); // required when behind Render or other proxies
 
 const PORT = process.env.PORT || 10000;
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -34,36 +31,35 @@ if (!MONGODB_URI) {
   process.exit(1);
 }
 
-/* ─────────────────────────────────────────────
-   🌍 CORS Configuration
-───────────────────────────────────────────── */
+/**
+ * CORS configuration — whitelist origins exactly to avoid accidental blocks.
+ * If your frontend uses subpaths or multiple domains, add them to ALLOWED_ORIGINS env.
+ */
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : [
-      'https://assessly-gedp.onrender.com',
       FRONTEND_URL,
+      'https://assessly-gedp.onrender.com',
       'http://localhost:5173',
-      'http://localhost:5174',
+      'http://localhost:3000'
     ];
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin) return callback(null, true);
-      if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
-      console.warn(chalk.yellow(`⚠️  CORS blocked: ${origin}`));
-      return callback(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  })
-);
+/* -------------- Middleware -------------- */
+app.use(cors({
+  origin(origin, callback) {
+    // allow server-side requests with no origin (curl, Postman)
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    console.warn(chalk.yellow(`⚠️ CORS blocked request from: ${origin}`));
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization','X-Requested-With','Cookie']
+}));
+
 app.options('*', cors());
 
-/* ─────────────────────────────────────────────
-   🧩 Middleware
-───────────────────────────────────────────── */
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
@@ -71,95 +67,97 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(securityHeaders);
 app.use(morgan(isProduction ? 'combined' : 'dev'));
 
-/* ─────────────────────────────────────────────
-   🔐 Rate Limiting
-───────────────────────────────────────────── */
+// rate limit for auth endpoints to mitigate brute-force (lightweight)
 const authLimiter = rateLimit({
-  windowMs: 60 * 1000,
+  windowMs: 60 * 1000, // 1 minute
   max: 10,
-  message: { message: 'Too many requests from this IP. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests from this IP, please try again later.' }
 });
 app.use('/api/auth', authLimiter);
 
-/* ─────────────────────────────────────────────
-   🩺 Health & Debug
-───────────────────────────────────────────── */
-app.get('/api/health', (_, res) =>
+/* -------------- Health & Debug -------------- */
+app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     environment: NODE_ENV,
     frontend: FRONTEND_URL,
     backend: BACKEND_URL,
-    allowedOrigins: ALLOWED_ORIGINS,
-  })
-);
-
-app.get('/api/debug', (req, res) =>
-  res.json({
-    env: NODE_ENV,
-    frontend: FRONTEND_URL,
-    backend: BACKEND_URL,
-    headers: req.headers,
-  })
-);
-
-app.get('/', (_, res) =>
-  res.json({
-    message: 'Assessly Platform API Server',
-    version: '1.0.0',
-    status: 'running',
-    docs: '/api/health',
-  })
-);
-
-/* ─────────────────────────────────────────────
-   🧭 Routes & Errors
-───────────────────────────────────────────── */
-app.use('/api', routes);
-app.use((_, res) => res.status(404).json({ message: 'Route not found' }));
-
-app.use((err, _, res, __) => {
-  console.error(chalk.red('❌ Error:'), err);
-  const status = err.message.includes('CORS') ? 403 : err.status || 500;
-  res.status(status).json({
-    message: err.message || 'Internal Server Error',
-    allowedOrigins: ALLOWED_ORIGINS,
+    cors: { allowedOrigins: ALLOWED_ORIGINS }
   });
 });
 
-/* ─────────────────────────────────────────────
-   ⚙️ Start Server
-───────────────────────────────────────────── */
+app.get('/api/debug', (req, res) => {
+  res.json({
+    environment: NODE_ENV,
+    allowedOrigins: ALLOWED_ORIGINS,
+    headers: req.headers,
+    autoSeed: AUTO_SEED
+  });
+});
+
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Assessly Platform API Server',
+    version: process.env.npm_package_version || '1.0.0',
+    status: 'running',
+    docs: '/api/health',
+  });
+});
+
+/* -------------- Mount API Routes -------------- */
+app.use('/api', routes);
+
+/* -------------- 404 & Global Error Handler -------------- */
+app.use((req, res) => res.status(404).json({ message: 'Route not found', path: req.originalUrl }));
+
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  console.error(chalk.red('❌ Server error:'), err);
+  if (err.message && err.message.toLowerCase().includes('cors')) {
+    return res.status(403).json({ message: 'CORS Error: Request blocked', allowedOrigins: ALLOWED_ORIGINS });
+  }
+  res.status(err.status || 500).json({
+    message: err.message || 'Internal Server Error',
+    stack: NODE_ENV === 'production' ? undefined : err.stack
+  });
+});
+
+/* -------------- Start Server -------------- */
 async function startServer() {
   console.log(chalk.cyan('\n🚀 Starting Assessly Backend Server...\n'));
   try {
-    const conn = await mongoose.connect(MONGODB_URI);
+    const conn = await mongoose.connect(MONGODB_URI, { autoIndex: true }); // autoIndex only for dev; ok here because indexes already defined
     console.log(chalk.green('✅ MongoDB connected:'), conn.connection.name);
-    console.log(chalk.blue(`🌍 Env: ${NODE_ENV}`));
-    console.log(chalk.magenta(`🎯 Frontend: ${FRONTEND_URL}`));
+    console.log(chalk.blue(`🌍 Environment: ${NODE_ENV}`));
+    console.log(chalk.magenta(`🎯 Frontend URL: ${FRONTEND_URL}`));
+    console.log(chalk.cyan(`🔒 CORS enabled for: ${ALLOWED_ORIGINS.join(', ')}`));
 
     if (AUTO_SEED) {
-      console.log(chalk.yellow('🌱 Auto-seeding database...'));
+      console.log(chalk.yellow('🌱 Auto-seeding enabled'));
       await seedDatabase();
     }
 
-    app.listen(PORT, () =>
-      console.log(chalk.green(`📍 Server running on port ${PORT}`))
-    );
+    app.listen(PORT, () => {
+      console.log(chalk.green(`📍 Server running on port: ${PORT}`));
+      console.log(chalk.magenta(`📊 Health: ${BACKEND_URL}/api/health`));
+    });
   } catch (err) {
     console.error(chalk.red('❌ Failed to start server:'), err.message);
     process.exit(1);
   }
 }
 
-['SIGINT', 'SIGTERM'].forEach(sig =>
-  process.on(sig, async () => {
-    console.log(chalk.yellow(`\n🛑 ${sig} received. Shutting down...`));
-    await mongoose.connection.close();
-    console.log(chalk.green('✅ MongoDB connection closed.'));
-    process.exit(0);
-  })
-);
+process.on('SIGINT', async () => {
+  console.log(chalk.yellow('\n🛑 SIGINT received — shutting down gracefully...'));
+  await mongoose.connection.close();
+  process.exit(0);
+});
+process.on('SIGTERM', async () => {
+  console.log(chalk.yellow('\n🛑 SIGTERM received — shutting down gracefully...'));
+  await mongoose.connection.close();
+  process.exit(0);
+});
 
 startServer();
