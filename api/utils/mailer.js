@@ -1,6 +1,6 @@
 // api/utils/mailer.js
 import nodemailer from 'nodemailer';
-import mustache from 'mustache'; // optional; if not installed, use template strings
+// Remove this line: import mustache from 'mustache'; // optional; if not installed, use template strings
 import fs from 'fs';
 import path from 'path';
 
