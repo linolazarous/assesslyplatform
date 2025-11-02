@@ -1,279 +1,165 @@
-import express from 'express';
-import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
-import { asyncHandler } from '../middleware/asyncHandler.js';
-import { protect } from '../middleware/auth.js';
+import express from "express";
+import authRouter from "./auth.js";
+import usersRouter from "./users.js";
+import organizationsRouter from "./organizations.js";
+import assessmentsRouter from "./assessments.js";
+import assessmentResponsesRouter from "./assessmentResponses.js";
+import subscriptionsRouter from "./subscriptions.js";
+import userActivitiesRouter from "./userActivities.js";
+import contactRouter from "./contact.js";
 
 const router = express.Router();
 
 /**
  * @swagger
  * components:
- *   schemas:
- *     AuthResponse:
- *       type: object
- *       properties:
- *         message:
- *           type: string
- *         token:
- *           type: string
- *         user:
- *           type: object
- *           properties:
- *             id:
- *               type: string
- *             name:
- *               type: string
- *             email:
- *               type: string
- *             role:
- *               type: string
- *               enum: [admin, assessor, candidate]
+ *   securitySchemes:
+ *     bearerAuth:
+ *       type: http
+ *       scheme: bearer
+ *       bearerFormat: JWT
+ * 
+ *   responses:
+ *     UnauthorizedError:
+ *       description: Access token is missing or invalid
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               message:
+ *                 type: string
+ *                 example: "Invalid or expired token"
+ *     NotFoundError:
+ *       description: Resource not found
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               error:
+ *                 type: string
+ *                 example: "Endpoint not found"
+ *               method:
+ *                 type: string
+ *                 example: "GET"
+ *               path:
+ *                 type: string
+ *                 example: "/api/v1/nonexistent"
+ *     HealthCheckSuccess:
+ *       description: Service is healthy
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 example: "ok"
+ *               service:
+ *                 type: string
+ *                 example: "Assessly API"
+ *               environment:
+ *                 type: string
+ *                 example: "production"
+ *               timestamp:
+ *                 type: string
+ *                 format: date-time
+ *               version:
+ *                 type: string
+ *                 example: "1.0.0"
  */
 
 /**
  * @swagger
  * tags:
- *   name: Authentication
- *   description: User authentication and authorization endpoints
+ *   name: Health
+ *   description: Health check and service status endpoints
  */
 
 /**
  * @swagger
- * /api/v1/auth/register:
- *   post:
- *     summary: Register a new user
- *     tags: [Authentication]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - email
- *               - password
- *               - role
- *             properties:
- *               name:
- *                 type: string
- *                 example: "John Doe"
- *               email:
- *                 type: string
- *                 format: email
- *                 example: "john@example.com"
- *               password:
- *                 type: string
- *                 format: password
- *                 minLength: 6
- *                 example: "password123"
- *               role:
- *                 type: string
- *                 enum: [admin, assessor, candidate]
- *                 example: "candidate"
- *     responses:
- *       201:
- *         description: User registered successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/AuthResponse'
- *       400:
- *         description: Validation error or user already exists
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "User with this email already exists"
- */
-router.post('/register', asyncHandler(async (req, res) => {
-  const { name, email, password, role } = req.body;
-
-  // Validate required fields
-  if (!name || !email || !password || !role) {
-    return res.status(400).json({
-      message: 'All fields are required: name, email, password, role'
-    });
-  }
-
-  // Check if user already exists
-  const existingUser = await User.findOne({ email });
-  if (existingUser) {
-    return res.status(400).json({ 
-      message: 'User with this email already exists' 
-    });
-  }
-
-  // Create new user
-  const user = new User({
-    name,
-    email,
-    password,
-    role: role.toLowerCase()
-  });
-
-  await user.save();
-
-  // Generate JWT token
-  const token = jwt.sign(
-    { userId: user._id }, 
-    process.env.JWT_SECRET || 'fallback-secret-key', 
-    { expiresIn: '7d' }
-  );
-
-  res.status(201).json({
-    message: 'User registered successfully',
-    token,
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role
-    }
-  });
-}));
-
-/**
- * @swagger
- * /api/v1/auth/login:
- *   post:
- *     summary: User login
- *     tags: [Authentication]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - email
- *               - password
- *             properties:
- *               email:
- *                 type: string
- *                 format: email
- *                 example: "john@example.com"
- *               password:
- *                 type: string
- *                 format: password
- *                 example: "password123"
- *     responses:
- *       200:
- *         description: Login successful
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/AuthResponse'
- *       401:
- *         description: Invalid credentials
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Invalid email or password"
- */
-router.post('/login', asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
-
-  // Validate required fields
-  if (!email || !password) {
-    return res.status(400).json({
-      message: 'Email and password are required'
-    });
-  }
-
-  // Find user by email
-  const user = await User.findOne({ email }).select('+password');
-  if (!user) {
-    return res.status(401).json({ 
-      message: 'Invalid email or password' 
-    });
-  }
-
-  // Check password
-  const isPasswordValid = await user.comparePassword(password);
-  if (!isPasswordValid) {
-    return res.status(401).json({ 
-      message: 'Invalid email or password' 
-    });
-  }
-
-  // Generate JWT token
-  const token = jwt.sign(
-    { userId: user._id }, 
-    process.env.JWT_SECRET || 'fallback-secret-key', 
-    { expiresIn: '7d' }
-  );
-
-  res.json({
-    message: 'Login successful',
-    token,
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role
-    }
-  });
-}));
-
-/**
- * @swagger
- * /api/v1/auth/me:
+ * /api/v1/health:
  *   get:
- *     summary: Get current user profile
- *     tags: [Authentication]
- *     security:
- *       - bearerAuth: []
+ *     summary: Health check endpoint
+ *     description: Returns the current status of the API service
+ *     tags: [Health]
  *     responses:
  *       200:
- *         description: User profile retrieved successfully
+ *         $ref: '#/components/responses/HealthCheckSuccess'
+ *       500:
+ *         description: Service is unhealthy
+ */
+router.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    service: "Assessly API",
+    environment: process.env.NODE_ENV || "development",
+    timestamp: new Date().toISOString(),
+    version: process.env.npm_package_version || "1.0.0",
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+  });
+});
+
+/**
+ * @swagger
+ * /api/v1/status:
+ *   get:
+ *     summary: Detailed service status
+ *     description: Returns detailed information about the service status and dependencies
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Service status details
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 user:
- *                   type: object
- *                   properties:
- *                     id:
- *                       type: string
- *                     name:
- *                       type: string
- *                     email:
- *                       type: string
- *                     role:
- *                       type: string
- *       401:
- *         description: Not authenticated
+ *                 status:
+ *                   type: string
+ *                   example: "ok"
+ *                 database:
+ *                   type: string
+ *                   example: "connected"
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 environment:
+ *                   type: string
+ *                   example: "production"
  */
-router.get('/me', protect, asyncHandler(async (req, res) => {
-  res.json({
-    user: {
-      id: req.user._id,
-      name: req.user.name,
-      email: req.user.email,
-      role: req.user.role
-    }
+router.get("/status", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    database: "connected", // You can add actual DB connection check here
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development",
+    version: process.env.npm_package_version || "1.0.0",
   });
-}));
+});
+
+// Mount all API routes
+router.use("/auth", authRouter);
+router.use("/users", usersRouter);
+router.use("/organizations", organizationsRouter);
+router.use("/assessments", assessmentsRouter);
+router.use("/assessment-responses", assessmentResponsesRouter);
+router.use("/subscriptions", subscriptionsRouter);
+router.use("/user-activities", userActivitiesRouter);
+router.use("/contact", contactRouter);
 
 /**
  * @swagger
- * /api/v1/auth/logout:
- *   post:
- *     summary: User logout
- *     tags: [Authentication]
+ * /api/v1:
+ *   get:
+ *     summary: API root endpoint
+ *     description: Returns basic API information
+ *     tags: [Health]
  *     responses:
  *       200:
- *         description: Logout successful
+ *         description: API information
  *         content:
  *           application/json:
  *             schema:
@@ -281,13 +167,130 @@ router.get('/me', protect, asyncHandler(async (req, res) => {
  *               properties:
  *                 message:
  *                   type: string
- *                   example: "Logout successful"
+ *                   example: "Assessly API v1.0.0"
+ *                 documentation:
+ *                   type: string
+ *                   example: "/api/docs"
+ *                 status:
+ *                   type: string
+ *                   example: "operational"
  */
-router.post('/logout', (req, res) => {
-  // In a stateless JWT system, logout is handled on the client side
-  // by removing the token. This endpoint is for consistency.
-  res.json({
-    message: 'Logout successful'
+router.get("/", (req, res) => {
+  res.status(200).json({
+    message: "Assessly API v1.0.0",
+    documentation: "/api/docs",
+    status: "operational",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/**
+ * @swagger
+ * /api/v1/features:
+ *   get:
+ *     summary: Available API features
+ *     description: Returns list of available API features and endpoints
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: List of available features
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 features:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["authentication", "user-management", "assessments", "organizations"]
+ *                 endpoints:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["/auth", "/users", "/assessments", "/organizations"]
+ */
+router.get("/features", (req, res) => {
+  res.status(200).json({
+    features: [
+      "authentication",
+      "user-management", 
+      "assessments",
+      "organizations",
+      "subscriptions",
+      "analytics"
+    ],
+    endpoints: [
+      "/auth",
+      "/users", 
+      "/assessments",
+      "/organizations",
+      "/subscriptions",
+      "/user-activities",
+      "/contact"
+    ],
+    version: "1.0.0"
+  });
+});
+
+// Custom 404 handler for API routes
+/**
+ * @swagger
+ * components:
+ *   responses:
+ *     NotFound:
+ *       description: The requested resource was not found
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               error:
+ *                 type: string
+ *                 example: "Endpoint not found"
+ *               method:
+ *                 type: string
+ *                 example: "GET"
+ *               path:
+ *                 type: string
+ *                 example: "/api/v1/nonexistent"
+ *               suggestion:
+ *                 type: string
+ *                 example: "Check the API documentation for available routes."
+ *               documentation:
+ *                 type: string
+ *                 example: "/api/docs"
+ */
+router.use((req, res) => {
+  res.status(404).json({
+    error: "Endpoint not found",
+    method: req.method,
+    path: req.originalUrl,
+    suggestion: "Check the API documentation for available routes.",
+    documentation: "/api/docs",
+    availableEndpoints: [
+      "/auth",
+      "/users", 
+      "/assessments",
+      "/organizations",
+      "/subscriptions",
+      "/user-activities",
+      "/contact",
+      "/health",
+      "/status",
+      "/features"
+    ]
+  });
+});
+
+// Error handling middleware
+router.use((error, req, res, next) => {
+  console.error('Route Error:', error);
+  
+  res.status(error.status || 500).json({
+    error: "Internal server error",
+    message: process.env.NODE_ENV === 'production' ? 'Something went wrong' : error.message,
+    ...(process.env.NODE_ENV !== 'production' && { stack: error.stack })
   });
 });
 
