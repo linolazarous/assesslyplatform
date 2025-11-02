@@ -8,6 +8,38 @@ const router = express.Router();
 
 /**
  * @swagger
+ * components:
+ *   schemas:
+ *     AuthResponse:
+ *       type: object
+ *       properties:
+ *         message:
+ *           type: string
+ *         token:
+ *           type: string
+ *         user:
+ *           type: object
+ *           properties:
+ *             id:
+ *               type: string
+ *             name:
+ *               type: string
+ *             email:
+ *               type: string
+ *             role:
+ *               type: string
+ *               enum: [admin, assessor, candidate]
+ */
+
+/**
+ * @swagger
+ * tags:
+ *   name: Authentication
+ *   description: User authentication and authorization endpoints
+ */
+
+/**
+ * @swagger
  * /api/v1/auth/register:
  *   post:
  *     summary: Register a new user
@@ -43,11 +75,30 @@ const router = express.Router();
  *     responses:
  *       201:
  *         description: User registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
  *       400:
  *         description: Validation error or user already exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "User with this email already exists"
  */
 router.post('/register', asyncHandler(async (req, res) => {
   const { name, email, password, role } = req.body;
+
+  // Validate required fields
+  if (!name || !email || !password || !role) {
+    return res.status(400).json({
+      message: 'All fields are required: name, email, password, role'
+    });
+  }
 
   // Check if user already exists
   const existingUser = await User.findOne({ email });
@@ -62,7 +113,7 @@ router.post('/register', asyncHandler(async (req, res) => {
     name,
     email,
     password,
-    role: role || 'candidate'
+    role: role.toLowerCase()
   });
 
   await user.save();
@@ -70,7 +121,7 @@ router.post('/register', asyncHandler(async (req, res) => {
   // Generate JWT token
   const token = jwt.sign(
     { userId: user._id }, 
-    process.env.JWT_SECRET, 
+    process.env.JWT_SECRET || 'fallback-secret-key', 
     { expiresIn: '7d' }
   );
 
@@ -113,14 +164,33 @@ router.post('/register', asyncHandler(async (req, res) => {
  *     responses:
  *       200:
  *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
  *       401:
  *         description: Invalid credentials
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Invalid email or password"
  */
 router.post('/login', asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
+  // Validate required fields
+  if (!email || !password) {
+    return res.status(400).json({
+      message: 'Email and password are required'
+    });
+  }
+
   // Find user by email
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ email }).select('+password');
   if (!user) {
     return res.status(401).json({ 
       message: 'Invalid email or password' 
@@ -138,7 +208,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   // Generate JWT token
   const token = jwt.sign(
     { userId: user._id }, 
-    process.env.JWT_SECRET, 
+    process.env.JWT_SECRET || 'fallback-secret-key', 
     { expiresIn: '7d' }
   );
 
@@ -154,7 +224,36 @@ router.post('/login', asyncHandler(async (req, res) => {
   });
 }));
 
-// Get current user profile
+/**
+ * @swagger
+ * /api/v1/auth/me:
+ *   get:
+ *     summary: Get current user profile
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User profile retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *       401:
+ *         description: Not authenticated
+ */
 router.get('/me', protect, asyncHandler(async (req, res) => {
   res.json({
     user: {
@@ -165,5 +264,31 @@ router.get('/me', protect, asyncHandler(async (req, res) => {
     }
   });
 }));
+
+/**
+ * @swagger
+ * /api/v1/auth/logout:
+ *   post:
+ *     summary: User logout
+ *     tags: [Authentication]
+ *     responses:
+ *       200:
+ *         description: Logout successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Logout successful"
+ */
+router.post('/logout', (req, res) => {
+  // In a stateless JWT system, logout is handled on the client side
+  // by removing the token. This endpoint is for consistency.
+  res.json({
+    message: 'Logout successful'
+  });
+});
 
 export default router;
