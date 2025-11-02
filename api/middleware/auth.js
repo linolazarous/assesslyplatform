@@ -6,6 +6,20 @@ const JWT_SECRET = process.env.JWT_SECRET || "your-fallback-secret-key";
 const REFRESH_SECRET = process.env.REFRESH_SECRET || "your-fallback-refresh-secret";
 
 /**
+ * ✅ Security Headers Middleware
+ */
+export const securityHeaders = (req, res, next) => {
+  // Additional security headers beyond what Helmet provides
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  
+  next();
+};
+
+/**
  * ✅ Verify Access Token Middleware
  */
 export const protect = async (req, res, next) => {
@@ -48,4 +62,12 @@ export const verifyRefreshToken = (token) => {
   } catch (error) {
     return null;
   }
+};
+
+// Default export for backward compatibility
+export default {
+  securityHeaders,
+  protect,
+  authorizeRoles,
+  verifyRefreshToken
 };
