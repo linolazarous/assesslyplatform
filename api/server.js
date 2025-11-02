@@ -27,8 +27,8 @@ import rateLimit from 'express-rate-limit';
 import statusMonitor from 'express-status-monitor';
 import routes from './routes/index.js';
 import { seedDatabase } from './utils/seedDatabase.js';
-import { securityHeaders } from './middleware/auth.js';
-import { setupSwagger } from './config/swagger.js'; // Remove swaggerUi and swaggerJsdoc imports
+// REMOVE THIS LINE: import { securityHeaders } from './middleware/auth.js';
+import { setupSwagger } from './config/swagger.js';
 
 dotenv.config();
 
@@ -106,7 +106,7 @@ app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(compression());
-app.use(securityHeaders);
+// REMOVE THIS LINE: app.use(securityHeaders);
 
 // Logging (dev vs prod)
 app.use(morgan(isProd ? 'combined' : 'dev'));
