@@ -1,7 +1,7 @@
 {
   "name": "assesslyplatform",
   "version": "1.0.0",
-  "description": "Assessly Platform Backend API — secure, scalable, and optimized for Render deployment.",
+  "description": "Assessly Platform Backend API — secure, scalable, and optimized for Render deployment with full CORS, Swagger API docs, and modern Express security middleware.",
   "private": true,
   "type": "module",
   "main": "server.js",
@@ -14,7 +14,8 @@
     "seed:test": "node scripts/seed.js --test-data",
     "seed:custom": "node scripts/seed.js --email custom@admin.com --name \"Custom Admin\"",
     "seed:help": "node scripts/seed.js --help",
-    "check-deps": "npm list cors"
+    "check-deps": "npm list cors",
+    "docs": "node scripts/generateDocs.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -24,14 +25,20 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^7.1.5",
+    "express-status-monitor": "^1.3.4",
     "helmet": "^7.1.0",
+    "hpp": "^0.2.3",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.3",
     "morgan": "^1.10.0",
     "nodemailer": "^6.9.17",
     "slugify": "^1.6.6",
-    "stripe": "^14.9.0"
+    "stripe": "^14.9.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "xss-clean": "^0.1.4"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
@@ -46,16 +53,16 @@
     "express",
     "api",
     "render",
-    "jwt",
-    "authentication",
-    "assessment",
     "mongodb",
-    "seeding",
-    "database",
-    "email",
+    "security",
+    "swagger",
+    "documentation",
+    "authentication",
+    "jwt",
     "nodemailer",
-    "cors"
+    "stripe",
+    "rate-limit"
   ],
-  "author": "Assessly Platform",
+  "author": "Assessly Platform Team",
   "license": "MIT"
 }
