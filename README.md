@@ -1,35 +1,58 @@
 # Assessly Platform
 
-![Assessly Platform Logo](public/logo.png)
+![Assessly Platform](https://img.shields.io/badge/Version-1.0.0-blue.svg)
+![Node.js](https://img.shields.io/badge/Node.js-22.21.1-green.svg)
+![MongoDB](https://img.shields.io/badge/MongoDB-7.0-green.svg)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-> Measure Smarter, Not Harder â€“ From Questions to Insights, Anywhere.
+> **Measure Smarter, Not Harder** – From Questions to Insights, Anywhere.
 
-A modern assessment SaaS platform enabling organizations to create, deliver, and analyze assessments with enterprise-grade reliability.
+A modern, enterprise-ready assessment platform that enables organizations to create, deliver, and analyze assessments with powerful analytics and seamless user experiences.
 
-## Key Features
+## 🚀 Live Demo
 
-### Core Capabilities
-| Feature | Description |
-|---------|-------------|
-| **Multi-role System** | Admin, Assessor, and Candidate roles with granular permissions |
-| **Assessment Builder** | Drag-and-drop interface with 10+ question types |
-| **Smart Analytics** | Real-time dashboards with actionable insights |
-| **Offline Mode** | Work without internet with automatic sync |
+- **Frontend**: [https://assessly-gedp.onrender.com](https://assessly-gedp.onrender.com)
+- **Backend API**: [https://assesslyplatform-t49h.onrender.com](https://assesslyplatform-t49h.onrender.com)
+- **API Documentation**: [https://assesslyplatform-t49h.onrender.com/api/docs](https://assesslyplatform-t49h.onrender.com/api/docs)
+- **Health Check**: [https://assesslyplatform-t49h.onrender.com/api/v1/health](https://assesslyplatform-t49h.onrender.com/api/v1/health)
 
-### Assessment Types
-- **Exams & Quizzes**
-- **Employee Evaluations**
-- **360Â° Feedback**
+## ✨ Key Features
+
+### 🎯 Core Capabilities
+- **Multi-role Access System** - Admin, Assessor, and Candidate roles with granular permissions
+- **Drag & Drop Assessment Builder** - Intuitive interface with 10+ question types
+- **Real-time Analytics Dashboard** - Actionable insights with comprehensive reporting
+- **Offline Capability** - Work without internet with automatic synchronization
+- **Enterprise Security** - JWT authentication, rate limiting, and data protection
+
+### 📊 Assessment Types
+- **Exams & Certification Tests**
+- **Employee Performance Evaluations**
+- **360° Feedback Collections**
 - **Surveys & Questionnaires**
-- **Certification Tests**
+- **Skills Assessment & Quizzes**
 
-###  Platform Highlights
+### 🛡️ Enterprise Features
+- **Scalable Architecture** - Built for high-performance and reliability
+- **Comprehensive API** - RESTful API with full documentation
+- **Security First** - Helmet, CORS, rate limiting, and input sanitization
+- **Monitoring Ready** - Built-in health checks and status monitoring
+
+## 🏗️ Architecture Overview
+
 ```mermaid
-graph TD
-  A[Create Assessment] --> B[Distribute]
-  B --> C[Collect Responses]
-  C --> D[Generate Reports]
-  D --> E[Analyze Insights]
-
-
-
+graph TB
+    A[Frontend Client] --> B[Load Balancer]
+    B --> C[API Server]
+    C --> D[MongoDB Database]
+    C --> E[File Storage]
+    F[Admin Dashboard] --> C
+    G[Mobile App] --> C
+    H[3rd Party Integrations] --> C
+    
+    subgraph "Backend Services"
+        C --> I[Authentication]
+        C --> J[Assessment Engine]
+        C --> K[Analytics Engine]
+        C --> L[Reporting System]
+    end
