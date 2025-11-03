@@ -1,4 +1,3 @@
-// api/server.js
 /**
  * Assessly - Production-ready Express server (Render tuned)
  * - CORS diagnostics & grouped logging
@@ -27,7 +26,6 @@ import rateLimit from 'express-rate-limit';
 import statusMonitor from 'express-status-monitor';
 import routes from './routes/index.js';
 import { seedDatabase } from './utils/seedDatabase.js';
-// REMOVE THIS LINE: import { securityHeaders } from './middleware/auth.js';
 import { setupSwagger } from './config/swagger.js';
 
 dotenv.config();
@@ -106,7 +104,6 @@ app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(compression());
-// REMOVE THIS LINE: app.use(securityHeaders);
 
 // Logging (dev vs prod)
 app.use(morgan(isProd ? 'combined' : 'dev'));
@@ -129,39 +126,50 @@ const authLimiter = rateLimit({
 app.use('/api/v1/auth', authLimiter);
 
 // =====================
-// Health & Debug routes
+// Root & Welcome Routes
 // =====================
-app.get('/api/v1/health', (req, res) => {
+
+// Root endpoint - Welcome message
+app.get('/', (req, res) => {
   res.json({
-    status: 'ok',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
+    message: '🚀 Assessly Platform API is Running!',
+    service: 'Backend API for Assessly Platform',
+    version: '1.0.0',
+    documentation: `${BACKEND_URL}/api/docs`,
+    health: `${BACKEND_URL}/api/v1/health`,
+    status: `${BACKEND_URL}/api/v1/status`,
     environment: NODE_ENV,
-    frontend: FRONTEND_URL,
-    backend: BACKEND_URL,
-    allowedOrigins: ALLOWED_ORIGINS
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
   });
 });
 
-app.get('/api/v1/debug', (req, res) => {
+// API info endpoint
+app.get('/api', (req, res) => {
   res.json({
-    environment: NODE_ENV,
-    allowedOrigins: ALLOWED_ORIGINS,
-    headers: req.headers,
-    node: process.version,
-    autoSeed: AUTO_SEED
+    message: 'Assessly API Gateway',
+    version: 'v1',
+    basePath: '/api/v1',
+    documentation: '/api/docs',
+    endpoints: [
+      '/auth',
+      '/users',
+      '/assessments',
+      '/organizations',
+      '/health',
+      '/status'
+    ]
   });
 });
 
 // =====================
 // Setup Swagger Documentation
 // =====================
-setupSwagger(app); // Call this once to set up Swagger
+setupSwagger(app);
 
 // =====================
 // Mount versioned API
 // =====================
-// Important: routes/index.js should export routers (we mount under /api/v1)
 app.use('/api/v1', routes);
 
 // =====================
@@ -172,14 +180,15 @@ app.use((req, res) => {
     error: 'Endpoint not found',
     method: req.method,
     path: req.originalUrl,
-    suggestion: 'Check the API documentation at /api/docs'
+    suggestion: 'Check the API documentation at /api/docs',
+    documentation: '/api/docs'
   });
 });
 
 // =====================
 // Error handler (centralized & structured)
 // =====================
-app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+app.use((err, req, res, next) => {
   // If CORS error, handle specifically
   if (err && err.message && /cors/i.test(err.message)) {
     console.groupCollapsed(chalk.yellow('⚠️ CORS ERROR'));
@@ -212,11 +221,8 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 async function start() {
   console.log(chalk.cyan('\n🚀 Starting Assessly Backend (Render-optimized)...\n'));
   try {
-    const conn = await mongoose.connect(MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      // autoIndex: isProd ? false : true, // can toggle as needed
-    });
+    // Remove deprecated options for newer MongoDB driver
+    const conn = await mongoose.connect(MONGODB_URI);
     console.log(chalk.green('✅ MongoDB connected:'), conn.connection.name);
     console.log(chalk.blue(`🌍 Environment: ${NODE_ENV}`));
     console.log(chalk.magenta(`🎯 Frontend URL: ${FRONTEND_URL}`));
@@ -231,6 +237,7 @@ async function start() {
       console.log(chalk.green(`📍 Server listening on port ${PORT}`));
       console.log(chalk.magenta(`📊 Health: ${BACKEND_URL}/api/v1/health`));
       console.log(chalk.blue(`📚 API Docs: ${BACKEND_URL}/api/docs`));
+      console.log(chalk.cyan(`🏠 Root: ${BACKEND_URL}/`));
       console.log(chalk.green('✅ Server ready.'));
     });
   } catch (err) {
@@ -263,7 +270,6 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 process.on('uncaughtException', (err) => {
   console.error(chalk.red('❌ Uncaught Exception:'), err);
-  // In production you may want to restart process manager or exit
   process.exit(1);
 });
 
