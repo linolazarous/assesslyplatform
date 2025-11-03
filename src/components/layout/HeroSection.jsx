@@ -52,6 +52,7 @@ const HeroSection = ({
   }, []);
 
   const handleVideoError = useCallback(() => {
+    console.warn('Hero video failed to load, using fallback image');
     setVideoState(prev => ({ ...prev, hasError: true, isPlaying: false }));
   }, []);
 
@@ -83,6 +84,9 @@ const HeroSection = ({
           behavior: 'smooth',
           block: 'start'
         });
+      } else {
+        // Fallback scroll to features section if ID doesn't exist
+        window.scrollTo({ top: 600, behavior: 'smooth' });
       }
     }
   }, [navigate]);
@@ -97,7 +101,6 @@ const HeroSection = ({
     [theme]
   );
 
-  // Fixed: Remove TypeScript 'as const' assertions for JavaScript
   const ctaButtons = useMemo(() => [
     {
       label: 'Get Started Free',
