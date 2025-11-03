@@ -1,15 +1,14 @@
-// src/App.jsx
 import React, { Suspense, lazy, useState, useMemo, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@mui/material/styles";
 import { CssBaseline, Box, CircularProgress, Snackbar, Alert } from "@mui/material";
-import { AuthProvider } from "./contexts/AuthContext.jsx";
-import MainLayout from "./layouts/MainLayout.jsx";
-import AuthLayout from "./layouts/AuthLayout.jsx";
-import { getAppTheme } from "./styles/theme.jsx";
-import LoadingScreen from "./components/ui/LoadingScreen.jsx";
-import ProtectedRoute from "./components/common/ProtectedRoute.jsx";
-import ErrorBoundary from "./ErrorBoundary.jsx";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import MainLayout from "./layouts/MainLayout";
+import AuthLayout from "./layouts/AuthLayout";
+import { getAppTheme } from "./styles/theme";
+import LoadingScreen from "./components/ui/LoadingScreen";
+import ProtectedRoute from "./components/common/ProtectedRoute";
+import ErrorBoundary from "./ErrorBoundary";
 
 /* ============================================================
    ✅ Lazy Import Utility with Retry
@@ -30,27 +29,38 @@ const lazyWithRetry = (importFunc, retries = 2, interval = 1500) =>
 /* ============================================================
    ✅ Lazy-Loaded Pages
 ============================================================ */
-const AssessmentDashboard = lazyWithRetry(() => import("./components/AssessmentDashboard.jsx"));
-const CreateAssessment = lazyWithRetry(() => import("./components/CreateAssessment.jsx"));
-const TakeAssessment = lazyWithRetry(() => import("./components/TakeAssessment.jsx"));
-const PdfReport = lazyWithRetry(() => import("./components/PdfReport.jsx"));
-const AuthPage = lazyWithRetry(() => import("./pages/Auth.jsx"));
-const LandingPage = lazyWithRetry(() => import("./pages/LandingPage.jsx"));
-const BillingPage = lazyWithRetry(() => import("./pages/Billing.jsx"));
-const AdminDashboard = lazyWithRetry(() => import("./pages/Admin/Dashboard.jsx"));
-const PricingPage = lazyWithRetry(() => import("./pages/Pricing.jsx"));
-const ContactPage = lazyWithRetry(() => import("./pages/Contact.jsx"));
+const AssessmentDashboard = lazyWithRetry(() => import("./components/AssessmentDashboard"));
+const CreateAssessment = lazyWithRetry(() => import("./components/CreateAssessment"));
+const TakeAssessment = lazyWithRetry(() => import("./components/TakeAssessment"));
+const PdfReport = lazyWithRetry(() => import("./components/PdfReport"));
+const AuthPage = lazyWithRetry(() => import("./pages/Auth"));
+const LandingPage = lazyWithRetry(() => import("./pages/LandingPage"));
+const BillingPage = lazyWithRetry(() => import("./pages/Billing"));
+const AdminDashboard = lazyWithRetry(() => import("./pages/Admin/Dashboard"));
+const PricingPage = lazyWithRetry(() => import("./pages/Pricing"));
+const ContactPage = lazyWithRetry(() => import("./pages/Contact"));
 
 /* ============================================================
    ✅ Custom Theme Hook with Local Persistence
 ============================================================ */
 const useThemeMode = () => {
-  const [darkMode, setDarkMode] = useState(() => JSON.parse(localStorage.getItem("darkMode") || "false"));
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("darkMode") || "false");
+    } catch (error) {
+      console.warn("Error reading theme preference:", error);
+      return false;
+    }
+  });
 
   const toggleDarkMode = () => {
     setDarkMode((prev) => {
       const newMode = !prev;
-      localStorage.setItem("darkMode", JSON.stringify(newMode));
+      try {
+        localStorage.setItem("darkMode", JSON.stringify(newMode));
+      } catch (error) {
+        console.warn("Error saving theme preference:", error);
+      }
       return newMode;
     });
   };
@@ -92,16 +102,23 @@ export default function App() {
       setIsOnline(true);
       setSnackbar({ open: true, message: "Back online!", severity: "success" });
     };
+    
     const handleOffline = () => {
       setIsOnline(false);
       setSnackbar({ open: true, message: "You are offline. Some features may not work.", severity: "warning" });
     };
+    
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
+  }, []);
+
+  const handleSnackbarClose = useCallback(() => {
+    setSnackbar(prev => ({ ...prev, open: false }));
   }, []);
 
   return (
@@ -163,10 +180,10 @@ export default function App() {
             <Snackbar
               open={snackbar.open}
               autoHideDuration={4000}
-              onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+              onClose={handleSnackbarClose}
               anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
             >
-              <Alert severity={snackbar.severity} onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}>
+              <Alert severity={snackbar.severity} onClose={handleSnackbarClose}>
                 {snackbar.message}
               </Alert>
             </Snackbar>
