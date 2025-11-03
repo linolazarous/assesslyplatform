@@ -14,8 +14,8 @@
     <link rel="manifest" href="/manifest.webmanifest" />
 
     <!-- Fonts: use crossorigin and avoid preloading fonts via rel=preload unless you need subset preload -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" />
 
     <style>
@@ -41,8 +41,11 @@
       // Small safety fallback if React hydrates after a long time:
       window.addEventListener('load', () => {
         setTimeout(() => {
-          document.getElementById('loading-fallback').style.display = 'none';
-          document.body.classList.add('react-loaded');
+          const loadingFallback = document.getElementById('loading-fallback');
+          if (loadingFallback) {
+            loadingFallback.style.display = 'none';
+            document.body.classList.add('react-loaded');
+          }
         }, 300);
       });
     </script>
