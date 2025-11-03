@@ -28,7 +28,7 @@ import {
   ExitToApp as LogoutIcon,
   Notifications as NotificationsIcon
 } from '@mui/icons-material';
-import { useAuth } from '../../contexts/AuthContext.jsx';
+import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Logo } from '../brand';
 import PropTypes from 'prop-types';
