@@ -1,18 +1,24 @@
-// src/api.jsx
 import axios from 'axios';
 
 const getApiBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
   if (envUrl) return envUrl.replace(/\/$/, '');
+  
   const hostname = window.location.hostname;
   const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
-  return isLocal ? 'http://localhost:3000/api' : 'https://assesslyplatform-t49h.onrender.com/api';
+  
+  // Use the correct base URL without /api/v1
+  return isLocal 
+    ? 'http://localhost:10000' 
+    : 'https://assesslyplatform-t49h.onrender.com';
 };
 
 export const API_BASE_URL = getApiBaseUrl();
+export const API_V1_BASE_URL = `${API_BASE_URL}/api/v1`;
 
+// Create axios instance with proper base URL
 const instance = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_V1_BASE_URL, // Now points to /api/v1
   headers: {
     'Content-Type': 'application/json',
     'X-Client': 'assessly-frontend'
@@ -36,36 +42,38 @@ instance.interceptors.request.use((config) => {
 }, (error) => Promise.reject(error));
 
 // Response interceptor - consistent error shaping & auth handling
-instance.interceptors.response.use((res) => res, (err) => {
-  const status = err.response?.status || 0;
-  const url = err.config?.url;
-  const serverMsg = err.response?.data?.message || err.message;
+instance.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const status = err.response?.status || 0;
+    const url = err.config?.url;
+    const serverMsg = err.response?.data?.message || err.message;
 
-  // Production logging (non-verbose)
-  if (import.meta.env.PROD) {
-    console.error(`API Error [${status}] ${url} - ${serverMsg}`);
-  } else {
-    console.error('API Error details:', { status, url, serverMsg, config: err.config });
-  }
-
-  // Auth handling
-  if (status === 401) {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    if (!window.location.pathname.startsWith('/auth') && !window.location.pathname.startsWith('/login')) {
-      // allow UI to handle redirect; but fallback to login
-      window.location.href = '/auth';
+    // Production logging (non-verbose)
+    if (import.meta.env.PROD) {
+      console.error(`API Error [${status}] ${url} - ${serverMsg}`);
+    } else {
+      console.error('API Error details:', { status, url, serverMsg, config: err.config });
     }
-  }
 
-  // Normalize error object
-  return Promise.reject({
-    message: serverMsg || 'Service unavailable',
-    status,
-    url,
-    code: err.code || null
-  });
-});
+    // Auth handling
+    if (status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      if (!window.location.pathname.startsWith('/auth') && !window.location.pathname.startsWith('/login')) {
+        window.location.href = '/auth';
+      }
+    }
+
+    // Normalize error object
+    return Promise.reject({
+      message: serverMsg || 'Service unavailable',
+      status,
+      url,
+      code: err.code || null
+    });
+  }
+);
 
 // Safe wrapper with simple retry for server errors
 export const handleRequest = async (promiseFactory, { retries = 1, delay = 800 } = {}) => {
@@ -79,6 +87,21 @@ export const handleRequest = async (promiseFactory, { retries = 1, delay = 800 }
     }
     throw err;
   }
+};
+
+// Export API endpoints for easy access
+export const API_ENDPOINTS = {
+  AUTH: {
+    REGISTER: '/auth/register',
+    LOGIN: '/auth/login',
+    ME: '/auth/me',
+    LOGOUT: '/auth/logout'
+  },
+  USERS: '/users',
+  ASSESSMENTS: '/assessments',
+  ORGANIZATIONS: '/organizations',
+  HEALTH: '/health',
+  STATUS: '/status'
 };
 
 export default instance;
