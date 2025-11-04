@@ -33,9 +33,9 @@ import routes from "./routes/index.js";
 import { seedDatabase } from "./utils/seedDatabase.js";
 import { setupSwagger } from "./config/swagger.js";
 import passport from "passport";
-import googleAuthRoutes from "./routes/auth/google.js";
 import googlePassport from "./config/passport.js";
-
+import googleAuthRoutes from "./routes/auth/google.js";
+import githubAuthRoutes from "./routes/auth/github.js";
 dotenv.config();
 
 // =====================
@@ -187,6 +187,7 @@ setupSwagger(app);
 // =====================
 app.use("/api/v1", routes);
 app.use("/api/v1/auth", googleAuthRoutes);
+app.use("/api/v1/auth", githubAuthRoutes);
 
 // =====================
 // 404 Handler
