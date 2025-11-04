@@ -5,70 +5,48 @@ import LoadingScreen from "../ui/LoadingScreen";
 import PropTypes from "prop-types";
 
 /**
- * ✅ Production-Ready ProtectedRoute
- * Handles route protection, role-based access, and redirects.
+ * Production-Ready ProtectedRoute
+ * - Handles auth state
+ * - Role-based & permission-based access
+ * - Dev logging
  */
 export default function ProtectedRoute({
   roles = [],
+  permissions = [],
   redirectTo = "/login",
   unauthorizedRedirectTo = "/unauthorized",
 }) {
-  const { currentUser, isLoading, claims } = useAuth();
+  const { currentUser, isLoading, claims, hasPermission } = useAuth();
   const location = useLocation();
 
-  // 🌀 Show loading screen during auth verification
   if (isLoading) return <LoadingScreen fullScreen />;
 
-  // 🔓 Allow public access to login & auth routes
-  if (
-    ["/login", "/auth", "/register"].includes(location.pathname.toLowerCase())
-  ) {
-    return <Outlet />;
-  }
+  // Allow public auth routes
+  const publicRoutes = ["/login", "/auth", "/register"];
+  if (publicRoutes.includes(location.pathname.toLowerCase())) return <Outlet />;
 
-  // 🚫 Redirect unauthenticated users
-  if (!currentUser) {
-    return (
-      <Navigate
-        to={redirectTo}
-        state={{ from: location }}
-        replace
-      />
-    );
-  }
+  // Redirect unauthenticated
+  if (!currentUser) return <Navigate to={redirectTo} state={{ from: location }} replace />;
 
-  // 🔐 Role-Based Access Control (if roles specified)
+  // Role-based access
   if (roles.length > 0) {
     const userRole = claims?.role?.toLowerCase() || "";
-    const hasMatchingRole = roles.some((requiredRole) => {
-      const normalized = requiredRole.toLowerCase();
-      const claimFlag =
-        claims?.[`is${normalized.charAt(0).toUpperCase() + normalized.slice(1)}`];
-      return userRole === normalized || claimFlag === true;
-    });
-
-    if (!hasMatchingRole) {
-      if (process.env.NODE_ENV === "development") {
-        console.warn(
-          `[ProtectedRoute] Access denied for user ${currentUser?.email || "unknown"}. Required roles: ${roles.join(", ")}`
-        );
-      }
-      return (
-        <Navigate
-          to={unauthorizedRedirectTo}
-          state={{ from: location }}
-          replace
-        />
-      );
-    }
+    const allowed = roles.some((r) => r.toLowerCase() === userRole);
+    if (!allowed) return <Navigate to={unauthorizedRedirectTo} state={{ from: location }} replace />;
   }
 
-  // ✅ Authorized access granted
+  // Permission-based access
+  if (permissions.length > 0) {
+    const allowed = permissions.every((perm) => hasPermission(perm));
+    if (!allowed) return <Navigate to={unauthorizedRedirectTo} state={{ from: location }} replace />;
+  }
+
   return <Outlet />;
 }
 
 ProtectedRoute.propTypes = {
   roles: PropTypes.arrayOf(PropTypes.string),
+  permissions: PropTypes.arrayOf(PropTypes.string),
   redirectTo: PropTypes.string,
   unauthorizedRedirectTo: PropTypes.string,
 };
