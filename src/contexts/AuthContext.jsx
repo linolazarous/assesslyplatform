@@ -7,11 +7,11 @@ import React, {
   useCallback,
 } from "react";
 import { CircularProgress, Box } from "@mui/material";
-import { jwtDecode } from "jwt-decode";
+import jwtDecode from "jwt-decode";
 import PropTypes from "prop-types";
 import axios from "axios";
 
-// 🌐 Base API (adjust to your production backend)
+// Base API URL (adjust to production)
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "https://assesslyplatform-t49h.onrender.com";
 
@@ -31,10 +31,7 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  /**
-   * 🚪 Logout User
-   * Clears localStorage + state
-   */
+  /** Logout User */
   const logout = useCallback(() => {
     localStorage.removeItem("token");
     setCurrentUser(null);
@@ -42,22 +39,17 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
   }, []);
 
-  /**
-   * 🧩 Decode & Initialize User From Token
-   */
+  /** Decode token and set user state */
   const decodeAndSetUser = useCallback(
     (jwtToken) => {
-      if (!jwtToken) {
-        logout();
-        return;
-      }
+      if (!jwtToken) return logout();
 
       try {
         const decoded = jwtDecode(jwtToken);
         const { email, role, orgs, permissions, exp, userId } = decoded;
 
+        // Token expired
         if (!exp || Date.now() >= exp * 1000) {
-          console.warn("⏰ Token expired — refreshing...");
           refreshAccessToken();
           return;
         }
@@ -67,16 +59,14 @@ export const AuthProvider = ({ children }) => {
         setToken(jwtToken);
         localStorage.setItem("token", jwtToken);
       } catch (error) {
-        console.error("❌ Invalid JWT — logging out:", error);
+        console.error("Invalid JWT:", error);
         logout();
       }
     },
     [logout]
   );
 
-  /**
-   * 🔄 Refresh Access Token
-   */
+  /** Refresh Access Token */
   const refreshAccessToken = useCallback(async () => {
     try {
       const res = await axios.get(`${API_BASE_URL}/api/auth/refresh`, {
@@ -85,90 +75,68 @@ export const AuthProvider = ({ children }) => {
       const newToken = res.data?.token;
       if (newToken) {
         decodeAndSetUser(newToken);
-        if (import.meta.env.DEV) console.info("🔁 Token refreshed successfully.");
+        if (import.meta.env.DEV) console.info("Token refreshed successfully.");
       } else {
-        if (import.meta.env.DEV) console.warn("⚠️ No new token received, logging out.");
+        if (import.meta.env.DEV) console.warn("No token received, logging out.");
         logout();
       }
     } catch (error) {
-      if (import.meta.env.DEV) console.error("❌ Token refresh failed:", error);
+      if (import.meta.env.DEV) console.error("Token refresh failed:", error);
       logout();
     }
   }, [decodeAndSetUser, logout]);
 
-  /**
-   * 🚀 Load Token From Local Storage On App Start
-   */
+  /** Load token from localStorage on mount */
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
     decodeAndSetUser(storedToken);
     setIsLoading(false);
   }, [decodeAndSetUser]);
 
-  /**
-   * ⏱️ Periodic Token Refresh (Every 10 Minutes)
-   */
+  /** Periodic token refresh (10 min) */
   useEffect(() => {
     if (!token) return;
     const interval = setInterval(refreshAccessToken, 10 * 60 * 1000);
     return () => clearInterval(interval);
   }, [token, refreshAccessToken]);
 
-  /**
-   * 💡 Login
-   */
+  /** Login */
   const login = useCallback(
     async (email, password) => {
       try {
-        const res = await axios.post(`${API_BASE_URL}/api/auth/login`, {
-          email,
-          password,
-        });
+        const res = await axios.post(`${API_BASE_URL}/api/auth/login`, { email, password });
         const { token: jwtToken } = res.data || {};
         if (!jwtToken) throw new Error("No token returned from server.");
         decodeAndSetUser(jwtToken);
         return true;
       } catch (error) {
-        console.error("❌ Login failed:", error);
+        console.error("Login failed:", error);
         return false;
       }
     },
     [decodeAndSetUser]
   );
 
-  /**
-   * 🧾 Register
-   */
+  /** Register */
   const register = useCallback(async (userData) => {
     try {
       const res = await axios.post(`${API_BASE_URL}/api/auth/register`, userData);
       return res.data;
     } catch (error) {
-      console.error("❌ Registration failed:", error);
+      console.error("Registration failed:", error);
       throw error;
     }
   }, []);
 
-  /**
-   * 🧠 Derived Helpers
-   */
+  /** Derived Helpers */
   const isAdmin = claims?.role === "admin";
   const isAssessor = claims?.role === "assessor";
   const isCandidate = claims?.role === "candidate";
 
-  const getOrgRole = useCallback(
-    (orgId) => claims?.orgs?.[orgId] || null,
-    [claims]
-  );
+  const getOrgRole = useCallback((orgId) => claims?.orgs?.[orgId] || null, [claims]);
+  const hasPermission = useCallback((perm) => claims?.permissions?.includes(perm) || false, [claims]);
 
-  const hasPermission = useCallback(
-    (perm) => claims?.permissions?.includes(perm) || false,
-    [claims]
-  );
-
-  /**
-   * 🧱 Memoized Context Value
-   */
+  /** Memoized context value */
   const value = useMemo(
     () => ({
       currentUser,
@@ -184,25 +152,10 @@ export const AuthProvider = ({ children }) => {
       getOrgRole,
       hasPermission,
     }),
-    [
-      currentUser,
-      claims,
-      token,
-      isLoading,
-      login,
-      logout,
-      register,
-      isAdmin,
-      isAssessor,
-      isCandidate,
-      getOrgRole,
-      hasPermission,
-    ]
+    [currentUser, claims, token, isLoading, login, logout, register, isAdmin, isAssessor, isCandidate, getOrgRole, hasPermission]
   );
 
-  /**
-   * ⏳ Global Loader While Initializing
-   */
+  /** Global loader while initializing */
   if (isLoading) {
     return (
       <Box
