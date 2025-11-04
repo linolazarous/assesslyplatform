@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Card,
@@ -12,28 +12,106 @@ import {
   Grid
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
-import PropTypes from 'prop-types';
-// FIX: Corrected imports using the final .jsx extension and relative path
-import BillingHistory from '../components/billing/BillingHistory.jsx'; 
-import PaymentMethods from '../components/billing/PaymentMethods.jsx'; 
-// NOTE: BillingPortalButton and PricingCards are generally used on separate pages,
-// but we include the imports here if they were required later.
-// import PricingCards from '../../components/billing/PricingCards.jsx'; 
+
+// Memoized components
+const BillingHistory = React.lazy(() => import('../components/billing/BillingHistory.jsx'));
+const PaymentMethods = React.lazy(() => import('../components/billing/PaymentMethods.jsx'));
+
+// Loading fallback
+const ComponentLoader = () => (
+  <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+    <CircularProgress size={32} />
+  </Box>
+);
+
+// Memoized PlanCard Component
+const PlanCard = React.memo(({ 
+  plan, 
+  subscriptionStatus, 
+  subscriptionEndDate, 
+  onUpgrade, 
+  loading 
+}) => {
+  const isActive = subscriptionStatus === 'active';
+  
+  return (
+    <Card elevation={2} sx={{ borderRadius: 2 }}>
+      <CardContent>
+        <Typography variant="h6" gutterBottom>
+          Current Plan
+        </Typography>
+        
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          mb: 2 
+        }}>
+          <Typography variant="body1" component="span">
+            {plan || 'Free Tier'}
+          </Typography>
+          <Chip 
+            label={subscriptionStatus} 
+            color={isActive ? 'success' : 'default'}
+            variant="outlined"
+            size="small"
+            sx={{ textTransform: 'capitalize' }}
+          />
+        </Box>
+
+        {subscriptionEndDate && (
+          <Typography variant="body2" color="text.secondary">
+            {isActive ? 'Renews' : 'Expires'} on: {subscriptionEndDate.toLocaleDateString()}
+          </Typography>
+        )}
+        {!plan && (
+          <Typography variant="body2" color="text.secondary">
+            No active subscription found.
+          </Typography>
+        )}
+
+        <Divider sx={{ my: 3 }} />
+
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => onUpgrade('price_premium_monthly')}
+            disabled={loading || isActive}
+            sx={{ minWidth: 180 }}
+          >
+            {isActive ? 'Current Plan' : 'Upgrade to Premium'}
+          </Button>
+
+          <Button
+            variant="outlined"
+            color="primary"
+            onClick={() => onUpgrade('price_enterprise')}
+            disabled={loading}
+            sx={{ minWidth: 180 }}
+          >
+            Contact Sales
+          </Button>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+});
 
 export default function Billing({ orgId }) {
   const [orgData, setOrgData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
   const [error, setError] = useState(null);
   const { enqueueSnackbar } = useSnackbar();
 
-  // Memoize handleUpgrade
+  // Memoized handleUpgrade
   const handleUpgrade = useCallback(async (priceId) => {
-    // We only wrap the API call in try/catch here, the `finally` is handled by the higher loading state
+    setUpgradeLoading(true);
     try {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('Authentication token not found');
 
-      // Optimistically redirect to the checkout session API endpoint
       const response = await fetch('/api/billing/checkout-session', {
         method: 'POST',
         headers: {
@@ -43,7 +121,6 @@ export default function Billing({ orgId }) {
         body: JSON.stringify({
           orgId,
           priceId,
-          // Robust return URL construction using window.location.origin
           successUrl: `${window.location.origin}/organization/${orgId}/billing?success=true`,
           cancelUrl: `${window.location.origin}/organization/${orgId}/billing?canceled=true`
         })
@@ -54,6 +131,7 @@ export default function Billing({ orgId }) {
         throw new Error(data.message || 'Failed to create checkout session');
       }
 
+      // Redirect to Stripe Checkout
       window.location.href = data.url;
 
     } catch (error) {
@@ -61,14 +139,13 @@ export default function Billing({ orgId }) {
       enqueueSnackbar(error.message || 'Failed to start checkout process.', { 
         variant: 'error',
         autoHideDuration: 5000,
-        anchorOrigin: { vertical: 'top', horizontal: 'right' }
       });
-      // Crucial: Manually trigger loading stop here if the redirect fails before leaving the page
-      setLoading(false);
-    } 
-  }, [orgId, enqueueSnackbar]); 
+    } finally {
+      setUpgradeLoading(false);
+    }
+  }, [orgId, enqueueSnackbar]);
 
-  // Memoize fetchOrgData
+  // Memoized fetchOrgData
   const fetchOrgData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -77,7 +154,6 @@ export default function Billing({ orgId }) {
       if (!token) throw new Error('Authentication token not found');
 
       const response = await fetch(`/api/organizations/${orgId}`, {
-        method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -94,14 +170,26 @@ export default function Billing({ orgId }) {
     } catch (err) {
       console.error('Fetch organization data error:', err);
       setError(err.message);
+      enqueueSnackbar('Failed to load billing information', { 
+        variant: 'error',
+        autoHideDuration: 3000,
+      });
     } finally {
       setLoading(false);
     }
-  }, [orgId]);
+  }, [orgId, enqueueSnackbar]);
 
   useEffect(() => {
     fetchOrgData();
-  }, [fetchOrgData]); // Dependency on memoized function
+  }, [fetchOrgData]);
+
+  // Memoized computed values
+  const { subscriptionStatus, subscriptionEndDate, plan } = useMemo(() => ({
+    subscriptionStatus: orgData?.subscription?.status || 'inactive',
+    subscriptionEndDate: orgData?.subscription?.currentPeriodEnd ? 
+      new Date(orgData.subscription.currentPeriodEnd) : null,
+    plan: orgData?.subscription?.plan || null
+  }), [orgData]);
 
   if (error) {
     return (
@@ -119,10 +207,6 @@ export default function Billing({ orgId }) {
     );
   }
 
-  const subscriptionStatus = orgData.subscription?.status || 'inactive';
-  const isActive = subscriptionStatus === 'active';
-  const subscriptionEndDate = orgData.subscription?.currentPeriodEnd ? new Date(orgData.subscription.currentPeriodEnd) : null;
-
   return (
     <Box sx={{ p: 3, maxWidth: '100%', overflowX: 'hidden' }}>
       <Typography variant="h4" gutterBottom fontWeight="bold">
@@ -131,77 +215,25 @@ export default function Billing({ orgId }) {
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={8}>
-          <Card elevation={2} sx={{ borderRadius: 2 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Current Plan
-              </Typography>
-              
-              <Box sx={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                mb: 2 
-              }}>
-                <Typography variant="body1" component="span">
-                  {orgData.subscription?.plan || 'Free Tier'}
-                </Typography>
-                <Chip 
-                  label={subscriptionStatus} 
-                  color={isActive ? 'success' : 'default'}
-                  variant="outlined"
-                  size="small"
-                  sx={{ textTransform: 'capitalize' }}
-                />
-              </Box>
-
-              {subscriptionEndDate && (
-                <Typography variant="body2" color="text.secondary">
-                  {isActive ? 'Renews' : 'Expires'} on: {subscriptionEndDate.toLocaleDateString()}
-                </Typography>
-              )}
-              {!orgData.subscription && (
-                 <Typography variant="body2" color="text.secondary">
-                   No active subscription found.
-                 </Typography>
-              )}
-
-              <Divider sx={{ my: 3 }} />
-
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  // NOTE: Use the actual price IDs when available
-                  onClick={() => handleUpgrade('price_premium_id_placeholder')}
-                  disabled={loading || isActive}
-                  sx={{ minWidth: 180 }}
-                >
-                  Upgrade to Premium
-                </Button>
-
-                <Button
-                  variant="outlined"
-                  color="primary"
-                  onClick={() => handleUpgrade('price_enterprise_id_placeholder')}
-                  disabled={loading}
-                  sx={{ minWidth: 180 }}
-                >
-                  Contact Sales
-                </Button>
-              </Box>
-            </CardContent>
-          </Card>
+          <PlanCard
+            plan={plan}
+            subscriptionStatus={subscriptionStatus}
+            subscriptionEndDate={subscriptionEndDate}
+            onUpgrade={handleUpgrade}
+            loading={upgradeLoading}
+          />
 
           <Box sx={{ mt: 3 }}>
-            {/* Component to show past invoices/transactions */}
-            <BillingHistory orgId={orgId} />
+            <React.Suspense fallback={<ComponentLoader />}>
+              <BillingHistory orgId={orgId} />
+            </React.Suspense>
           </Box>
         </Grid>
 
         <Grid item xs={12} md={4}>
-          {/* Component to manage payment methods via portal button */}
-          <PaymentMethods orgId={orgId} />
+          <React.Suspense fallback={<ComponentLoader />}>
+            <PaymentMethods orgId={orgId} />
+          </React.Suspense>
         </Grid>
       </Grid>
     </Box>
@@ -211,4 +243,3 @@ export default function Billing({ orgId }) {
 Billing.propTypes = {
   orgId: PropTypes.string.isRequired
 };
-
