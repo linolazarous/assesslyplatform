@@ -1,5 +1,4 @@
-// src/pages/Pricing.jsx
-import React from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -27,19 +26,130 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/common/Navbar.jsx';
 import Footer from '../components/common/Footer.jsx';
 
+// Memoized Pricing Card Component
+const PricingCard = React.memo(({ plan, onPlanSelect, isMobile }) => {
+  const theme = useTheme();
+  
+  const handleClick = useCallback(() => {
+    onPlanSelect(plan.name);
+  }, [onPlanSelect, plan.name]);
+
+  return (
+    <Card 
+      elevation={plan.popular ? 8 : 2}
+      sx={{
+        height: '100%',
+        position: 'relative',
+        border: plan.popular ? `2px solid ${theme.palette.primary.main}` : `1px solid ${theme.palette.divider}`,
+        transform: plan.popular ? 'scale(1.05)' : 'scale(1)',
+        transition: 'all 0.3s ease',
+        '&:hover': {
+          transform: plan.popular ? 'scale(1.08)' : 'scale(1.03)',
+          boxShadow: 12
+        }
+      }}
+    >
+      {plan.popular && (
+        <Chip
+          label="Most Popular"
+          color="primary"
+          sx={{
+            position: 'absolute',
+            top: -12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            fontWeight: 600
+          }}
+        />
+      )}
+      
+      <CardContent sx={{ p: 4, height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {/* Plan Header */}
+        <Box sx={{ textAlign: 'center', mb: 3 }}>
+          {plan.icon}
+          <Typography variant="h4" fontWeight="bold" sx={{ mt: 2, mb: 1 }}>
+            {plan.name}
+          </Typography>
+          <Typography color="text.secondary" sx={{ mb: 3 }}>
+            {plan.description}
+          </Typography>
+          
+          {/* Price */}
+          <Box sx={{ mb: 3 }}>
+            <Typography 
+              variant="h2" 
+              fontWeight="bold" 
+              color="primary"
+              sx={{ fontSize: { xs: '2.5rem', md: '3rem' } }}
+            >
+              {plan.price}
+            </Typography>
+            <Typography color="text.secondary" variant="body2">
+              {plan.period}
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Features List */}
+        <List sx={{ flexGrow: 1, mb: 3 }}>
+          {plan.features.map((feature, featureIndex) => (
+            <ListItem key={featureIndex} sx={{ px: 0, py: 0.5 }}>
+              <ListItemIcon sx={{ minWidth: 32 }}>
+                <CheckIcon color="primary" sx={{ fontSize: 20 }} />
+              </ListItemIcon>
+              <ListItemText 
+                primary={feature}
+                primaryTypographyProps={{ variant: 'body2' }}
+              />
+            </ListItem>
+          ))}
+        </List>
+
+        {/* CTA Button */}
+        <Button
+          variant={plan.buttonVariant}
+          size="large"
+          fullWidth
+          onClick={handleClick}
+          sx={{
+            py: 1.5,
+            fontSize: '1.1rem',
+            fontWeight: 600,
+            mt: 'auto'
+          }}
+        >
+          {plan.buttonText}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+});
+
+// Memoized FAQ Item Component
+const FAQItem = React.memo(({ question, answer }) => (
+  <Box sx={{ mb: 4 }}>
+    <Typography variant="h6" gutterBottom>
+      {question}
+    </Typography>
+    <Typography color="text.secondary">
+      {answer}
+    </Typography>
+  </Box>
+));
+
 export default function Pricing() {
   const theme = useTheme();
   const navigate = useNavigate();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
-  const NAVBAR_LINKS = [
+  const NAVBAR_LINKS = useMemo(() => [
     { label: 'Features', href: '/#features-section' },
     { label: 'Pricing', href: '/pricing' },
     { label: 'Contact', href: '/contact' },
     { label: 'Documentation', href: 'https://docs.assessly.com', external: true },
-  ];
+  ], []);
 
-  const pricingPlans = [
+  const pricingPlans = useMemo(() => [
     {
       name: 'Basic',
       price: '$0',
@@ -106,17 +216,46 @@ export default function Pricing() {
       buttonText: 'Contact Sales',
       buttonVariant: 'outlined'
     }
-  ];
+  ], []);
 
-  const handlePlanSelect = (planName) => {
-    if (planName === 'Basic') {
-      navigate('/auth?tab=signup');
-    } else if (planName === 'Professional') {
+  const faqItems = useMemo(() => [
+    {
+      question: 'Can I change plans later?',
+      answer: 'Yes, you can upgrade or downgrade your plan at any time. Changes take effect immediately.'
+    },
+    {
+      question: 'Is there a setup fee?',
+      answer: 'No, there are no setup fees for any of our plans. What you see is what you pay.'
+    },
+    {
+      question: 'Do you offer discounts for nonprofits?',
+      answer: 'Yes, we offer a 50% discount for registered nonprofit organizations.'
+    },
+    {
+      question: 'What payment methods do you accept?',
+      answer: 'We accept all major credit cards, PayPal, and bank transfers for annual plans.'
+    },
+    {
+      question: 'Can I cancel anytime?',
+      answer: 'Yes, you can cancel your subscription at any time with no cancellation fees.'
+    },
+    {
+      question: 'Is there a free trial?',
+      answer: 'Yes, all new users get a 14-day free trial of our Professional plan features.'
+    }
+  ], []);
+
+  const handlePlanSelect = useCallback((planName) => {
+    if (planName === 'Basic' || planName === 'Professional') {
       navigate('/auth?tab=signup');
     } else {
       navigate('/contact');
     }
-  };
+  }, [navigate]);
+
+  const handleStartTrial = useCallback(() => {
+    navigate('/auth?tab=signup');
+  }, [navigate]);
 
   return (
     <Box 
@@ -178,95 +317,13 @@ export default function Pricing() {
         }}
       >
         <Grid container spacing={4} alignItems="stretch">
-          {pricingPlans.map((plan, index) => (
+          {pricingPlans.map((plan) => (
             <Grid item xs={12} md={4} key={plan.name}>
-              <Card 
-                elevation={plan.popular ? 8 : 2}
-                sx={{
-                  height: '100%',
-                  position: 'relative',
-                  border: plan.popular ? `2px solid ${theme.palette.primary.main}` : `1px solid ${theme.palette.divider}`,
-                  transform: plan.popular ? 'scale(1.05)' : 'scale(1)',
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    transform: plan.popular ? 'scale(1.08)' : 'scale(1.03)',
-                    boxShadow: 12
-                  }
-                }}
-              >
-                {plan.popular && (
-                  <Chip
-                    label="Most Popular"
-                    color="primary"
-                    sx={{
-                      position: 'absolute',
-                      top: -12,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      fontWeight: 600
-                    }}
-                  />
-                )}
-                
-                <CardContent sx={{ p: 4, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                  {/* Plan Header */}
-                  <Box sx={{ textAlign: 'center', mb: 3 }}>
-                    {plan.icon}
-                    <Typography variant="h4" fontWeight="bold" sx={{ mt: 2, mb: 1 }}>
-                      {plan.name}
-                    </Typography>
-                    <Typography color="text.secondary" sx={{ mb: 3 }}>
-                      {plan.description}
-                    </Typography>
-                    
-                    {/* Price */}
-                    <Box sx={{ mb: 3 }}>
-                      <Typography 
-                        variant="h2" 
-                        fontWeight="bold" 
-                        color="primary"
-                        sx={{ fontSize: { xs: '2.5rem', md: '3rem' } }}
-                      >
-                        {plan.price}
-                      </Typography>
-                      <Typography color="text.secondary" variant="body2">
-                        {plan.period}
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  {/* Features List */}
-                  <List sx={{ flexGrow: 1, mb: 3 }}>
-                    {plan.features.map((feature, featureIndex) => (
-                      <ListItem key={featureIndex} sx={{ px: 0, py: 0.5 }}>
-                        <ListItemIcon sx={{ minWidth: 32 }}>
-                          <CheckIcon color="primary" sx={{ fontSize: 20 }} />
-                        </ListItemIcon>
-                        <ListItemText 
-                          primary={feature}
-                          primaryTypographyProps={{ variant: 'body2' }}
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-
-                  {/* CTA Button */}
-                  <Button
-                    variant={plan.buttonVariant}
-                    size="large"
-                    fullWidth
-                    onClick={() => handlePlanSelect(plan.name)}
-                    sx={{
-                      py: 1.5,
-                      fontSize: '1.1rem',
-                      fontWeight: 600,
-                      mt: 'auto'
-                    }}
-                  >
-                    {plan.buttonText}
-                  </Button>
-                </CardContent>
-              </Card>
+              <PricingCard 
+                plan={plan}
+                onPlanSelect={handlePlanSelect}
+                isMobile={isMobile}
+              />
             </Grid>
           ))}
         </Grid>
@@ -283,63 +340,16 @@ export default function Pricing() {
           </Typography>
 
           <Grid container spacing={4}>
-            <Grid item xs={12} md={6}>
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                  Can I change plans later?
-                </Typography>
-                <Typography color="text.secondary">
-                  Yes, you can upgrade or downgrade your plan at any time. Changes take effect immediately.
-                </Typography>
-              </Box>
-
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                  Is there a setup fee?
-                </Typography>
-                <Typography color="text.secondary">
-                  No, there are no setup fees for any of our plans. What you see is what you pay.
-                </Typography>
-              </Box>
-
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                  Do you offer discounts for nonprofits?
-                </Typography>
-                <Typography color="text.secondary">
-                  Yes, we offer a 50% discount for registered nonprofit organizations.
-                </Typography>
-              </Box>
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                  What payment methods do you accept?
-                </Typography>
-                <Typography color="text.secondary">
-                  We accept all major credit cards, PayPal, and bank transfers for annual plans.
-                </Typography>
-              </Box>
-
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                  Can I cancel anytime?
-                </Typography>
-                <Typography color="text.secondary">
-                  Yes, you can cancel your subscription at any time with no cancellation fees.
-                </Typography>
-              </Box>
-
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h6" gutterBottom>
-                  Is there a free trial?
-                </Typography>
-                <Typography color="text.secondary">
-                  Yes, all new users get a 14-day free trial of our Professional plan features.
-                </Typography>
-              </Box>
-            </Grid>
+            {faqItems.slice(0, 3).map((item, index) => (
+              <Grid item xs={12} md={6} key={index}>
+                <FAQItem question={item.question} answer={item.answer} />
+              </Grid>
+            ))}
+            {faqItems.slice(3).map((item, index) => (
+              <Grid item xs={12} md={6} key={index + 3}>
+                <FAQItem question={item.question} answer={item.answer} />
+              </Grid>
+            ))}
           </Grid>
         </Container>
       </Box>
@@ -356,7 +366,7 @@ export default function Pricing() {
           <Button
             variant="contained"
             size="large"
-            onClick={() => navigate('/auth?tab=signup')}
+            onClick={handleStartTrial}
             sx={{
               px: 6,
               py: 1.5,
