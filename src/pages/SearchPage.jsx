@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -26,21 +26,20 @@ import {
 } from '@mui/icons-material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-// Assuming only debouncedSearch is needed and is stable
-import { 
-  debouncedSearch 
-} from '../services/searchService.js'; 
-import PropTypes from 'prop-types';
-
+import { debouncedSearch } from '../services/searchService.js'; 
 
 // --- SearchResultItem Component ---
-const SearchResultItem = ({ result, onClick, type = 'assessment' }) => {
+const SearchResultItem = React.memo(({ result, onClick, type = 'assessment' }) => {
   const theme = useTheme();
+  
+  const handleClick = useCallback(() => {
+    onClick(result);
+  }, [onClick, result]);
   
   return (
     <ListItem 
       button 
-      onClick={onClick}
+      onClick={handleClick}
       sx={{
         '&:hover': {
           backgroundColor: theme.palette.action.hover
@@ -58,7 +57,7 @@ const SearchResultItem = ({ result, onClick, type = 'assessment' }) => {
         primary={result.title || result.text}
         secondary={
           type === 'question' 
-            ? `Source: ${result.assessmentTitle}` // Better label
+            ? `Source: ${result.assessmentTitle}`
             : result.description || 'No description available'
         }
         secondaryTypographyProps={{ noWrap: true }}
@@ -71,17 +70,10 @@ const SearchResultItem = ({ result, onClick, type = 'assessment' }) => {
       />
     </ListItem>
   );
-};
-
-SearchResultItem.propTypes = {
-  result: PropTypes.object.isRequired,
-  onClick: PropTypes.func.isRequired,
-  type: PropTypes.oneOf(['assessment', 'question'])
-};
-
+});
 
 // --- SearchTabs Component ---
-const SearchTabs = ({ activeTab, onChange, assessmentCount, questionCount }) => {
+const SearchTabs = React.memo(({ activeTab, onChange, assessmentCount, questionCount }) => {
   return (
     <Tabs 
       value={activeTab} 
@@ -91,7 +83,7 @@ const SearchTabs = ({ activeTab, onChange, assessmentCount, questionCount }) => 
     >
       <Tab 
         label={
-          <Badge badgeContent={assessmentCount} color="primary">
+          <Badge badgeContent={assessmentCount} color="primary" showZero>
             Assessments
           </Badge>
         } 
@@ -99,7 +91,7 @@ const SearchTabs = ({ activeTab, onChange, assessmentCount, questionCount }) => 
       />
       <Tab 
         label={
-          <Badge badgeContent={questionCount} color="secondary">
+          <Badge badgeContent={questionCount} color="secondary" showZero>
             Questions
           </Badge>
         } 
@@ -107,15 +99,58 @@ const SearchTabs = ({ activeTab, onChange, assessmentCount, questionCount }) => 
       />
     </Tabs>
   );
-};
+});
 
-SearchTabs.propTypes = {
-  activeTab: PropTypes.string.isRequired,
-  onChange: PropTypes.func.isRequired,
-  assessmentCount: PropTypes.number.isRequired,
-  questionCount: PropTypes.number.isRequired
-};
+// --- EmptyState Component ---
+const EmptyState = React.memo(({ query, activeTab, currentResults }) => {
+  const theme = useTheme();
+  
+  if (query && currentResults.length === 0) {
+    return (
+      <Typography variant="body1" sx={{ textAlign: 'center', p: 4 }}>
+        No {activeTab} found for "{query}"
+      </Typography>
+    );
+  }
+  
+  return (
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center', 
+      p: 4,
+      textAlign: 'center'
+    }}>
+      <SearchIcon fontSize="large" color="action" />
+      <Typography variant="h6" sx={{ mt: 2 }}>
+        Search for assessments, questions, or templates
+      </Typography>
+      <Typography variant="body1" color="text.secondary">
+        Enter a search term in the field above to get started
+      </Typography>
+    </Box>
+  );
+});
 
+// --- ErrorState Component ---
+const ErrorState = React.memo(({ error }) => {
+  const theme = useTheme();
+  
+  return (
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center', 
+      p: 4,
+      color: theme.palette.error.main
+    }}>
+      <ErrorIcon fontSize="large" />
+      <Typography variant="h6" sx={{ mt: 2 }}>
+        {error}
+      </Typography>
+    </Box>
+  );
+});
 
 // --- SearchPage Component ---
 export default function SearchPage() {
@@ -123,6 +158,7 @@ export default function SearchPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState('assessments');
   const [assessmentResults, setAssessmentResults] = useState([]);
@@ -130,120 +166,166 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Memoize the core search logic using useCallback
+  // Get search query from URL
+  const searchQuery = useMemo(() => {
+    return new URLSearchParams(location.search).get('q') || '';
+  }, [location.search]);
+
+  // Memoized current results based on active tab
+  const currentResults = useMemo(() => 
+    activeTab === 'assessments' ? assessmentResults : questionResults,
+    [activeTab, assessmentResults, questionResults]
+  );
+
+  // Memoized search execution
   const executeSearch = useCallback((searchQuery, userId, tab) => {
-    if (!searchQuery || !userId) return;
+    if (!searchQuery?.trim() || !userId) {
+      setAssessmentResults([]);
+      setQuestionResults([]);
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     setError(null);
     
-    // Pass the appropriate setter function based on the active tab
     const setter = tab === 'assessments' ? setAssessmentResults : setQuestionResults;
 
     debouncedSearch(
-      searchQuery, 
+      searchQuery.trim(), 
       userId,
       (results, err) => {
         if (err) {
           setError(err.message || 'An unknown error occurred during search.');
+          setter([]);
         } else {
-          setter(results);
+          setter(Array.isArray(results) ? results : []);
         }
         setLoading(false);
       },
-      tab // Pass the target search tab (assessments or questions)
+      tab
     );
-  }, [debouncedSearch]); // Assuming debouncedSearch is stable
+  }, []);
 
-  // Effect to pull initial query from URL and trigger search
+  // Effect to handle search when query or tab changes
   useEffect(() => {
-    const searchQuery = new URLSearchParams(location.search).get('q') || '';
     setQuery(searchQuery);
-
-    // Only search if user is logged in and query exists
-    if (searchQuery && currentUser?.id) { 
+    
+    if (searchQuery && currentUser?.id) {
       executeSearch(searchQuery, currentUser.id, activeTab);
     } else {
       setAssessmentResults([]);
       setQuestionResults([]);
       setLoading(false);
+      setError(null);
     }
-  }, [location.search, currentUser?.id, activeTab, executeSearch]); // Dependencies are clean
+  }, [searchQuery, currentUser?.id, activeTab, executeSearch]);
 
-  const handleSearchSubmit = (e) => {
+  // Handlers
+  const handleSearchSubmit = useCallback((e) => {
     e.preventDefault();
-    if (query.trim()) {
-      // Navigate resets the location.search, which triggers the useEffect
-      navigate(`/search?q=${encodeURIComponent(query.trim())}`);
+    const trimmedQuery = query.trim();
+    if (trimmedQuery) {
+      navigate(`/search?q=${encodeURIComponent(trimmedQuery)}`);
     }
-  };
+  }, [query, navigate]);
 
-  const handleClearSearch = () => {
+  const handleClearSearch = useCallback(() => {
     setQuery('');
     navigate('/search');
-  };
+  }, [navigate]);
 
-  const handleResultClick = (result) => {
+  const handleResultClick = useCallback((result) => {
     if (activeTab === 'questions') {
-      // Navigate to the assessment page, highlighting the question
       navigate(`/assessments/${result.assessmentId}#question-${result.questionIndex}`);
     } else {
       navigate(`/assessments/${result.id}`);
     }
-  };
+  }, [activeTab, navigate]);
 
-  const currentResults = activeTab === 'assessments' 
-    ? assessmentResults 
-    : questionResults;
+  const handleTabChange = useCallback((_, newValue) => {
+    setActiveTab(newValue);
+  }, []);
+
+  // Memoized search form
+  const searchForm = useMemo(() => (
+    <Paper
+      component="form"
+      onSubmit={handleSearchSubmit}
+      sx={{
+        p: '2px 4px',
+        display: 'flex',
+        alignItems: 'center',
+        mb: 3,
+        borderRadius: 2,
+        boxShadow: theme.shadows[1]
+      }}
+    >
+      <InputBase
+        fullWidth
+        placeholder="Search assessments, questions, or templates..."
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        sx={{ ml: 2, flex: 1 }}
+        inputProps={{ 'aria-label': 'search assessments' }}
+      />
+      <IconButton 
+        type="button" 
+        onClick={handleClearSearch}
+        disabled={!query}
+        aria-label="clear search"
+      >
+        <ClearIcon />
+      </IconButton>
+      <Divider orientation="vertical" sx={{ height: 28, m: 0.5 }} />
+      <IconButton 
+        type="submit" 
+        color="primary" 
+        aria-label="search"
+        disabled={!query.trim()}
+      >
+        <SearchIcon />
+      </IconButton>
+    </Paper>
+  ), [query, handleSearchSubmit, handleClearSearch, theme]);
+
+  // Memoized results list
+  const resultsList = useMemo(() => {
+    if (currentResults.length === 0) return null;
+    
+    return (
+      <>
+        <Typography variant="subtitle1" sx={{ mb: 1 }}>
+          {currentResults.length} {activeTab}{currentResults.length !== 1 ? 's' : ''} found for "{query}"
+        </Typography>
+        <Paper elevation={0} sx={{ borderRadius: 2 }}>
+          <List disablePadding>
+            {currentResults.map((result, index) => (
+              <React.Fragment key={result.id || `${result.assessmentId}-${index}`}>
+                <SearchResultItem 
+                  result={result} 
+                  onClick={handleResultClick}
+                  type={activeTab === 'questions' ? 'question' : 'assessment'}
+                />
+                {index < currentResults.length - 1 && <Divider component="li" />}
+              </React.Fragment>
+            ))}
+          </List>
+        </Paper>
+      </>
+    );
+  }, [currentResults, activeTab, query, handleResultClick]);
 
   return (
     <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
       {/* Search Bar */}
-      <Paper
-        component="form"
-        onSubmit={handleSearchSubmit}
-        sx={{
-          p: '2px 4px',
-          display: 'flex',
-          alignItems: 'center',
-          mb: 3,
-          borderRadius: 2,
-          boxShadow: theme.shadows[1]
-        }}
-      >
-        <InputBase
-          fullWidth
-          placeholder="Search assessments, questions, or templates..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          sx={{ ml: 2, flex: 1 }}
-          inputProps={{ 'aria-label': 'search assessments' }}
-        />
-        <IconButton 
-          type="button" 
-          onClick={handleClearSearch}
-          disabled={!query}
-          aria-label="clear search"
-        >
-          <ClearIcon />
-        </IconButton>
-        <Divider orientation="vertical" sx={{ height: 28, m: 0.5 }} />
-        <IconButton 
-          type="submit" 
-          color="primary" 
-          aria-label="search"
-          disabled={!query.trim()}
-        >
-          <SearchIcon />
-        </IconButton>
-      </Paper>
+      {searchForm}
 
       {/* Search Tabs */}
-      {/* Only show tabs if a query exists, even if results haven't loaded */}
-      {query && ( 
+      {query && (
         <SearchTabs
           activeTab={activeTab}
-          onChange={(_, newValue) => setActiveTab(newValue)}
+          onChange={handleTabChange}
           assessmentCount={assessmentResults.length}
           questionCount={questionResults.length}
         />
@@ -255,60 +337,13 @@ export default function SearchPage() {
           <CircularProgress />
         </Box>
       ) : error ? (
-        <Box sx={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center', 
-          p: 4,
-          color: theme.palette.error.main
-        }}>
-          <ErrorIcon fontSize="large" />
-          <Typography variant="h6" sx={{ mt: 2 }}>
-            {error}
-          </Typography>
-        </Box>
-      ) : query && currentResults.length === 0 ? (
-        <Typography variant="body1" sx={{ textAlign: 'center', p: 4 }}>
-          No {activeTab} found for "{query}"
-        </Typography>
-      ) : currentResults.length > 0 ? (
-        <>
-          <Typography variant="subtitle1" sx={{ mb: 1 }}>
-            {currentResults.length} {activeTab}{currentResults.length !== 1 ? 's' : ''} found for "{query}"
-          </Typography>
-          <Paper elevation={0} sx={{ borderRadius: 2 }}>
-            <List disablePadding>
-              {currentResults.map((result, index) => (
-                // Use a single, stable key for the ListItem
-                <React.Fragment key={result.id || `${result.assessmentId}-${index}`}>
-                  <SearchResultItem 
-                    result={result} 
-                    onClick={() => handleResultClick(result)}
-                    type={activeTab === 'questions' ? 'question' : 'assessment'}
-                  />
-                  {/* FIX: Ensure Divider placement is correct */}
-                  {index < currentResults.length - 1 && <Divider component="li" />}
-                </React.Fragment>
-              ))}
-            </List>
-          </Paper>
-        </>
-      ) : (
-        <Box sx={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center', 
-          p: 4,
-          textAlign: 'center'
-        }}>
-          <SearchIcon fontSize="large" color="action" />
-          <Typography variant="h6" sx={{ mt: 2 }}>
-            Search for assessments, questions, or templates
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Enter a search term in the field above to get started
-          </Typography>
-        </Box>
+        <ErrorState error={error} />
+      ) : resultsList || (
+        <EmptyState 
+          query={query}
+          activeTab={activeTab}
+          currentResults={currentResults}
+        />
       )}
     </Box>
   );
