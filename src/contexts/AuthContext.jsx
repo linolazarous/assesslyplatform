@@ -1,3 +1,4 @@
+// src/contexts/AuthContext.jsx
 import React, {
   createContext,
   useContext,
@@ -7,11 +8,11 @@ import React, {
   useCallback,
 } from "react";
 import { CircularProgress, Box } from "@mui/material";
-import jwtDecode from "jwt-decode";
+import { jwtDecode } from "jwt-decode"; // ✅ Use named export for ESM
 import PropTypes from "prop-types";
 import axios from "axios";
 
-// Base API URL (adjust to production)
+// Base API URL
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "https://assesslyplatform-t49h.onrender.com";
 
@@ -39,7 +40,7 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
   }, []);
 
-  /** Decode token and set user state */
+  /** Decode JWT & initialize user */
   const decodeAndSetUser = useCallback(
     (jwtToken) => {
       if (!jwtToken) return logout();
@@ -86,14 +87,14 @@ export const AuthProvider = ({ children }) => {
     }
   }, [decodeAndSetUser, logout]);
 
-  /** Load token from localStorage on mount */
+  /** Initialize from localStorage */
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
     decodeAndSetUser(storedToken);
     setIsLoading(false);
   }, [decodeAndSetUser]);
 
-  /** Periodic token refresh (10 min) */
+  /** Periodic refresh (10 minutes) */
   useEffect(() => {
     if (!token) return;
     const interval = setInterval(refreshAccessToken, 10 * 60 * 1000);
