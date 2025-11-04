@@ -5,7 +5,7 @@ import {
   useTheme,
   useMediaQuery,
   Fade,
-  Zoom
+  Typography // Added missing import
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/common/Navbar.jsx';
@@ -19,8 +19,14 @@ const CallToAction = lazy(() => import('../components/layout/CallToAction.jsx'))
 
 // Loading fallback component
 const SectionLoader = () => (
-  <Box sx={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-    <Typography>Loading...</Typography>
+  <Box sx={{ 
+    height: 400, 
+    display: 'flex', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    bgcolor: 'background.default'
+  }}>
+    <Typography variant="h6">Loading...</Typography>
   </Box>
 );
 
@@ -52,13 +58,6 @@ export default function LandingPage() {
       navigate(path);
     }
   }, [navigate]);
-
-  const scrollToTop = useCallback(() => {
-    window.scrollTo({ 
-      top: 0, 
-      behavior: 'smooth' 
-    });
-  }, []);
 
   return (
     <Box 
@@ -100,17 +99,12 @@ export default function LandingPage() {
 
       {/* Scroll-to-Top - Only show after scrolling */}
       <ScrollToTopButton />
-
-      {/* Critical preloads - Only in production */}
-      {process.env.NODE_ENV === 'production' && (
-        <>
-          <link rel="preload" href="/Assessly.mp4" as="video" type="video/mp4" />
-          <link rel="preload" href="/hero-fallback.jpg" as="image" />
-        </>
-      )}
       
       {/* Structured Data for SEO */}
       <StructuredData />
+
+      {/* Hidden preload for critical above-fold image - FIXED approach */}
+      <CriticalImagePreload />
     </Box>
   );
 }
@@ -128,16 +122,16 @@ const ScrollToTopButton = React.memo(() => {
       }
     };
 
-    window.addEventListener('scroll', toggleVisibility);
+    window.addEventListener('scroll', toggleVisibility, { passive: true });
     return () => window.removeEventListener('scroll', toggleVisibility);
   }, []);
 
-  const scrollToTop = () => {
+  const scrollToTop = useCallback(() => {
     window.scrollTo({ 
       top: 0, 
       behavior: 'smooth' 
     });
-  };
+  }, []);
 
   return (
     <Fade in={isVisible} timeout={500}>
@@ -208,3 +202,27 @@ const StructuredData = React.memo(() => (
     }}
   />
 ));
+
+// Fixed preload approach - prevents console warnings
+const CriticalImagePreload = React.memo(() => {
+  React.useEffect(() => {
+    // Programmatic preload that won't cause console warnings
+    if (typeof window !== 'undefined' && 'linkPreload' in window) {
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'image';
+      link.href = '/hero-fallback.jpg';
+      link.fetchPriority = 'high';
+      document.head.appendChild(link);
+      
+      // Cleanup if component unmounts quickly
+      return () => {
+        if (document.head.contains(link)) {
+          document.head.removeChild(link);
+        }
+      };
+    }
+  }, []);
+
+  return null; // No DOM output
+});
