@@ -1,8 +1,8 @@
-import React, { Suspense, lazy, useState, useMemo, useEffect } from "react";
+import React, { Suspense, lazy, useState, useMemo, useEffect, useCallback } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@mui/material/styles";
 import { CssBaseline, Box, CircularProgress, Snackbar, Alert } from "@mui/material";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { AuthProvider } from "./contexts/AuthContext";
 import MainLayout from "./layouts/MainLayout";
 import AuthLayout from "./layouts/AuthLayout";
 import { getAppTheme } from "./styles/theme";
@@ -11,19 +11,18 @@ import ProtectedRoute from "./components/common/ProtectedRoute";
 import ErrorBoundary from "./ErrorBoundary";
 
 /* ============================================================
-   ✅ Lazy Import Utility with Retry
+   ✅ Lazy Import Utility with Retry (Optimized)
 ============================================================ */
-const lazyWithRetry = (importFunc, retries = 2, interval = 1500) =>
+const lazyWithRetry = (importFunc, retries = 2, interval = 1200) =>
   lazy(async () => {
-    for (let attempt = 0; attempt < retries; attempt++) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         return await importFunc();
       } catch (err) {
-        console.warn(`Lazy load attempt ${attempt + 1} failed. Retrying...`);
+        if (attempt === retries) throw new Error("Failed to load component after retries.");
         await new Promise((res) => setTimeout(res, interval));
       }
     }
-    throw new Error("Component failed to load after multiple retries.");
   });
 
 /* ============================================================
@@ -47,23 +46,18 @@ const useThemeMode = () => {
   const [darkMode, setDarkMode] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("darkMode") || "false");
-    } catch (error) {
-      console.warn("Error reading theme preference:", error);
+    } catch {
       return false;
     }
   });
 
-  const toggleDarkMode = () => {
+  const toggleDarkMode = useCallback(() => {
     setDarkMode((prev) => {
-      const newMode = !prev;
-      try {
-        localStorage.setItem("darkMode", JSON.stringify(newMode));
-      } catch (error) {
-        console.warn("Error saving theme preference:", error);
-      }
-      return newMode;
+      const next = !prev;
+      localStorage.setItem("darkMode", JSON.stringify(next));
+      return next;
     });
-  };
+  }, []);
 
   const theme = useMemo(() => getAppTheme(darkMode ? "dark" : "light"), [darkMode]);
   return { theme, darkMode, toggleDarkMode };
@@ -72,22 +66,22 @@ const useThemeMode = () => {
 /* ============================================================
    ✅ Layout Wrapper
 ============================================================ */
-const MainLayoutWrapper = ({ darkMode, toggleDarkMode, children }) => (
+const MainLayoutWrapper = React.memo(({ darkMode, toggleDarkMode, children }) => (
   <ErrorBoundary>
     <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
       {children}
     </MainLayout>
   </ErrorBoundary>
-);
+));
 
 /* ============================================================
-   ✅ Loading State Component
+   ✅ Loading Placeholder (Minimal)
 ============================================================ */
-const ProductionLoading = () => (
+const ProductionLoading = React.memo(() => (
   <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
-    <CircularProgress size={42} />
+    <CircularProgress size={40} />
   </Box>
-);
+));
 
 /* ============================================================
    ✅ Main Application Component
@@ -100,17 +94,14 @@ export default function App() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      setSnackbar({ open: true, message: "Back online!", severity: "success" });
+      setSnackbar({ open: true, message: "You're back online!", severity: "success" });
     };
-    
     const handleOffline = () => {
       setIsOnline(false);
-      setSnackbar({ open: true, message: "You are offline. Some features may not work.", severity: "warning" });
+      setSnackbar({ open: true, message: "Offline mode: Some features unavailable.", severity: "warning" });
     };
-    
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-    
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
@@ -118,14 +109,14 @@ export default function App() {
   }, []);
 
   const handleSnackbarClose = useCallback(() => {
-    setSnackbar(prev => ({ ...prev, open: false }));
+    setSnackbar((prev) => ({ ...prev, open: false }));
   }, []);
 
   return (
     <ErrorBoundary>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Router>
           <AuthProvider>
             <Suspense fallback={<LoadingScreen fullScreen />}>
               <Routes>
@@ -134,7 +125,7 @@ export default function App() {
                 <Route path="/pricing" element={<PricingPage />} />
                 <Route path="/contact" element={<ContactPage />} />
 
-                {/* 🔑 Auth Pages */}
+                {/* 🔑 Authentication */}
                 {["/auth", "/login"].map((path) => (
                   <Route
                     key={path}
@@ -171,7 +162,7 @@ export default function App() {
                   />
                 ))}
 
-                {/* 🚫 Fallback */}
+                {/* 🚫 404 Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
