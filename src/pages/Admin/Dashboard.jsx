@@ -183,31 +183,31 @@ export default function AdminDashboard() {
     }
   }, [isAdmin, token, fetchDashboardData]);
 
-  // Memoized stat cards data
+  // Memoized stat cards data - FIXED: Removed TypeScript 'as const' assertions
   const statCards = useMemo(() => [
     {
       title: "Total Assessments",
       value: stats.assessments,
       icon: <AssessmentIcon />,
-      trend: "up" as const
+      trend: "up"
     },
     {
       title: "Active Users",
       value: stats.activeUsers,
       icon: <PeopleIcon />,
-      trend: "up" as const
+      trend: "up"
     },
     {
       title: "Organizations",
       value: stats.organizations,
       icon: <BusinessIcon />,
-      trend: "neutral" as const
+      trend: "neutral"
     },
     {
       title: "Completions",
       value: stats.completions,
       icon: <AssessmentIcon />,
-      trend: "up" as const
+      trend: "up"
     }
   ], [stats]);
 
