@@ -29,10 +29,12 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import statusMonitor from "express-status-monitor";
-
 import routes from "./routes/index.js";
 import { seedDatabase } from "./utils/seedDatabase.js";
 import { setupSwagger } from "./config/swagger.js";
+import passport from "passport";
+import googleAuthRoutes from "./routes/auth/google.js";
+import googlePassport from "./config/passport.js";
 
 dotenv.config();
 
@@ -125,6 +127,9 @@ app.use(
   })
 );
 
+// Initialize Passport
+app.use(passport.initialize());
+
 // =====================
 // Rate Limiting (Auth endpoints)
 // =====================
@@ -181,6 +186,7 @@ setupSwagger(app);
 // Versioned API
 // =====================
 app.use("/api/v1", routes);
+app.use("/api/v1/auth", googleAuthRoutes);
 
 // =====================
 // 404 Handler
