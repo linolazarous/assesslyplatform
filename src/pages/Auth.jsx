@@ -1,3 +1,4 @@
+// src/pages/Auth.jsx
 import React, { useState, useEffect } from "react";
 import {
   Button,
@@ -12,44 +13,41 @@ import {
   Box,
   Paper,
 } from "@mui/material";
-import {
-  Visibility,
-  VisibilityOff,
-  Google as GoogleIcon,
-  GitHub as GitHubIcon,
-  Link as LinkIcon,
-} from "@mui/icons-material";
+import { Visibility, VisibilityOff, Google as GoogleIcon, GitHub as GitHubIcon, Link as LinkIcon } from "@mui/icons-material";
 import { useSnackbar } from "notistack";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 /**
- * Production-ready Auth page supporting:
- * - Login / Signup / Forgot password / Reset password
- * - Magic link (email) login
- * - Social logins: Google, GitHub, LinkedIn (backend-driven)
- * - Token callback handling via URL query (?token=...)
+ * Auth Page
+ * - Login / Signup / Forgot / Reset / Magic Link
+ * - Social logins (OAuth) redirect
+ * - Token callback handling (?token=...)
  */
 export default function AuthPage({ disableSignup = false }) {
   const { login, register, logout, currentUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const params = new URLSearchParams(location.search);
-  const urlToken = params.get("token") || params.get("magic_token") || null;
   const { enqueueSnackbar } = useSnackbar();
 
+  const params = new URLSearchParams(location.search);
+  const urlToken = params.get("token") || params.get("magic_token") || null;
+
+  // Form state
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState("assessor");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // Page modes
   const [isLogin, setIsLogin] = useState(true);
   const [isForgot, setIsForgot] = useState(false);
   const [isReset, setIsReset] = useState(false);
   const [isMagic, setIsMagic] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
 
-  // Handle token from URL (OAuth or magic link)
+  /** Handle token from URL (OAuth or magic link) */
   useEffect(() => {
     if (urlToken) {
       try {
@@ -57,34 +55,45 @@ export default function AuthPage({ disableSignup = false }) {
         enqueueSnackbar("Logged in via external provider.", { variant: "success" });
         navigate("/dashboard", { replace: true });
       } catch (err) {
-        console.error("Failed to process token from URL:", err);
-        enqueueSnackbar("Failed to complete external login.", { variant: "error" });
+        console.error("Failed to process token:", err);
+        enqueueSnackbar("External login failed.", { variant: "error" });
       }
       return;
     }
 
     const tab = params.get("tab");
-    if (tab === "signup" && !disableSignup) {
-      setIsLogin(false);
-      setIsForgot(false);
-      setIsMagic(false);
-    } else if (tab === "forgot") {
-      setIsForgot(true);
-      setIsLogin(false);
-    } else if (tab === "magic") {
-      setIsMagic(true);
-      setIsLogin(false);
-    } else {
-      setIsLogin(true);
-      setIsForgot(false);
-      setIsMagic(false);
+    switch (tab) {
+      case "signup":
+        if (!disableSignup) {
+          setIsLogin(false);
+          setIsForgot(false);
+          setIsMagic(false);
+        }
+        break;
+      case "forgot":
+        setIsForgot(true);
+        setIsLogin(false);
+        break;
+      case "magic":
+        setIsMagic(true);
+        setIsLogin(false);
+        break;
+      case "reset":
+        setIsReset(true);
+        setIsLogin(false);
+        break;
+      default:
+        setIsLogin(true);
+        setIsForgot(false);
+        setIsMagic(false);
+        setIsReset(false);
     }
 
     logout();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search, urlToken]);
 
-  // Redirect if already logged in
+  /** Redirect if already logged in */
   useEffect(() => {
     if (currentUser) {
       const from = location.state?.from?.pathname || "/dashboard";
@@ -92,14 +101,14 @@ export default function AuthPage({ disableSignup = false }) {
     }
   }, [currentUser, navigate, location.state]);
 
-  // Validation
+  /** Form validation */
   const validateForm = () => {
     if (!email || !email.includes("@")) {
-      enqueueSnackbar("Please enter a valid email address.", { variant: "error" });
+      enqueueSnackbar("Enter a valid email.", { variant: "error" });
       return false;
     }
     if (!isForgot && !isMagic && !isReset && (!password || password.length < 6)) {
-      enqueueSnackbar("Password must be at least 6 characters long.", { variant: "error" });
+      enqueueSnackbar("Password must be at least 6 characters.", { variant: "error" });
       return false;
     }
     if (isReset && password !== confirmPassword) {
@@ -109,7 +118,7 @@ export default function AuthPage({ disableSignup = false }) {
     return true;
   };
 
-  // Main auth handler
+  /** Main auth handler */
   const handleAuth = async () => {
     if (!validateForm()) return;
     setLoading(true);
@@ -122,7 +131,7 @@ export default function AuthPage({ disableSignup = false }) {
           body: JSON.stringify({ email, redirectTo: `${window.location.origin}/auth?magic_token=` }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Failed to send magic link.");
+        if (!res.ok) throw new Error(data.message || "Magic link failed.");
         enqueueSnackbar("Magic link sent. Check your email.", { variant: "success" });
 
       } else if (isForgot) {
@@ -133,20 +142,20 @@ export default function AuthPage({ disableSignup = false }) {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Password reset request failed.");
-        enqueueSnackbar("Password reset link sent to your email.", { variant: "success" });
+        enqueueSnackbar("Password reset link sent.", { variant: "success" });
         setIsForgot(false);
         setIsLogin(true);
 
       } else if (isReset) {
-        if (!urlToken) throw new Error("Reset token is missing from the URL.");
-        const res = await fetch(`/api/auth/reset-password`, {
+        if (!urlToken) throw new Error("Reset token missing.");
+        const res = await fetch("/api/auth/reset-password", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: urlToken, password }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Password reset failed.");
-        enqueueSnackbar("Password reset successful. Please sign in.", { variant: "success" });
+        enqueueSnackbar("Password reset successful!", { variant: "success" });
         navigate("/auth?tab=login", { replace: true });
 
       } else if (isLogin) {
@@ -156,78 +165,57 @@ export default function AuthPage({ disableSignup = false }) {
           const from = location.state?.from?.pathname || "/dashboard";
           navigate(from, { replace: true });
         } else {
-          enqueueSnackbar("Invalid credentials. Please try again.", { variant: "error" });
+          enqueueSnackbar("Invalid credentials.", { variant: "error" });
         }
 
       } else {
         await register({ email, password, role });
-        enqueueSnackbar("Account created successfully! Please sign in.", { variant: "success" });
+        enqueueSnackbar("Account created! Please sign in.", { variant: "success" });
         setIsLogin(true);
         navigate("/auth?tab=login", { replace: true });
       }
     } catch (err) {
       console.error("Auth error:", err);
-      enqueueSnackbar(err.message || "An authentication error occurred.", { variant: "error", autoHideDuration: 5000 });
+      enqueueSnackbar(err.message || "An error occurred.", { variant: "error", autoHideDuration: 5000 });
     } finally {
       setLoading(false);
     }
   };
 
-  // Social OAuth redirect
-  const redirectToOAuth = (provider) => {
-    window.location.href = `/api/auth/${provider}`;
-  };
+  /** OAuth redirects */
+  const redirectToOAuth = (provider) => (window.location.href = `/api/auth/${provider}`);
 
-  // UI mode switch
+  /** Switch auth modes */
   const switchMode = (mode) => {
-    setIsForgot(false);
-    setIsReset(false);
-    setIsMagic(false);
     setIsLogin(mode === "login");
-    if (mode === "magic") setIsMagic(true);
+    setIsForgot(mode === "forgot");
+    setIsReset(mode === "reset");
+    setIsMagic(mode === "magic");
     navigate(`/auth?tab=${mode}`, { replace: true });
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "linear-gradient(135deg,#f6f8fb 0%,#e8eefc 100%)",
-        p: 2,
-      }}
-    >
+    <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#f6f8fb,#e8eefc)", p: 2 }}>
       <Paper elevation={6} sx={{ width: "100%", maxWidth: 460, p: 4, borderRadius: 3 }}>
         <Box sx={{ textAlign: "center", mb: 3 }}>
           <Typography variant="h5" sx={{ fontWeight: 600 }}>
-            {isReset ? "Reset Your Password" :
-             isForgot ? "Forgot Password" :
-             isMagic ? "Sign in with Magic Link" :
-             isLogin ? "Sign In to Assessly" :
-             "Create Your Assessly Account"}
+            {isReset ? "Reset Your Password" : isForgot ? "Forgot Password" : isMagic ? "Sign in with Magic Link" : isLogin ? "Sign In" : "Create Account"}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            {isReset ? "Enter a new password below to finish resetting." :
-             isForgot ? "We'll send a password reset link to your email." :
-             isMagic ? "Enter your email and we'll send a login link." :
-             isLogin ? "Welcome back — sign in to continue." :
-             "Create an account to get started."}
+            {isReset
+              ? "Enter a new password below."
+              : isForgot
+              ? "We'll send a reset link to your email."
+              : isMagic
+              ? "Enter your email to receive a login link."
+              : isLogin
+              ? "Welcome back — sign in to continue."
+              : "Create an account to get started."}
           </Typography>
         </Box>
 
         {/* Email */}
-        <TextField
-          label="Email"
-          type="email"
-          fullWidth
-          margin="normal"
-          value={email}
-          onChange={(e) => setEmail(e.target.value.trim())}
-          autoComplete="email"
-          required
-        />
+        <TextField label="Email" type="email" fullWidth margin="normal" value={email} onChange={(e) => setEmail(e.target.value.trim())} required autoComplete="email" />
 
         {/* Password */}
         {!isForgot && !isMagic && (
@@ -252,18 +240,8 @@ export default function AuthPage({ disableSignup = false }) {
           />
         )}
 
-        {/* Confirm password for reset */}
-        {isReset && (
-          <TextField
-            label="Confirm Password"
-            type="password"
-            fullWidth
-            margin="normal"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-          />
-        )}
+        {/* Confirm Password */}
+        {isReset && <TextField label="Confirm Password" type="password" fullWidth margin="normal" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />}
 
         {/* Role selector for signup */}
         {!isLogin && !disableSignup && !isForgot && !isMagic && !isReset && (
@@ -274,7 +252,7 @@ export default function AuthPage({ disableSignup = false }) {
           </Select>
         )}
 
-        {/* Primary action button */}
+        {/* Action button */}
         <Button
           variant="contained"
           color="primary"
@@ -284,20 +262,10 @@ export default function AuthPage({ disableSignup = false }) {
           startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
           sx={{ mt: 3, py: 1.4 }}
         >
-          {loading
-            ? "Processing..."
-            : isReset
-            ? "Reset Password"
-            : isForgot
-            ? "Send Reset Link"
-            : isMagic
-            ? "Send Magic Link"
-            : isLogin
-            ? "Sign In"
-            : "Sign Up"}
+          {loading ? "Processing..." : isReset ? "Reset Password" : isForgot ? "Send Reset Link" : isMagic ? "Send Magic Link" : isLogin ? "Sign In" : "Sign Up"}
         </Button>
 
-        {/* Social & alternate options */}
+        {/* Social logins */}
         {!isForgot && !isReset && !isMagic && (
           <>
             <Divider sx={{ my: 3 }}>OR</Divider>
