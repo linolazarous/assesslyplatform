@@ -4,6 +4,8 @@
  * ============================================
  * Features:
  * ✅ Render & proxy ready
+ * ✅ Dual health endpoints (/api/health, /api/v1/health)
+ * ✅ Safe imports (handles missing passport modules)
  * ✅ CORS diagnostics + origin whitelisting
  * ✅ Helmet, hpp, XSS-clean, Mongo sanitize
  * ✅ Cookie-based sessions
@@ -12,7 +14,6 @@
  * ✅ Rate limiting (auth endpoints)
  * ✅ Graceful shutdown
  * ✅ Auto-seeding (optional)
- * ✅ Google OAuth-ready
  */
 
 import express from "express";
@@ -32,11 +33,19 @@ import statusMonitor from "express-status-monitor";
 import routes from "./routes/index.js";
 import { seedDatabase } from "./utils/seedDatabase.js";
 import { setupSwagger } from "./config/swagger.js";
-import passport from "passport";
-import googlePassport from "./config/passport.js";
-import googleAuthRoutes from "./routes/auth/google.js";
-import githubAuthRoutes from "./routes/auth/github.js";
+
 dotenv.config();
+
+// Optional imports (passport-based OAuth)
+let passport, googlePassport, googleAuthRoutes, githubAuthRoutes;
+try {
+  passport = (await import("passport")).default;
+  googlePassport = (await import("./config/passport.js")).default;
+  googleAuthRoutes = (await import("./routes/auth/google.js")).default;
+  githubAuthRoutes = (await import("./routes/auth/github.js")).default;
+} catch (err) {
+  console.warn(chalk.yellow("⚠️ Passport or OAuth routes not found — skipping Google/GitHub auth."));
+}
 
 // =====================
 // Environment Setup
@@ -84,7 +93,7 @@ const logCorsBlocked = (origin) => {
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // Allow curl/Postman
+      if (!origin) return callback(null, true); // Allow Postman/curl
       if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
       try {
         const parsed = new URL(origin);
@@ -103,7 +112,7 @@ app.options("*", cors());
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
-    contentSecurityPolicy: false, // to allow Swagger & Google SDK
+    contentSecurityPolicy: false, // for Swagger & Google SDK
   })
 );
 app.use(xss());
@@ -127,8 +136,8 @@ app.use(
   })
 );
 
-// Initialize Passport
-app.use(passport.initialize());
+// Initialize Passport (if loaded)
+if (passport) app.use(passport.initialize());
 
 // =====================
 // Rate Limiting (Auth endpoints)
@@ -160,6 +169,15 @@ app.get("/", (req, res) => {
   });
 });
 
+app.get(["/api/health", "/api/v1/health"], (req, res) => {
+  res.json({
+    status: "ok",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    environment: NODE_ENV,
+  });
+});
+
 app.get("/api", (req, res) => {
   res.json({
     api: "Assessly API Gateway",
@@ -186,8 +204,8 @@ setupSwagger(app);
 // Versioned API
 // =====================
 app.use("/api/v1", routes);
-app.use("/api/v1/auth", googleAuthRoutes);
-app.use("/api/v1/auth", githubAuthRoutes);
+if (googleAuthRoutes) app.use("/api/v1/auth", googleAuthRoutes);
+if (githubAuthRoutes) app.use("/api/v1/auth", githubAuthRoutes);
 
 // =====================
 // 404 Handler
