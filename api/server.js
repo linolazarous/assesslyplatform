@@ -2,18 +2,7 @@
  * ============================================
  * Assessly Backend - Production Server (Render)
  * ============================================
- * Features:
- * ✅ Render & proxy ready
- * ✅ Dual health endpoints (/api/health, /api/v1/health)
- * ✅ Safe imports (handles missing passport modules)
- * ✅ CORS diagnostics + origin whitelisting
- * ✅ Helmet, hpp, XSS-clean, Mongo sanitize
- * ✅ Cookie-based sessions
- * ✅ Express Status Monitor (/api/monitor)
- * ✅ Swagger UI (/api/docs)
- * ✅ Rate limiting (auth endpoints)
- * ✅ Graceful shutdown
- * ✅ Auto-seeding (optional)
+ * Fixed CORS for frontend login/signup
  */
 
 import express from "express";
@@ -67,52 +56,86 @@ if (!MONGODB_URI) {
 }
 
 // =====================
-// Allowed Origins
+// Fixed CORS Configuration
 // =====================
 const ALLOWED_ORIGINS = (
   process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
     : [
-        FRONTEND_URL,
         "https://assessly-gedp.onrender.com",
+        "https://assessly-qedp.onrender.com", // Fixed typo from console error
+        "https://assesslv-qedp.onrender.com", // Keep for transition
         "http://localhost:5173",
         "http://localhost:3000",
       ]
 );
 
-const logCorsBlocked = (origin) => {
-  console.groupCollapsed(chalk.yellow("⚠️  CORS BLOCKED REQUEST"));
-  console.log(chalk.blue("Origin:"), origin);
-  console.log(chalk.green("Allowed origins:"), ALLOWED_ORIGINS);
-  console.groupEnd();
+// Remove duplicate entries
+const UNIQUE_ORIGINS = [...new Set(ALLOWED_ORIGINS)];
+
+console.log(chalk.cyan("🔒 CORS Allowed Origins:"), UNIQUE_ORIGINS);
+
+// Enhanced CORS configuration
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, server-to-server, Postman)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin is in allowed list
+    if (UNIQUE_ORIGINS.some(allowed => origin === allowed)) {
+      return callback(null, true);
+    }
+    
+    // Check for subdomain variations
+    try {
+      const originUrl = new URL(origin);
+      const isAllowedSubdomain = UNIQUE_ORIGINS.some(allowed => {
+        try {
+          const allowedUrl = new URL(allowed);
+          return originUrl.hostname === allowedUrl.hostname;
+        } catch {
+          return origin === allowed;
+        }
+      });
+      
+      if (isAllowedSubdomain) {
+        return callback(null, true);
+      }
+    } catch (e) {
+      // Invalid URL, continue to block
+    }
+    
+    console.warn(chalk.yellow(`🚫 CORS blocked: ${origin}`));
+    callback(new Error(`CORS not allowed for origin: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type", 
+    "Authorization", 
+    "X-Requested-With", 
+    "Cookie",
+    "X-API-Key",
+    "Accept"
+  ],
+  exposedHeaders: [
+    "Content-Range",
+    "X-Total-Count"
+  ],
+  maxAge: 86400, // 24 hours for preflight cache
 };
+
+// Apply CORS globally
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // Handle preflight for all routes
 
 // =====================
 // Middleware
 // =====================
 app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // Allow Postman/curl
-      if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
-      try {
-        const parsed = new URL(origin);
-        if (parsed.hostname === new URL(BACKEND_URL).hostname) return callback(null, true);
-      } catch {}
-      logCorsBlocked(origin);
-      return callback(new Error("CORS not allowed"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Cookie"],
-  })
-);
-app.options("*", cors());
-
-app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
-    contentSecurityPolicy: false, // for Swagger & Google SDK
+    contentSecurityPolicy: false,
   })
 );
 app.use(xss());
@@ -142,16 +165,19 @@ if (passport) app.use(passport.initialize());
 // =====================
 // Rate Limiting (Auth endpoints)
 // =====================
-app.use(
-  "/api/v1/auth",
-  rateLimit({
-    windowMs: 60 * 1000,
-    max: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { message: "Too many login attempts. Try again later." },
-  })
-);
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 requests per windowMs
+  message: { 
+    error: "Too many authentication attempts, please try again later." 
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use("/api/v1/auth/login", authLimiter);
+app.use("/api/v1/auth/register", authLimiter);
+app.use("/api/v1/auth/forgot-password", authLimiter);
 
 // =====================
 // Root Endpoints
@@ -175,6 +201,7 @@ app.get(["/api/health", "/api/v1/health"], (req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     environment: NODE_ENV,
+    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
   });
 });
 
@@ -220,21 +247,42 @@ app.use((req, res) => {
 });
 
 // =====================
-// Error Handler
+// Enhanced Error Handler
 // =====================
 app.use((err, req, res, next) => {
-  if (/cors/i.test(err.message)) {
+  // CORS Errors
+  if (err.message.includes("CORS")) {
     return res.status(403).json({
-      message: "CORS Error: Request blocked",
+      error: "CORS Error",
+      message: "Request blocked by CORS policy",
       origin: req.headers.origin,
-      allowedOrigins: ALLOWED_ORIGINS,
+      allowedOrigins: UNIQUE_ORIGINS,
     });
   }
 
-  console.error(chalk.red("❌ Error:"), err);
+  // MongoDB Errors
+  if (err.name === "MongoError" || err.name === "MongoNetworkError") {
+    console.error(chalk.red("❌ MongoDB Error:"), err);
+    return res.status(503).json({
+      error: "Database Error",
+      message: "Service temporarily unavailable",
+    });
+  }
+
+  // Validation Errors
+  if (err.name === "ValidationError") {
+    return res.status(400).json({
+      error: "Validation Error",
+      message: err.message,
+      details: err.errors,
+    });
+  }
+
+  console.error(chalk.red("❌ Server Error:"), err);
+  
   res.status(err.status || 500).json({
-    message: err.message || "Internal Server Error",
-    code: err.code || "SERVER_ERROR",
+    error: "Internal Server Error",
+    message: isProd ? "Something went wrong" : err.message,
     ...(isProd ? {} : { stack: err.stack }),
   });
 });
@@ -245,17 +293,21 @@ app.use((err, req, res, next) => {
 async function startServer() {
   console.log(chalk.cyan("\n🚀 Starting Assessly Backend...\n"));
   try {
-    const conn = await mongoose.connect(MONGODB_URI);
+    const conn = await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+    });
+    
     console.log(chalk.green("✅ MongoDB Connected:"), conn.connection.name);
     console.log(chalk.magenta(`🌍 Environment: ${NODE_ENV}`));
-    console.log(chalk.cyan(`🔒 Allowed Origins:`), ALLOWED_ORIGINS.join(", "));
+    console.log(chalk.cyan(`🔒 Allowed Origins: ${UNIQUE_ORIGINS.length} configured`));
 
     if (AUTO_SEED) {
       console.log(chalk.yellow("🌱 Auto-seeding database..."));
       await seedDatabase();
     }
 
-    app.listen(PORT, () => {
+    app.listen(PORT, "0.0.0.0", () => {
       console.log(chalk.green(`📡 Server listening on port ${PORT}`));
       console.log(chalk.magenta(`📊 Health: ${BACKEND_URL}/api/v1/health`));
       console.log(chalk.blue(`📚 Docs: ${BACKEND_URL}/api/docs`));
