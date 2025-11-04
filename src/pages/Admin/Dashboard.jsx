@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Box, 
   Typography, 
@@ -8,7 +8,7 @@ import {
   LinearProgress,
   useMediaQuery,
   useTheme,
-  Button
+  IconButton
 } from '@mui/material';
 import { 
   Assessment as AssessmentIcon,
@@ -16,86 +16,104 @@ import {
   Business as BusinessIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
-import { useAuth } from '../../contexts/AuthContext.jsx'; // Corrected extension
+import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useSnackbar } from 'notistack';
-import PropTypes from 'prop-types';
-// FIX: Using correct .jsx extension for imports
-import AssessmentChart from '../../components/admin/AssessmentChart.jsx';
-import UserActivityWidget from '../../components/admin/UserActivityWidget.jsx';
-import IconButton from '@mui/material/IconButton';
 
+// Lazy load heavy components
+const AssessmentChart = React.lazy(() => import('../../components/admin/AssessmentChart.jsx'));
+const UserActivityWidget = React.lazy(() => import('../../components/admin/UserActivityWidget.jsx'));
 
-// --- StatCard Component ---
-// NOTE: This component is moved outside the main function for optimization
-function StatCard({ title, value, icon, loading, trend }) {
+// Loading fallback for lazy components
+const ChartLoader = () => (
+  <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+    <CircularProgress />
+  </Box>
+);
+
+// Memoized StatCard Component
+const StatCard = React.memo(({ title, value, icon, loading, trend }) => {
   const theme = useTheme();
+  
   const trendColors = {
     up: theme.palette.success.main,
     down: theme.palette.error.main,
-    neutral: theme.palette.warning.main
+    neutral: theme.palette.text.secondary
   };
 
+  const displayValue = useMemo(() => 
+    loading ? '--' : value.toLocaleString(),
+    [loading, value]
+  );
+
   return (
-    <Paper elevation={2} sx={{ 
-      p: 3, 
-      height: '100%',
-      borderRadius: 2,
-      position: 'relative',
-      overflow: 'hidden',
-      '&:after': {
-        content: '""',
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 4,
-        backgroundColor: trendColors[trend] || 'transparent'
-      }
-    }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-        <Box>
-          <Typography variant="subtitle2" color="text.secondary">
+    <Paper 
+      elevation={2} 
+      sx={{ 
+        p: 3, 
+        height: '100%',
+        borderRadius: 2,
+        position: 'relative',
+        overflow: 'hidden',
+        transition: 'all 0.3s ease',
+        '&:hover': {
+          transform: 'translateY(-2px)',
+          boxShadow: 4
+        },
+        '&:after': {
+          content: '""',
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 4,
+          backgroundColor: trendColors[trend] || 'transparent'
+        }
+      }}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
             {title}
           </Typography>
-          <Typography variant="h4" fontWeight="bold">
-            {loading ? '--' : value.toLocaleString()}
+          <Typography variant="h4" fontWeight="bold" sx={{ minHeight: '2.5rem' }}>
+            {displayValue}
           </Typography>
         </Box>
         <Box sx={{ 
           display: 'flex', 
           alignItems: 'center',
-          color: theme.palette.primary.main
+          color: theme.palette.primary.main,
+          ml: 1
         }}>
-          {/* Ensure the icon receives the needed props */}
-          {React.cloneElement(icon, { fontSize: 'large', color: icon.props.color || 'primary' })}
+          {React.cloneElement(icon, { 
+            sx: { fontSize: '2rem', opacity: 0.8 } 
+          })}
         </Box>
       </Box>
     </Paper>
   );
-}
+});
 
-StatCard.propTypes = {
-  title: PropTypes.string.isRequired,
-  value: PropTypes.number.isRequired,
-  icon: PropTypes.node.isRequired,
-  loading: PropTypes.bool,
-  trend: PropTypes.oneOf(['up', 'down', 'neutral'])
-};
-
-StatCard.defaultProps = {
-  loading: false,
-  trend: 'neutral'
-};
-
-
-// --- AdminDashboard Component ---
+// Permission Denied Component
+const PermissionDenied = React.memo(() => (
+  <Box sx={{ p: 3, textAlign: 'center' }}>
+    <Typography variant="h6" color="error" gutterBottom>
+      Access Denied
+    </Typography>
+    <Typography variant="body1" color="text.secondary">
+      You don't have permission to access the admin dashboard.
+    </Typography>
+  </Box>
+));
 
 export default function AdminDashboard() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { claims } = useAuth();
   const { enqueueSnackbar } = useSnackbar();
+  
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({
     assessments: 0,
     activeUsers: 0,
@@ -104,62 +122,102 @@ export default function AdminDashboard() {
   });
   const [assessments, setAssessments] = useState([]);
 
-  const token = claims ? localStorage.getItem('token') : null;
-  const isAdmin = claims?.role === 'admin';
+  const token = useMemo(() => localStorage.getItem('token'), []);
+  const isAdmin = useMemo(() => claims?.role === 'admin', [claims]);
 
-
-  const fetchDashboardData = useCallback(async () => {
-    setLoading(true);
+  const fetchDashboardData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    
     try {
       if (!token) throw new Error('Authentication token not found');
 
-      // 1. Fetch summary statistics
-      const statsResponse = await fetch('/api/admin/stats', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      // Fetch summary statistics
+      const [statsResponse, assessmentsResponse] = await Promise.all([
+        fetch('/api/admin/stats', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch('/api/admin/assessments', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ]);
+
+      // Handle stats response
+      if (!statsResponse.ok) {
+        const errorData = await statsResponse.json();
+        throw new Error(errorData.message || 'Failed to fetch stats');
+      }
       const statsData = await statsResponse.json();
-      if (!statsResponse.ok) throw new Error(statsData.message || 'Failed to fetch stats');
       setStats(statsData);
 
-      // 2. Fetch recent assessments
-      const assessmentsResponse = await fetch('/api/admin/assessments', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      // Handle assessments response
+      if (!assessmentsResponse.ok) {
+        const errorData = await assessmentsResponse.json();
+        throw new Error(errorData.message || 'Failed to fetch assessments');
+      }
       const assessmentsData = await assessmentsResponse.json();
-      if (!assessmentsResponse.ok) throw new Error(assessmentsData.message || 'Failed to fetch assessments');
       setAssessments(assessmentsData);
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      if (token) {
-        enqueueSnackbar('Failed to load dashboard data: ' + (error.message || 'Network error'), { 
-          variant: 'error',
-          autoHideDuration: 3000
-        });
-      }
+      enqueueSnackbar(error.message || 'Failed to load dashboard data', { 
+        variant: 'error',
+        autoHideDuration: 4000,
+      });
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [token, enqueueSnackbar]);
 
+  const handleRefresh = useCallback(() => {
+    fetchDashboardData(true);
+  }, [fetchDashboardData]);
+
   useEffect(() => {
-    if (isAdmin) {
+    if (isAdmin && token) {
       fetchDashboardData();
     }
-  }, [isAdmin, fetchDashboardData]);
+  }, [isAdmin, token, fetchDashboardData]);
+
+  // Memoized stat cards data
+  const statCards = useMemo(() => [
+    {
+      title: "Total Assessments",
+      value: stats.assessments,
+      icon: <AssessmentIcon />,
+      trend: "up" as const
+    },
+    {
+      title: "Active Users",
+      value: stats.activeUsers,
+      icon: <PeopleIcon />,
+      trend: "up" as const
+    },
+    {
+      title: "Organizations",
+      value: stats.organizations,
+      icon: <BusinessIcon />,
+      trend: "neutral" as const
+    },
+    {
+      title: "Completions",
+      value: stats.completions,
+      icon: <AssessmentIcon />,
+      trend: "up" as const
+    }
+  ], [stats]);
 
   if (!isAdmin) {
-    return (
-      <Box sx={{ p: 3, textAlign: 'center' }}>
-        <Typography variant="h6" color="error">
-          You don't have permission to access this page.
-        </Typography>
-      </Box>
-    );
+    return <PermissionDenied />;
   }
 
   return (
     <Box sx={{ p: isMobile ? 1 : 3 }}>
+      {/* Header */}
       <Box sx={{ 
         display: 'flex', 
         justifyContent: 'space-between',
@@ -170,65 +228,67 @@ export default function AdminDashboard() {
           Admin Dashboard
         </Typography>
         <IconButton 
-          onClick={fetchDashboardData}
+          onClick={handleRefresh}
           aria-label="refresh dashboard data"
-          disabled={loading}
+          disabled={loading || refreshing}
+          color="primary"
         >
           <RefreshIcon />
         </IconButton>
       </Box>
 
-      {loading && <LinearProgress sx={{ mb: 3 }} />}
+      {/* Loading Indicator */}
+      {(loading || refreshing) && <LinearProgress sx={{ mb: 3 }} />}
 
+      {/* Stat Cards Grid */}
       <Grid container spacing={isMobile ? 1 : 3} sx={{ mb: 3 }}>
-        {/* Stat Cards (Implementation remains in this file scope) */}
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Total Assessments" value={stats.assessments} icon={<AssessmentIcon color="primary" />} loading={loading} trend="up" />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Active Users" value={stats.activeUsers} icon={<PeopleIcon color="secondary" />} loading={loading} trend="up" />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Organizations" value={stats.organizations} icon={<BusinessIcon color="success" />} loading={loading} trend="neutral" />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Completions" value={stats.completions} icon={<AssessmentIcon color="info" />} loading={loading} trend="up" />
-        </Grid>
+        {statCards.map((card, index) => (
+          <Grid item xs={12} sm={6} md={3} key={card.title}>
+            <StatCard 
+              title={card.title}
+              value={card.value}
+              icon={card.icon}
+              loading={loading}
+              trend={card.trend}
+            />
+          </Grid>
+        ))}
       </Grid>
 
+      {/* Charts Grid */}
       <Grid container spacing={isMobile ? 1 : 3}>
         <Grid item xs={12} md={8}>
           <Paper elevation={2} sx={{ 
             p: 2, 
             height: '100%',
-            borderRadius: 2
+            borderRadius: 2,
+            minHeight: 400
           }}>
             <Typography variant="h6" gutterBottom>
               Recent Assessments Activity
             </Typography>
-            {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <AssessmentChart data={assessments} /> 
-            )}
+            <React.Suspense fallback={<ChartLoader />}>
+              <AssessmentChart data={assessments} loading={loading} />
+            </React.Suspense>
           </Paper>
         </Grid>
+        
         <Grid item xs={12} md={4}>
           <Paper elevation={2} sx={{ 
             p: 2, 
             height: '100%',
-            borderRadius: 2
+            borderRadius: 2,
+            minHeight: 400
           }}>
             <Typography variant="h6" gutterBottom>
               User Activity Feed
             </Typography>
-            <UserActivityWidget />
+            <React.Suspense fallback={<ChartLoader />}>
+              <UserActivityWidget />
+            </React.Suspense>
           </Paper>
         </Grid>
       </Grid>
     </Box>
   );
 }
-
