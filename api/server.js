@@ -1,5 +1,5 @@
 /**
- * server.js
+ * api/server.js
  * Assessly Backend - Production Server (Render-optimized)
  *
  * - Mounts API at /api/v1
@@ -24,9 +24,9 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import statusMonitor from "express-status-monitor";
-import routes from "./api/routes/index.js"; // router aggregator (mounted at /api/v1)
-import { seedDatabase } from "./utils/seedDatabase.js";
-import { setupSwagger } from "./config/swagger.js";
+import routes from "./routes/index.js"; // Fixed import path
+import { seedDatabase } from "../utils/seedDatabase.js";
+import { setupSwagger } from "../config/swagger.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -35,25 +35,19 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Try to load optional Passport & OAuth route modules (non-fatal if missing)
+// Optional Passport & OAuth route modules
 let passport;
 let googleAuthRoutes;
 let githubAuthRoutes;
 try {
-  // top-level await is allowed in ESM; but dynamic import returns a promise so wrap in try/catch
   passport = (await import("passport")).default;
   try {
-    // These route files should export an express.Router
-    // If not present, the outer try/catch will proceed gracefully
-    const modG = await import("./api/routes/auth/google.js").catch(() => ({}));
-    const modGh = await import("./api/routes/auth/github.js").catch(() => ({}));
+    const modG = await import("./routes/auth/google.js").catch(() => ({}));
+    const modGh = await import("./routes/auth/github.js").catch(() => ({}));
     googleAuthRoutes = modG.default || null;
     githubAuthRoutes = modGh.default || null;
-  } catch (err) {
-    // ignore
-  }
-} catch (err) {
-  // passport not installed — continue without OAuth
+  } catch {}
+} catch {
   console.warn(chalk.yellow("⚠️ Passport not installed — skipping OAuth setup."));
 }
 
@@ -86,31 +80,25 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
     ];
 
 const UNIQUE_ORIGINS = [...new Set(ALLOWED_ORIGINS)];
-
 console.log(chalk.cyan("🔒 Allowed Origins:"), UNIQUE_ORIGINS);
 
 const corsOptions = {
   origin(origin, callback) {
-    // allow tools (curl/Postman) with no origin
     if (!origin) return callback(null, true);
 
     if (UNIQUE_ORIGINS.includes(origin)) return callback(null, true);
 
-    // allow same-host or same hostname (subdomain match)
     try {
       const originHostname = new URL(origin).hostname;
       const allowed = UNIQUE_ORIGINS.some((o) => {
         try {
           return new URL(o).hostname === originHostname;
         } catch {
-          // o might be non-url string — compare exact
           return o === origin;
         }
       });
       if (allowed) return callback(null, true);
-    } catch (err) {
-      // fall through to block
-    }
+    } catch {}
 
     console.warn(chalk.yellow(`🚫 CORS blocked: ${origin}`));
     callback(new Error("Not allowed by CORS"));
@@ -129,7 +117,7 @@ app.options("*", cors(corsOptions));
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
-    contentSecurityPolicy: false, // disable to avoid blocking Swagger / third-party assets
+    contentSecurityPolicy: false,
   })
 );
 app.use(xss());
@@ -182,7 +170,7 @@ app.get("/", (req, res) =>
   })
 );
 
-// Basic health available at both /api/health and /api/v1/health
+// Health endpoints
 app.get(["/api/health", "/api/v1/health"], (req, res) =>
   res.json({
     status: "ok",
@@ -193,82 +181,14 @@ app.get(["/api/health", "/api/v1/health"], (req, res) =>
   })
 );
 
-// Provide /api/status and /api/features to satisfy frontend calls
-app.get("/api/status", (req, res) =>
-  res.json({
-    status: "operational",
-    environment: NODE_ENV,
-    uptime: process.uptime(),
-    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
-    timestamp: new Date().toISOString(),
-  })
-);
-
-app.get("/api/features", (req, res) =>
-  res.json({
-    features: [
-      "authentication",
-      "user-management",
-      "assessments",
-      "organizations",
-      "subscriptions",
-      "analytics",
-      "contact",
-    ],
-    endpoints: ["/api/v1/auth", "/api/v1/users", "/api/v1/assessments", "/api/v1/contact", "/api/v1/health"],
-    status: "active",
-    version: process.env.npm_package_version || "1.0.0",
-  })
-);
-
-// Provide v1 equivalents too (helps older clients)
-app.get("/api/v1/status", (req, res) =>
-  res.json({
-    status: "operational",
-    environment: NODE_ENV,
-    uptime: process.uptime(),
-    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
-    timestamp: new Date().toISOString(),
-  })
-);
-app.get("/api/v1/features", (req, res) =>
-  res.json({
-    features: [
-      "authentication",
-      "user-management",
-      "assessments",
-      "organizations",
-      "subscriptions",
-      "analytics",
-      "contact",
-    ],
-    endpoints: ["/api/v1/auth", "/api/v1/users", "/api/v1/assessments", "/api/v1/contact", "/api/v1/health"],
-    status: "active",
-    version: process.env.npm_package_version || "1.0.0",
-  })
-);
-
-// Favicon – return 204 if not found to avoid noisy 404s
-app.get("/favicon.ico", (req, res) => {
-  const favPath = path.join(__dirname, "public", "favicon.ico");
-  try {
-    res.sendFile(favPath, (err) => {
-      if (err) res.status(204).end();
-    });
-  } catch {
-    res.status(204).end();
-  }
-});
-
-// ========== Swagger & App Routes ==========
-setupSwagger(app); // must be called before mounting routes if swagger reads them
+// v1 status & features endpoints
 app.use("/api/v1", routes);
 
-// Mount optional oauth routes if present
+// Mount optional OAuth routes if present
 if (googleAuthRoutes) app.use("/api/v1/auth", googleAuthRoutes);
 if (githubAuthRoutes) app.use("/api/v1/auth", githubAuthRoutes);
 
-// ========== 404 for API ==========
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     error: "Endpoint not found",
@@ -279,9 +199,8 @@ app.use((req, res) => {
   });
 });
 
-// ========== Central Error Handler ==========
+// Central error handler
 app.use((err, req, res, next) => {
-  // Handle CORS errors
   if (err && /cors/i.test(err.message || "")) {
     return res.status(403).json({
       error: "CORS Error",
@@ -291,7 +210,6 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // Mongo errors
   if (err && (err.name === "MongoNetworkError" || err.name === "MongoError")) {
     console.error(chalk.red("❌ MongoDB Error:"), err);
     return res.status(503).json({
@@ -300,7 +218,6 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // Validation errors
   if (err && err.name === "ValidationError") {
     return res.status(400).json({
       error: "Validation Error",
@@ -309,7 +226,6 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // Generic
   console.error(chalk.red("❌ Server Error:"), err);
   const status = err?.status || 500;
   res.status(status).json({
@@ -326,7 +242,6 @@ async function startServer() {
     const conn = await mongoose.connect(MONGODB_URI, {
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
-      // useUnifiedTopology / useNewUrlParser are deprecated in modern drivers
     });
     console.log(chalk.green("✅ MongoDB connected:"), conn.connection.name);
     console.log(chalk.magenta(`🌍 Environment: ${NODE_ENV}`));
@@ -349,7 +264,7 @@ async function startServer() {
   }
 }
 
-// ========== Graceful Shutdown ==========
+// Graceful shutdown
 const shutdown = async (signal) => {
   console.log(chalk.yellow(`\n🛑 ${signal} received — shutting down gracefully...`));
   try {
@@ -363,9 +278,7 @@ const shutdown = async (signal) => {
 };
 
 ["SIGINT", "SIGTERM"].forEach((sig) => process.on(sig, () => shutdown(sig)));
-process.on("unhandledRejection", (reason) => {
-  console.error(chalk.red("❌ Unhandled Rejection:"), reason);
-});
+process.on("unhandledRejection", (reason) => console.error(chalk.red("❌ Unhandled Rejection:"), reason));
 process.on("uncaughtException", (err) => {
   console.error(chalk.red("❌ Uncaught Exception:"), err);
   process.exit(1);
