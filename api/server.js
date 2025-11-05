@@ -24,29 +24,38 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import statusMonitor from "express-status-monitor";
-import routes from "./routes/index.js"; // updated path
-import { seedDatabase } from "./utils/seedDatabase.js"; // updated path
-import { setupSwagger } from "../config/swagger.js"; // adjust if swagger is outside /api
 import path from "path";
 import { fileURLToPath } from "url";
+
+import routes from "./routes/index.js";               // router aggregator
+import { seedDatabase } from "./utils/seedDatabase.js"; // database seeding
+import { setupSwagger } from "./config/swagger.js";    // swagger config
+import passportConfig from "./config/passport.js";     // optional Passport config
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Optional Passport & OAuth
+// Optional Passport & OAuth setup
 let passport;
 let googleAuthRoutes;
 let githubAuthRoutes;
+
 try {
   passport = (await import("passport")).default;
+
+  // initialize passport strategies (if any)
+  if (passportConfig) await import("./config/passport.js");
+
   const modG = await import("./routes/auth/google.js").catch(() => ({}));
   const modGh = await import("./routes/auth/github.js").catch(() => ({}));
   googleAuthRoutes = modG.default || null;
   githubAuthRoutes = modGh.default || null;
+
+  console.log(chalk.green("✅ Passport initialized (optional)."));
 } catch (err) {
-  console.warn(chalk.yellow("⚠️ Passport not installed — skipping OAuth setup."));
+  console.warn(chalk.yellow("⚠️ Passport not installed or misconfigured — skipping OAuth setup."));
 }
 
 // ========== Environment ==========
@@ -112,17 +121,21 @@ app.use(morgan(isProd ? "combined" : "dev"));
 
 app.use(statusMonitor({ title: "Assessly Server Monitor", path: "/api/monitor" }));
 
-if (passport) {
-  app.use(passport.initialize());
-  console.log(chalk.green("✅ Passport initialized (optional)."));
-}
+if (passport) app.use(passport.initialize());
 
 // ========== Rate limiting ==========
 const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 10, standardHeaders: true, legacyHeaders: false, message: { error: "Too many authentication attempts. Try again later." } });
 app.use("/api/v1/auth", authLimiter);
 
 // ========== Root & Health ==========
-app.get("/", (req, res) => res.json({ message: "🚀 Assessly Backend API", environment: NODE_ENV, version: process.env.npm_package_version || "1.0.0", docs: `${BACKEND_URL}/api/docs`, monitor: `${BACKEND_URL}/api/monitor`, timestamp: new Date().toISOString() }));
+app.get("/", (req, res) => res.json({
+  message: "🚀 Assessly Backend API",
+  environment: NODE_ENV,
+  version: process.env.npm_package_version || "1.0.0",
+  docs: `${BACKEND_URL}/api/docs`,
+  monitor: `${BACKEND_URL}/api/monitor`,
+  timestamp: new Date().toISOString()
+}));
 
 app.get(["/api/health", "/api/v1/health"], (req, res) =>
   res.json({ status: "ok", uptime: process.uptime(), environment: NODE_ENV, database: mongoose.connection.readyState === 1 ? "connected" : "disconnected", timestamp: new Date().toISOString() })
