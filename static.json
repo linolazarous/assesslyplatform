@@ -25,6 +25,9 @@
     },
     "/*.png": {
       "Cache-Control": "public, max-age=86400"
+    },
+    "/assets/*.mp4": {
+      "Cache-Control": "public, max-age=2592000" /* 30 days for large video files */
     }
   },
   "https_only": true,
