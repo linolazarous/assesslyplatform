@@ -1,3 +1,4 @@
+// api/routes/index.js
 import express from "express";
 import authRouter from "./auth.js";
 import usersRouter from "./users.js";
@@ -9,48 +10,41 @@ import userActivitiesRouter from "./userActivities.js";
 import contactRouter from "./contact.js";
 
 const router = express.Router();
+const API_VERSION = process.env.npm_package_version || "1.0.0";
 const startTime = Date.now();
 
-// Centralized API version
-const API_VERSION = process.env.npm_package_version || "1.0.0";
+// Optional OAuth routers
+let googleAuthRouter = null;
+let githubAuthRouter = null;
+try {
+  const g = await import("./auth/google.js").catch(() => null);
+  const gh = await import("./auth/github.js").catch(() => null);
+  googleAuthRouter = g?.default || null;
+  githubAuthRouter = gh?.default || null;
+} catch (err) {
+  console.warn("⚠️ OAuth routers not available:", err.message);
+}
 
 /**
  * =====================================================
  * 🩺 Health & Diagnostic Endpoints
  * =====================================================
  */
-
-/**
- * @swagger
- * /api/v1/health:
- *   get:
- *     summary: Basic health check
- *     description: Confirms the API is running and healthy
- *     tags: [Health]
- */
 router.get("/health", (req, res) => {
   res.status(200).json({
     status: "ok",
     service: "Assessly API",
     environment: process.env.NODE_ENV || "development",
-    timestamp: new Date().toISOString(),
     version: API_VERSION,
     uptime: process.uptime(),
-    memory: process.memoryUsage(),
+    memoryUsage: process.memoryUsage(),
+    timestamp: new Date().toISOString(),
   });
 });
 
-/**
- * @swagger
- * /api/v1/status:
- *   get:
- *     summary: Detailed service status
- *     tags: [Health]
- */
 router.get("/status", async (req, res) => {
   try {
-    // Future improvement: perform actual DB ping
-    const databaseStatus = "connected";
+    const databaseStatus = "connected"; // can implement DB ping here
 
     res.status(200).json({
       status: "ok",
@@ -72,13 +66,6 @@ router.get("/status", async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/v1:
- *   get:
- *     summary: API root
- *     tags: [Health]
- */
 router.get("/", (req, res) => {
   res.status(200).json({
     message: `Assessly API v${API_VERSION}`,
@@ -88,37 +75,34 @@ router.get("/", (req, res) => {
   });
 });
 
-/**
- * @swagger
- * /api/v1/features:
- *   get:
- *     summary: List available API modules
- *     tags: [Health]
- */
 router.get("/features", (req, res) => {
+  const modules = [
+    "authentication",
+    "user-management",
+    "assessments",
+    "organizations",
+    "subscriptions",
+    "analytics",
+    "user-activities",
+    "contact",
+  ];
+
+  const endpoints = [
+    "/auth",
+    "/users",
+    "/assessments",
+    "/organizations",
+    "/subscriptions",
+    "/user-activities",
+    "/contact",
+    "/health",
+    "/status",
+    "/features",
+  ];
+
   res.status(200).json({
-    features: [
-      "authentication",
-      "user-management",
-      "assessments",
-      "organizations",
-      "subscriptions",
-      "analytics",
-      "user-activities",
-      "contact",
-    ],
-    endpoints: [
-      "/auth",
-      "/users",
-      "/assessments",
-      "/organizations",
-      "/subscriptions",
-      "/user-activities",
-      "/contact",
-      "/health",
-      "/status",
-      "/features",
-    ],
+    features: modules,
+    endpoints,
     version: API_VERSION,
     environment: process.env.NODE_ENV || "development",
   });
@@ -130,6 +114,9 @@ router.get("/features", (req, res) => {
  * =====================================================
  */
 router.use("/auth", authRouter);
+if (googleAuthRouter) router.use("/auth", googleAuthRouter);
+if (githubAuthRouter) router.use("/auth", githubAuthRouter);
+
 router.use("/users", usersRouter);
 router.use("/organizations", organizationsRouter);
 router.use("/assessments", assessmentsRouter);
@@ -148,8 +135,7 @@ router.use((req, res) => {
     error: "Endpoint not found",
     method: req.method,
     path: req.originalUrl,
-    suggestion: "Check the API documentation for available routes.",
-    documentation: "/api/docs",
+    suggestion: "Check /api/docs for available routes.",
     availableEndpoints: [
       "/auth",
       "/users",
@@ -170,19 +156,19 @@ router.use((req, res) => {
  * 🛠️ Global Error Handler
  * =====================================================
  */
-router.use((error, req, res, next) => {
+router.use((err, req, res, next) => {
   const isProd = process.env.NODE_ENV === "production";
 
   console.error("🚨 Route Error:", {
-    message: error.message,
-    stack: isProd ? undefined : error.stack,
+    message: err.message,
+    stack: isProd ? undefined : err.stack,
     path: req.originalUrl,
   });
 
-  res.status(error.status || 500).json({
-    error: "Internal server error",
-    message: isProd ? "Something went wrong" : error.message,
-    ...(isProd ? {} : { stack: error.stack }),
+  res.status(err.status || 500).json({
+    error: "Internal Server Error",
+    message: isProd ? "Something went wrong" : err.message,
+    ...(isProd ? {} : { stack: err.stack }),
     timestamp: new Date().toISOString(),
   });
 });
