@@ -24,7 +24,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/common/Navbar.jsx';
-import Footer from '../components/common/Footer.jsx';
+import Footer from '../components/layout/Footer.jsx';
 
 // Memoized Pricing Card Component
 const PricingCard = React.memo(({ plan, onPlanSelect, isMobile }) => {
