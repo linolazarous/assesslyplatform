@@ -4,18 +4,17 @@ import React, {
   useEffect,
   useRef,
   useState,
-  useCallback,
-  startTransition
+  useCallback
 } from "react";
-import { Box, CircularProgress, Container, Fade } from "@mui/material";
+import { Box, CircularProgress, Container, Fade, Typography } from "@mui/material";
 import { Helmet } from "react-helmet-async";
 import { useLocation } from "react-router-dom";
 
-// ✅ Lazy-load sections with Vite-friendly dynamic imports
+// ✅ Lazy-load sections with CORRECT file names
 const HeroSection = lazy(() => import("../components/layout/HeroSection.jsx"));
 const FeaturesSection = lazy(() => import("../components/layout/FeaturesSection.jsx"));
-const TestimonialsSection = lazy(() => import("../components/layout/TestimonialsSection.jsx"));
-const CTASection = lazy(() => import("../components/layout/CTASection.jsx"));
+const Testimonials = lazy(() => import("../components/layout/Testimonials.jsx")); // Fixed name
+const CallToAction = lazy(() => import("../components/layout/CallToAction.jsx")); // Fixed name
 const Footer = lazy(() => import("../components/layout/Footer.jsx"));
 
 // ✅ Optimized scroll reset with passive listener
@@ -59,6 +58,9 @@ const LoadingFallback = React.memo(() => (
         thickness={4.5} 
         sx={{ mb: 2 }}
       />
+      <Typography variant="body2" color="text.secondary">
+        Loading Assessly...
+      </Typography>
     </Box>
   </Box>
 ));
@@ -75,15 +77,13 @@ const useRevealOnScroll = (threshold = 0.1) => {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          startTransition(() => {
-            setVisible(true);
-          });
+          setVisible(true);
           observer.unobserve(entry.target);
         }
       },
       { 
         threshold,
-        rootMargin: '50px' // Start animation slightly before element enters viewport
+        rootMargin: '50px'
       }
     );
 
@@ -94,34 +94,7 @@ const useRevealOnScroll = (threshold = 0.1) => {
   return [ref, visible];
 };
 
-/** ✅ Optimized dynamic prefetch with resource hints */
-const useDynamicPrefetch = () => {
-  useEffect(() => {
-    // Use requestIdleCallback for non-urgent work
-    const requestId = requestIdleCallback?.(
-      () => {
-        // Prefetch next likely sections after hero
-        const modules = [
-          '../components/layout/FeaturesSection.jsx',
-          '../components/layout/TestimonialsSection.jsx'
-        ];
-        
-        // Use preload for critical components
-        modules.forEach(module => {
-          // Vite will handle this during build
-          console.log('[Prefetch] Scheduling:', module);
-        });
-      },
-      { timeout: 2000 }
-    );
-
-    return () => {
-      if (requestId) cancelIdleCallback?.(requestId);
-    };
-  }, []);
-};
-
-/** ✅ Performance analytics with error boundary */
+/** ✅ Performance analytics */
 const usePageAnalytics = () => {
   useEffect(() => {
     const startTime = performance.now();
@@ -131,20 +104,7 @@ const usePageAnalytics = () => {
       if (!mounted) return;
       
       const duration = Math.round((performance.now() - startTime) / 1000);
-      const performanceMetrics = {
-        page: 'landing',
-        duration,
-        loadTime: Math.round(performance.now()),
-        userAgent: navigator.userAgent.substring(0, 100)
-      };
-
-      // Use sendBeacon for reliable analytics delivery
-      if (navigator.sendBeacon) {
-        const blob = new Blob([JSON.stringify(performanceMetrics)], {
-          type: 'application/json'
-        });
-        navigator.sendBeacon('/api/analytics/page', blob);
-      }
+      console.log(`[Analytics] User spent ${duration}s on landing page`);
     };
 
     const handleVisibilityChange = () => {
@@ -163,32 +123,8 @@ const usePageAnalytics = () => {
   }, []);
 };
 
-/** ✅ Video error handler hook */
-const useVideoFallback = (videoUrl, fallbackImage) => {
-  const [hasVideoError, setHasVideoError] = useState(false);
-  const [isVideoLoading, setIsVideoLoading] = useState(true);
-
-  const handleVideoError = useCallback(() => {
-    console.warn('Video failed to load, falling back to image');
-    setHasVideoError(true);
-    setIsVideoLoading(false);
-  }, []);
-
-  const handleVideoLoad = useCallback(() => {
-    setIsVideoLoading(false);
-  }, []);
-
-  return {
-    hasVideoError,
-    isVideoLoading,
-    handleVideoError,
-    handleVideoLoad
-  };
-};
-
 // ✅ Main component with performance optimizations
 const LandingPage = () => {
-  useDynamicPrefetch();
   usePageAnalytics();
 
   // Reveal animations with staggered thresholds
@@ -213,13 +149,6 @@ const LandingPage = () => {
         <meta property="og:url" content="https://assessly-gedp.onrender.com" />
         <meta property="og:image" content="/og-image.jpg" />
         <meta property="og:type" content="website" />
-        
-        {/* Performance hints */}
-        <link rel="preconnect" href="https://assesslyplatform-t49h.onrender.com" />
-        <link rel="dns-prefetch" href="https://assesslyplatform-t49h.onrender.com" />
-        
-        {/* Preload critical resources */}
-        <link rel="preload" href="/hero-fallback.jpg" as="image" />
       </Helmet>
 
       <ScrollToTop />
@@ -233,7 +162,6 @@ const LandingPage = () => {
             bgcolor: "background.default",
             color: "text.primary",
             scrollBehavior: "smooth",
-            // Prevent layout shifts
             minHeight: '100vh',
             position: 'relative'
           }}
@@ -253,11 +181,10 @@ const LandingPage = () => {
             ref={featuresRef}
             sx={{ 
               py: { xs: 8, md: 12 },
-              // Prevent cumulative layout shift
               minHeight: { xs: 'auto', md: 600 }
             }}
           >
-            <Fade in={showFeatures} timeout={800} easing="cubic-bezier(0.4, 0, 0.2, 1)">
+            <Fade in={showFeatures} timeout={800}>
               <Container maxWidth="lg">
                 <FeaturesSection />
               </Container>
@@ -274,9 +201,9 @@ const LandingPage = () => {
               minHeight: { xs: 'auto', md: 500 }
             }}
           >
-            <Fade in={showTestimonials} timeout={900} easing="cubic-bezier(0.4, 0, 0.2, 1)">
+            <Fade in={showTestimonials} timeout={900}>
               <Container maxWidth="xl">
-                <TestimonialsSection />
+                <Testimonials /> {/* Fixed component name */}
               </Container>
             </Fade>
           </Box>
@@ -291,8 +218,8 @@ const LandingPage = () => {
               minHeight: { xs: 'auto', md: 400 }
             }}
           >
-            <Fade in={showCTA} timeout={1000} easing="cubic-bezier(0.4, 0, 0.2, 1)">
-              <CTASection />
+            <Fade in={showCTA} timeout={1000}>
+              <CallToAction /> {/* Fixed component name */}
             </Fade>
           </Box>
 
