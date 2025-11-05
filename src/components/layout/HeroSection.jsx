@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   Box,
   Typography,
@@ -13,17 +13,8 @@ import {
 } from "@mui/material";
 import { PlayArrow, Pause, VolumeUp, VolumeOff } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
-import { Logo } from "../brand";
 import PropTypes from "prop-types";
-
-// ✅ Safe asset URL handling for Vite/Render
-const getAssetUrl = (path) => {
-  try {
-    return new URL(path, import.meta.url).href;
-  } catch {
-    return path; // fallback to relative
-  }
-};
+import { Logo } from "../brand";
 
 const HeroSection = ({
   videoUrl = "/Assessly.mp4",
@@ -41,14 +32,22 @@ const HeroSection = ({
     hasError: false,
   });
 
-  // ✅ Event Handlers
-  const handleVideoLoad = useCallback(() => {
-    setVideoState((prev) => ({ ...prev, isLoaded: true }));
-  }, []);
+  const [visible, setVisible] = useState(false);
+  const ref = useRef(null);
 
-  const handleVideoError = useCallback(() => {
-    console.warn("⚠️ Hero video failed to load, switching to fallback image.");
-    setVideoState((prev) => ({ ...prev, hasError: true, isPlaying: false }));
+  // Reveal hero when visible
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
   }, []);
 
   const togglePlayback = useCallback(() => {
@@ -61,14 +60,19 @@ const HeroSection = ({
     }
   }, [enableAudio]);
 
+  const handleVideoError = useCallback(() => {
+    console.warn("Hero video failed to load, fallback to image");
+    setVideoState((prev) => ({ ...prev, hasError: true, isPlaying: false }));
+  }, []);
+
   const handleCTAClick = useCallback(
     (type) => {
       if (type === "signup") {
         navigate("/auth?tab=signup", { state: { from: "hero_cta" } });
       } else {
-        const section = document.getElementById("features-section");
-        section
-          ? section.scrollIntoView({ behavior: "smooth", block: "start" })
+        const target = document.getElementById("features-section");
+        target
+          ? target.scrollIntoView({ behavior: "smooth", block: "start" })
           : window.scrollTo({ top: 600, behavior: "smooth" });
       }
     },
@@ -77,11 +81,10 @@ const HeroSection = ({
 
   const gradientOverlay = useMemo(
     () =>
-      `linear-gradient(135deg, 
-        ${alpha(theme.palette.primary.dark, 0.7)} 0%, 
-        ${alpha(theme.palette.secondary.dark, 0.5)} 50%, 
-        ${alpha(theme.palette.background.paper, 0.3)} 100%
-      )`,
+      `linear-gradient(135deg,
+        ${alpha(theme.palette.primary.dark, 0.75)} 0%,
+        ${alpha(theme.palette.secondary.dark, 0.55)} 50%,
+        ${alpha(theme.palette.background.paper, 0.25)} 100%)`,
     [theme]
   );
 
@@ -90,14 +93,14 @@ const HeroSection = ({
       {
         label: "Get Started Free",
         variant: "contained",
-        onClick: () => handleCTAClick("signup"),
         color: "primary",
+        onClick: () => handleCTAClick("signup"),
       },
       {
         label: "See Features",
         variant: "outlined",
-        onClick: () => handleCTAClick("features"),
         color: "inherit",
+        onClick: () => handleCTAClick("features"),
       },
     ],
     [handleCTAClick]
@@ -105,8 +108,9 @@ const HeroSection = ({
 
   return (
     <Box
+      ref={ref}
       component="section"
-      aria-label="Hero Section"
+      aria-label="Hero section"
       sx={{
         position: "relative",
         minHeight: { xs: "85vh", md: "95vh" },
@@ -117,36 +121,34 @@ const HeroSection = ({
         bgcolor: theme.palette.background.default,
       }}
     >
-      {/* ✅ Video Background with graceful fallback */}
+      {/* Background video / fallback */}
       {!videoState.hasError ? (
         <Box
           component="video"
-          src={getAssetUrl(videoUrl)}
+          src={videoUrl}
           autoPlay
           loop
           muted={videoState.isMuted}
           playsInline
-          preload="metadata"
-          onLoadedData={handleVideoLoad}
           onError={handleVideoError}
-          style={{
+          onLoadedData={() => setVideoState((p) => ({ ...p, isLoaded: true }))}
+          sx={{
             position: "absolute",
-            top: "50%",
-            left: "50%",
+            top: 0,
+            left: 0,
             width: "100%",
             height: "100%",
             objectFit: "cover",
-            transform: "translate(-50%, -50%)",
-            zIndex: 0,
-            transition: "opacity 0.6s ease",
             opacity: videoState.isLoaded ? 1 : 0,
+            transition: "opacity 0.5s ease",
+            zIndex: 0,
           }}
         />
       ) : (
         <Box
           component="img"
-          src={getAssetUrl(fallbackImage)}
-          alt="Assessly Hero Background"
+          src={fallbackImage}
+          alt="Hero background"
           sx={{
             position: "absolute",
             top: 0,
@@ -159,65 +161,61 @@ const HeroSection = ({
         />
       )}
 
-      {/* ✅ Gradient Overlay */}
+      {/* Gradient overlay */}
       <Box
         sx={{
           position: "absolute",
-          inset: 0,
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
           background: gradientOverlay,
           zIndex: 1,
         }}
       />
 
-      {/* ✅ Content */}
-      <Container
-        maxWidth="xl"
-        sx={{
-          position: "relative",
-          zIndex: 2,
-          py: { xs: 4, md: 8 },
-        }}
-      >
-        <Grid
-          container
-          spacing={{ xs: 4, md: 6 }}
-          alignItems="center"
-          sx={{ minHeight: "60vh" }}
+      {/* Content */}
+      <Fade in={visible} timeout={800}>
+        <Container
+          maxWidth="xl"
+          sx={{
+            position: "relative",
+            zIndex: 2,
+            py: { xs: 6, md: 10 },
+          }}
         >
-          {/* Text */}
-          <Grid item xs={12} lg={6}>
-            <Fade in timeout={800}>
-              <Box sx={{ textAlign: { xs: "center", lg: "left" }, maxWidth: 600 }}>
+          <Grid
+            container
+            spacing={{ xs: 4, md: 6 }}
+            alignItems="center"
+            justifyContent="center"
+          >
+            <Grid item xs={12} md={7}>
+              <Box textAlign={{ xs: "center", md: "left" }}>
                 {isMobile && (
-                  <Zoom in timeout={600}>
+                  <Zoom in>
                     <Box sx={{ mb: 4, display: "flex", justifyContent: "center" }}>
                       <Logo size={70} variant="light" />
                     </Box>
                   </Zoom>
                 )}
-
                 <Typography
                   variant="h1"
                   sx={{
                     fontWeight: 900,
-                    mb: 3,
-                    fontSize: { xs: "2.75rem", sm: "3.5rem", md: "4rem" },
-                    lineHeight: 1.1,
+                    fontSize: { xs: "2.5rem", md: "4rem" },
                     color: "white",
-                    textShadow: "0 4px 8px rgba(0,0,0,0.3)",
-                    backgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
+                    textShadow: "0 4px 10px rgba(0,0,0,0.3)",
                   }}
                 >
                   Measure{" "}
                   <Box
                     component="span"
                     sx={{
-                      background: "linear-gradient(45deg, #fbbf24, #f59e0b, #eab308)",
-                      backgroundClip: "text",
+                      background: "linear-gradient(45deg,#fbbf24,#f59e0b,#eab308)",
                       WebkitBackgroundClip: "text",
                       WebkitTextFillColor: "transparent",
-                      animation: "gradientShift 3s ease infinite",
+                      animation: "gradientShift 4s ease infinite",
                     }}
                   >
                     Smarter
@@ -225,111 +223,66 @@ const HeroSection = ({
                   , Not Harder
                 </Typography>
 
-                <Fade in timeout={1000}>
-                  <Typography
-                    variant="h5"
-                    sx={{
-                      mb: 4,
-                      color: "rgba(255, 255, 255, 0.95)",
-                      fontSize: { xs: "1.125rem", md: "1.375rem" },
-                      textShadow: "0 2px 4px rgba(0,0,0,0.3)",
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    From Questions to Insights — the modern assessment SaaS
-                    trusted by innovators worldwide.
-                  </Typography>
-                </Fade>
+                <Typography
+                  variant="h5"
+                  sx={{
+                    color: "rgba(255,255,255,0.9)",
+                    mt: 3,
+                    maxWidth: 480,
+                    mx: { xs: "auto", md: 0 },
+                    lineHeight: 1.6,
+                  }}
+                >
+                  From questions to insights — Assessly helps organizations
+                  design, manage, and analyze assessments effortlessly.
+                </Typography>
 
-                {/* CTA Buttons */}
                 <Box
                   sx={{
                     display: "flex",
+                    justifyContent: { xs: "center", md: "flex-start" },
                     gap: 2,
+                    mt: 4,
                     flexWrap: "wrap",
-                    justifyContent: { xs: "center", lg: "flex-start" },
                   }}
                 >
                   {ctaButtons.map((btn) => (
-                    <Zoom key={btn.label} in timeout={900}>
-                      <Button
-                        variant={btn.variant}
-                        color={btn.color}
-                        size="large"
-                        onClick={btn.onClick}
-                        sx={{
-                          px: 4,
-                          py: 1.5,
-                          fontWeight: 700,
-                          borderRadius: 3,
-                          "&:hover": {
-                            transform: "translateY(-2px)",
-                            boxShadow: 8,
-                          },
-                        }}
-                      >
-                        {btn.label}
-                      </Button>
-                    </Zoom>
+                    <Button
+                      key={btn.label}
+                      variant={btn.variant}
+                      color={btn.color}
+                      size="large"
+                      onClick={btn.onClick}
+                      sx={{
+                        px: 4,
+                        py: 1.75,
+                        borderRadius: 3,
+                        fontWeight: 700,
+                        "&:hover": {
+                          transform: "translateY(-2px)",
+                          boxShadow: 6,
+                        },
+                      }}
+                    >
+                      {btn.label}
+                    </Button>
                   ))}
                 </Box>
               </Box>
-            </Fade>
-          </Grid>
-
-          {/* ✅ Desktop Preview */}
-          {!isMobile && (
-            <Grid item xs={12} lg={6}>
-              <Zoom in timeout={1000}>
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "center",
-                    position: "relative",
-                  }}
-                >
-                  <Box
-                    sx={{
-                      width: "100%",
-                      maxWidth: 600,
-                      borderRadius: 4,
-                      overflow: "hidden",
-                      boxShadow: "0 25px 50px rgba(0,0,0,0.4)",
-                      border: `2px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-                      transform: "perspective(1000px) rotateY(-5deg)",
-                      transition: "all 0.5s ease",
-                      "&:hover": {
-                        transform: "perspective(1000px) rotateY(0deg) scale(1.02)",
-                        borderColor: alpha(theme.palette.primary.main, 0.6),
-                      },
-                    }}
-                  >
-                    <Box
-                      component="video"
-                      src={getAssetUrl(videoUrl)}
-                      autoPlay
-                      loop
-                      muted={videoState.isMuted}
-                      playsInline
-                      preload="metadata"
-                      style={{
-                        width: "100%",
-                        display: "block",
-                      }}
-                    />
-                  </Box>
-                </Box>
-              </Zoom>
             </Grid>
-          )}
-        </Grid>
-      </Container>
+          </Grid>
+        </Container>
+      </Fade>
 
-      {/* ✅ Global animations */}
-      <style>{`
+      <style jsx global>{`
         @keyframes gradientShift {
-          0%,100%{background-position:0% 50%}
-          50%{background-position:100% 50%}
+          0%,
+          100% {
+            background-position: 0% 50%;
+          }
+          50% {
+            background-position: 100% 50%;
+          }
         }
       `}</style>
     </Box>
