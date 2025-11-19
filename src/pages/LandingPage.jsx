@@ -3,39 +3,37 @@ import React, {
   lazy,
   useEffect,
   useRef,
-  useState,
-  useCallback
+  useState
 } from "react";
-import { Box, CircularProgress, Container, Fade, Typography } from "@mui/material";
+import {
+  Box,
+  CircularProgress,
+  Container,
+  Fade,
+  Typography
+} from "@mui/material";
 import { Helmet } from "react-helmet-async";
 import { useLocation } from "react-router-dom";
 
-// ✅ Lazy-load sections with CORRECT file names
+// Lazy-loaded components
 const HeroSection = lazy(() => import("../components/layout/HeroSection.jsx"));
 const FeaturesSection = lazy(() => import("../components/layout/FeaturesSection.jsx"));
-const Testimonials = lazy(() => import("../components/layout/Testimonials.jsx")); // Fixed name
-const CallToAction = lazy(() => import("../components/layout/CallToAction.jsx")); // Fixed name
+const Testimonials = lazy(() => import("../components/layout/Testimonials.jsx"));
+const CallToAction = lazy(() => import("../components/layout/CallToAction.jsx"));
 const Footer = lazy(() => import("../components/layout/Footer.jsx"));
 
-// ✅ Optimized scroll reset with passive listener
+// Scroll to top on route change
 const ScrollToTop = () => {
   const { pathname } = useLocation();
-  
   useEffect(() => {
-    const scrollToTop = () => {
-      if (window.scrollY > 0) {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }
-    };
-    
-    // Use requestAnimationFrame for smoother execution
-    requestAnimationFrame(scrollToTop);
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
   }, [pathname]);
-  
   return null;
 };
 
-// ✅ Enhanced loading placeholder with better UX
+// Loading fallback
 const LoadingFallback = React.memo(() => (
   <Box
     sx={{
@@ -45,19 +43,12 @@ const LoadingFallback = React.memo(() => (
       justifyContent: "center",
       bgcolor: "background.default",
       position: "fixed",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
+      inset: 0,
       zIndex: 9999
     }}
   >
     <Box sx={{ textAlign: "center" }}>
-      <CircularProgress 
-        size={64} 
-        thickness={4.5} 
-        sx={{ mb: 2 }}
-      />
+      <CircularProgress size={64} thickness={4.5} sx={{ mb: 2 }} />
       <Typography variant="body2" color="text.secondary">
         Loading Assessly...
       </Typography>
@@ -65,7 +56,7 @@ const LoadingFallback = React.memo(() => (
   </Box>
 ));
 
-/** ✅ Optimized Intersection Observer hook */
+/** Intersection Observer */
 const useRevealOnScroll = (threshold = 0.1) => {
   const ref = useRef(null);
   const [visible, setVisible] = useState(false);
@@ -81,10 +72,7 @@ const useRevealOnScroll = (threshold = 0.1) => {
           observer.unobserve(entry.target);
         }
       },
-      { 
-        threshold,
-        rootMargin: '50px'
-      }
+      { threshold, rootMargin: "50px" }
     );
 
     observer.observe(node);
@@ -94,47 +82,42 @@ const useRevealOnScroll = (threshold = 0.1) => {
   return [ref, visible];
 };
 
-/** ✅ Performance analytics */
+/** Page analytics */
 const usePageAnalytics = () => {
   useEffect(() => {
-    const startTime = performance.now();
+    const start = performance.now();
     let mounted = true;
 
-    const sendAnalytics = () => {
+    const send = () => {
       if (!mounted) return;
-      
-      const duration = Math.round((performance.now() - startTime) / 1000);
+      const duration = Math.round((performance.now() - start) / 1000);
       console.log(`[Analytics] User spent ${duration}s on landing page`);
     };
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        sendAnalytics();
-      }
+    const onHide = () => {
+      if (document.visibilityState === "hidden") send();
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+    document.addEventListener("visibilitychange", onHide);
+
     return () => {
       mounted = false;
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      sendAnalytics();
+      document.removeEventListener("visibilitychange", onHide);
+      send();
     };
   }, []);
 };
 
-// ✅ Main component with performance optimizations
+// Main Page
 const LandingPage = () => {
   usePageAnalytics();
 
-  // Reveal animations with staggered thresholds
   const [featuresRef, showFeatures] = useRevealOnScroll(0.15);
   const [testimonialsRef, showTestimonials] = useRevealOnScroll(0.2);
   const [ctaRef, showCTA] = useRevealOnScroll(0.15);
 
   return (
     <>
-      {/* ✅ Enhanced SEO + Performance meta tags */}
       <Helmet>
         <title>Assessly – Modern Assessment & Insights Platform</title>
         <meta
@@ -142,8 +125,6 @@ const LandingPage = () => {
           content="Assessly empowers educators and organizations to create, analyze, and manage assessments effortlessly with AI-driven insights and intuitive design."
         />
         <meta name="robots" content="index, follow" />
-        
-        {/* Open Graph */}
         <meta property="og:title" content="Assessly Platform" />
         <meta property="og:description" content="Smarter assessments, simplified insights." />
         <meta property="og:url" content="https://assessly-gedp.onrender.com" />
@@ -153,7 +134,6 @@ const LandingPage = () => {
 
       <ScrollToTop />
 
-      {/* ✅ Enhanced Suspense with proper error boundaries */}
       <Suspense fallback={<LoadingFallback />}>
         <Box
           component="main"
@@ -161,13 +141,12 @@ const LandingPage = () => {
             overflowX: "hidden",
             bgcolor: "background.default",
             color: "text.primary",
-            scrollBehavior: "smooth",
-            minHeight: '100vh',
-            position: 'relative'
+            minHeight: "100vh",
+            position: "relative"
           }}
         >
-          {/* HERO SECTION - Critical above-fold content */}
-          <Box sx={{ position: 'relative' }}>
+          {/* HERO */}
+          <Box sx={{ position: "relative" }}>
             <HeroSection
               videoUrl="/Assessly.mp4"
               fallbackImage="/hero-fallback.jpg"
@@ -175,51 +154,48 @@ const LandingPage = () => {
             />
           </Box>
 
-          {/* FEATURES SECTION */}
-          <Box
-            id="features-section"
-            ref={featuresRef}
-            sx={{ 
-              py: { xs: 8, md: 12 },
-              minHeight: { xs: 'auto', md: 600 }
-            }}
-          >
+          {/* FEATURES */}
+          <Box id="features-section" ref={featuresRef} sx={{ py: { xs: 8, md: 12 } }}>
             <Fade in={showFeatures} timeout={800}>
-              <Container maxWidth="lg">
-                <FeaturesSection />
-              </Container>
+              <Box>
+                <Container maxWidth="lg">
+                  <FeaturesSection />
+                </Container>
+              </Box>
             </Fade>
           </Box>
 
-          {/* TESTIMONIALS SECTION */}
+          {/* TESTIMONIALS */}
           <Box
             id="testimonials"
             ref={testimonialsRef}
             sx={{
               py: { xs: 10, md: 14 },
-              background: "linear-gradient(135deg, rgba(255,255,255,0.03), rgba(0,0,0,0.05))",
-              minHeight: { xs: 'auto', md: 500 }
+              background: "linear-gradient(135deg, rgba(255,255,255,0.03), rgba(0,0,0,0.05))"
             }}
           >
             <Fade in={showTestimonials} timeout={900}>
-              <Container maxWidth="xl">
-                <Testimonials /> {/* Fixed component name */}
-              </Container>
+              <Box>
+                <Container maxWidth="xl">
+                  <Testimonials />
+                </Container>
+              </Box>
             </Fade>
           </Box>
 
-          {/* CTA SECTION */}
+          {/* CTA */}
           <Box
             id="cta-section"
             ref={ctaRef}
             sx={{
               py: { xs: 10, md: 14 },
-              background: "linear-gradient(135deg, rgba(25,118,210,0.08), rgba(0,0,0,0.08))",
-              minHeight: { xs: 'auto', md: 400 }
+              background: "linear-gradient(135deg, rgba(25,118,210,0.08), rgba(0,0,0,0.08))"
             }}
           >
             <Fade in={showCTA} timeout={1000}>
-              <CallToAction /> {/* Fixed component name */}
+              <Box>
+                <CallToAction />
+              </Box>
             </Fade>
           </Box>
 
@@ -231,5 +207,4 @@ const LandingPage = () => {
   );
 };
 
-// ✅ Export with proper memoization
 export default React.memo(LandingPage);
