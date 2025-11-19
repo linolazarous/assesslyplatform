@@ -1,5 +1,6 @@
 // src/pages/Auth.jsx
 import React, { useState, useEffect } from "react";
+import PropTypes from "prop-types";
 import {
   Button,
   TextField,
@@ -12,17 +13,24 @@ import {
   IconButton,
   Box,
   Paper,
+  FormControl,
+  InputLabel,
 } from "@mui/material";
-import { Visibility, VisibilityOff, Google as GoogleIcon, GitHub as GitHubIcon, Link as LinkIcon } from "@mui/icons-material";
+import {
+  Visibility,
+  VisibilityOff,
+  Google as GoogleIcon,
+  GitHub as GitHubIcon,
+  LinkedIn as LinkIcon,
+} from "@mui/icons-material";
 import { useSnackbar } from "notistack";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 /**
  * Auth Page
- * - Login / Signup / Forgot / Reset / Magic Link
- * - Social logins (OAuth) redirect
- * - Token callback handling (?token=...)
+ * Supports: Login / Signup / Forgot / Reset / Magic Link
+ * Social logins redirect to API endpoints.
  */
 export default function AuthPage({ disableSignup = false }) {
   const { login, register, logout, currentUser } = useAuth();
@@ -47,15 +55,16 @@ export default function AuthPage({ disableSignup = false }) {
   const [isReset, setIsReset] = useState(false);
   const [isMagic, setIsMagic] = useState(false);
 
-  /** Handle token from URL (OAuth or magic link) */
+  // Process URL token (magic/OAuth return)
   useEffect(() => {
     if (urlToken) {
       try {
+        // Persist token client-side (you may want to hand-off to auth context instead)
         localStorage.setItem("token", urlToken);
         enqueueSnackbar("Logged in via external provider.", { variant: "success" });
         navigate("/dashboard", { replace: true });
       } catch (err) {
-        console.error("Failed to process token:", err);
+        console.error("Failed to handle token:", err);
         enqueueSnackbar("External login failed.", { variant: "error" });
       }
       return;
@@ -68,19 +77,26 @@ export default function AuthPage({ disableSignup = false }) {
           setIsLogin(false);
           setIsForgot(false);
           setIsMagic(false);
+          setIsReset(false);
         }
         break;
       case "forgot":
         setIsForgot(true);
         setIsLogin(false);
+        setIsReset(false);
+        setIsMagic(false);
         break;
       case "magic":
         setIsMagic(true);
         setIsLogin(false);
+        setIsForgot(false);
+        setIsReset(false);
         break;
       case "reset":
         setIsReset(true);
         setIsLogin(false);
+        setIsForgot(false);
+        setIsMagic(false);
         break;
       default:
         setIsLogin(true);
@@ -89,11 +105,16 @@ export default function AuthPage({ disableSignup = false }) {
         setIsReset(false);
     }
 
-    logout();
+    // Force logout to reset any stale state (only if logout exists)
+    try {
+      logout?.();
+    } catch (err) {
+      // ignore
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search, urlToken]);
 
-  /** Redirect if already logged in */
+  // If already logged in, redirect
   useEffect(() => {
     if (currentUser) {
       const from = location.state?.from?.pathname || "/dashboard";
@@ -101,24 +122,25 @@ export default function AuthPage({ disableSignup = false }) {
     }
   }, [currentUser, navigate, location.state]);
 
-  /** Form validation */
   const validateForm = () => {
     if (!email || !email.includes("@")) {
       enqueueSnackbar("Enter a valid email.", { variant: "error" });
       return false;
     }
+
     if (!isForgot && !isMagic && !isReset && (!password || password.length < 6)) {
       enqueueSnackbar("Password must be at least 6 characters.", { variant: "error" });
       return false;
     }
+
     if (isReset && password !== confirmPassword) {
       enqueueSnackbar("Passwords do not match.", { variant: "error" });
       return false;
     }
+
     return true;
   };
 
-  /** Main auth handler */
   const handleAuth = async () => {
     if (!validateForm()) return;
     setLoading(true);
@@ -128,7 +150,11 @@ export default function AuthPage({ disableSignup = false }) {
         const res = await fetch("/api/auth/magic-link", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, redirectTo: `${window.location.origin}/auth?magic_token=` }),
+          body: JSON.stringify({
+            email,
+            // server will append token value, we provide redirect base
+            redirectTo: `${window.location.origin}/auth?magic_token=`,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Magic link failed.");
@@ -169,6 +195,7 @@ export default function AuthPage({ disableSignup = false }) {
         }
 
       } else {
+        // Signup
         await register({ email, password, role });
         enqueueSnackbar("Account created! Please sign in.", { variant: "success" });
         setIsLogin(true);
@@ -176,16 +203,16 @@ export default function AuthPage({ disableSignup = false }) {
       }
     } catch (err) {
       console.error("Auth error:", err);
-      enqueueSnackbar(err.message || "An error occurred.", { variant: "error", autoHideDuration: 5000 });
+      enqueueSnackbar(err?.message || "An error occurred.", { variant: "error", autoHideDuration: 5000 });
     } finally {
       setLoading(false);
     }
   };
 
-  /** OAuth redirects */
-  const redirectToOAuth = (provider) => (window.location.href = `/api/auth/${provider}`);
+  const redirectToOAuth = (provider) => {
+    window.location.href = `/api/auth/${provider}`;
+  };
 
-  /** Switch auth modes */
   const switchMode = (mode) => {
     setIsLogin(mode === "login");
     setIsForgot(mode === "forgot");
@@ -195,7 +222,16 @@ export default function AuthPage({ disableSignup = false }) {
   };
 
   return (
-    <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#f6f8fb,#e8eefc)", p: 2 }}>
+    <Box
+      sx={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "linear-gradient(135deg,#f6f8fb,#e8eefc)",
+        p: 2,
+      }}
+    >
       <Paper elevation={6} sx={{ width: "100%", maxWidth: 460, p: 4, borderRadius: 3 }}>
         <Box sx={{ textAlign: "center", mb: 3 }}>
           <Typography variant="h5" sx={{ fontWeight: 600 }}>
@@ -215,7 +251,16 @@ export default function AuthPage({ disableSignup = false }) {
         </Box>
 
         {/* Email */}
-        <TextField label="Email" type="email" fullWidth margin="normal" value={email} onChange={(e) => setEmail(e.target.value.trim())} required autoComplete="email" />
+        <TextField
+          label="Email"
+          type="email"
+          fullWidth
+          margin="normal"
+          value={email}
+          onChange={(e) => setEmail(e.target.value.trimStart())}
+          required
+          autoComplete="email"
+        />
 
         {/* Password */}
         {!isForgot && !isMagic && (
@@ -231,7 +276,7 @@ export default function AuthPage({ disableSignup = false }) {
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
-                  <IconButton onClick={() => setShowPassword((p) => !p)} edge="end">
+                  <IconButton onClick={() => setShowPassword((p) => !p)} edge="end" aria-label="toggle password">
                     {showPassword ? <VisibilityOff /> : <Visibility />}
                   </IconButton>
                 </InputAdornment>
@@ -241,15 +286,28 @@ export default function AuthPage({ disableSignup = false }) {
         )}
 
         {/* Confirm Password */}
-        {isReset && <TextField label="Confirm Password" type="password" fullWidth margin="normal" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />}
+        {isReset && (
+          <TextField
+            label="Confirm Password"
+            type="password"
+            fullWidth
+            margin="normal"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+          />
+        )}
 
         {/* Role selector for signup */}
         {!isLogin && !disableSignup && !isForgot && !isMagic && !isReset && (
-          <Select value={role} onChange={(e) => setRole(e.target.value)} fullWidth sx={{ mt: 2 }}>
-            <MenuItem value="admin">Admin</MenuItem>
-            <MenuItem value="assessor">Assessor</MenuItem>
-            <MenuItem value="candidate">Candidate</MenuItem>
-          </Select>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel id="role-label">Role</InputLabel>
+            <Select labelId="role-label" label="Role" value={role} onChange={(e) => setRole(e.target.value)}>
+              <MenuItem value="admin">Admin</MenuItem>
+              <MenuItem value="assessor">Assessor</MenuItem>
+              <MenuItem value="candidate">Candidate</MenuItem>
+            </Select>
+          </FormControl>
         )}
 
         {/* Action button */}
@@ -313,3 +371,7 @@ export default function AuthPage({ disableSignup = false }) {
     </Box>
   );
 }
+
+AuthPage.propTypes = {
+  disableSignup: PropTypes.bool,
+};
