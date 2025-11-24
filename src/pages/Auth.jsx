@@ -20,8 +20,6 @@ import {
   Visibility,
   VisibilityOff,
   Google as GoogleIcon,
-  GitHub as GitHubIcon,
-  LinkedIn as LinkIcon,
 } from "@mui/icons-material";
 import { useSnackbar } from "notistack";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -323,19 +321,14 @@ export default function AuthPage({ disableSignup = false }) {
           {loading ? "Processing..." : isReset ? "Reset Password" : isForgot ? "Send Reset Link" : isMagic ? "Send Magic Link" : isLogin ? "Sign In" : "Sign Up"}
         </Button>
 
-        {/* Social logins */}
+        {/* Social logins - Only Google OAuth */}
         {!isForgot && !isReset && !isMagic && (
           <>
             <Divider sx={{ my: 3 }}>OR</Divider>
             <Button variant="outlined" fullWidth startIcon={<GoogleIcon />} onClick={() => redirectToOAuth("google")} sx={{ mb: 1 }}>
               Continue with Google
             </Button>
-            <Button variant="outlined" fullWidth startIcon={<GitHubIcon />} onClick={() => redirectToOAuth("github")} sx={{ mb: 1 }}>
-              Continue with GitHub
-            </Button>
-            <Button variant="outlined" fullWidth startIcon={<LinkIcon />} onClick={() => redirectToOAuth("linkedin")} sx={{ mb: 1 }}>
-              Continue with LinkedIn
-            </Button>
+            {/* REMOVED: GitHub and LinkedIn OAuth buttons */}
           </>
         )}
 
