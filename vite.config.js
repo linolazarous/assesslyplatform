@@ -1,4 +1,4 @@
-{"id":"82531","variant":"standard","title":"Optimized Vite Config for Standalone Deployment"}
+// vite.config.js
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -32,6 +32,9 @@ export default defineConfig({
             type: 'image/png'
           }
         ]
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
       }
     })
   ],
@@ -42,12 +45,33 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     manifest: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          ui: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled']
+        }
+      }
+    }
   },
 
-  // Prevent SW, favicon & manifest 404 issues
+  // Development server configuration
   server: {
+    port: 3000,
+    host: true, // Listen on all addresses
     headers: {
       'Cache-Control': 'public, max-age=0'
     }
+  },
+
+  // Preview server (for production build preview)
+  preview: {
+    port: 3000,
+    host: true
+  },
+
+  // Optimize dependencies
+  optimizeDeps: {
+    include: ['react', 'react-dom', '@mui/material', '@mui/icons-material']
   }
 });
