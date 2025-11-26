@@ -1,28 +1,20 @@
-import React, {
-  Suspense,
-  lazy,
-  useEffect,
-  useRef,
-  useState
-} from "react";
-import {
-  Box,
-  CircularProgress,
-  Container,
-  Fade,
-  Typography
-} from "@mui/material";
+import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { Box, CircularProgress, Container, Fade, Typography } from "@mui/material";
 import { Helmet } from "react-helmet-async";
 import { useLocation } from "react-router-dom";
 
-// Lazy-loaded components
+/* -------------------------
+   Lazy components
+   ------------------------- */
 const HeroSection = lazy(() => import("../components/layout/HeroSection.jsx"));
 const FeaturesSection = lazy(() => import("../components/layout/FeaturesSection.jsx"));
 const Testimonials = lazy(() => import("../components/layout/Testimonials.jsx"));
 const CallToAction = lazy(() => import("../components/layout/CallToAction.jsx"));
 const Footer = lazy(() => import("../components/layout/Footer.jsx"));
 
-// Scroll to top on route change
+/* -------------------------
+   Scroll to top on route change
+   ------------------------- */
 const ScrollToTop = () => {
   const { pathname } = useLocation();
   useEffect(() => {
@@ -33,7 +25,9 @@ const ScrollToTop = () => {
   return null;
 };
 
-// Loading fallback
+/* -------------------------
+   Loading fallback
+   ------------------------- */
 const LoadingFallback = React.memo(() => (
   <Box
     sx={{
@@ -44,8 +38,10 @@ const LoadingFallback = React.memo(() => (
       bgcolor: "background.default",
       position: "fixed",
       inset: 0,
-      zIndex: 9999
+      zIndex: 9999,
     }}
+    role="status"
+    aria-live="polite"
   >
     <Box sx={{ textAlign: "center" }}>
       <CircularProgress size={64} thickness={4.5} sx={{ mb: 2 }} />
@@ -56,7 +52,9 @@ const LoadingFallback = React.memo(() => (
   </Box>
 ));
 
-/** Intersection Observer */
+/* -------------------------
+   Intersection observer hook
+   ------------------------- */
 const useRevealOnScroll = (threshold = 0.1) => {
   const ref = useRef(null);
   const [visible, setVisible] = useState(false);
@@ -64,25 +62,34 @@ const useRevealOnScroll = (threshold = 0.1) => {
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
+    let cancelled = false;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
+        if (cancelled) return;
         if (entry.isIntersecting) {
           setVisible(true);
-          observer.unobserve(entry.target);
+          if (entry.target) observer.unobserve(entry.target);
         }
       },
       { threshold, rootMargin: "50px" }
     );
 
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => {
+      cancelled = true;
+      try {
+        observer.disconnect();
+      } catch {}
+    };
   }, [threshold]);
 
   return [ref, visible];
 };
 
-/** Page analytics */
+/* -------------------------
+   Page analytics hook
+   ------------------------- */
 const usePageAnalytics = () => {
   useEffect(() => {
     const start = performance.now();
@@ -91,6 +98,7 @@ const usePageAnalytics = () => {
     const send = () => {
       if (!mounted) return;
       const duration = Math.round((performance.now() - start) / 1000);
+      // Keep this console statement small and intentional for debug / analytics
       console.log(`[Analytics] User spent ${duration}s on landing page`);
     };
 
@@ -108,16 +116,15 @@ const usePageAnalytics = () => {
   }, []);
 };
 
-// Main Page
+/* -------------------------
+   LandingPage
+   ------------------------- */
 const LandingPage = () => {
   usePageAnalytics();
 
   const [featuresRef, showFeatures] = useRevealOnScroll(0.15);
   const [testimonialsRef, showTestimonials] = useRevealOnScroll(0.2);
   const [ctaRef, showCTA] = useRevealOnScroll(0.15);
-  
-  // State for sidebar (you would typically get this from context or props)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
     <>
@@ -137,82 +144,73 @@ const LandingPage = () => {
 
       <ScrollToTop />
 
-      {/* Main content with inert attribute when sidebar is open */}
-      <div {...(isSidebarOpen ? { inert: "" } : {})}>
-        <Suspense fallback={<LoadingFallback />}>
+      <Suspense fallback={<LoadingFallback />}>
+        <Box
+          component="main"
+          sx={{
+            overflowX: "hidden",
+            bgcolor: "background.default",
+            color: "text.primary",
+            minHeight: "100vh",
+            position: "relative",
+          }}
+        >
+          {/* HERO */}
+          <Box sx={{ position: "relative" }}>
+            <HeroSection videoUrl="/Assessly.mp4" fallbackImage="/hero-fallback.jpg" enableAudio={false} />
+          </Box>
+
+          {/* FEATURES */}
+          <Box id="features-section" ref={featuresRef} sx={{ py: { xs: 8, md: 12 } }}>
+            <Fade in={showFeatures} timeout={800}>
+              <Box>
+                <Container maxWidth="lg">
+                  <FeaturesSection />
+                </Container>
+              </Box>
+            </Fade>
+          </Box>
+
+          {/* TESTIMONIALS */}
           <Box
-            component="main"
+            id="testimonials"
+            ref={testimonialsRef}
             sx={{
-              overflowX: "hidden",
-              bgcolor: "background.default",
-              color: "text.primary",
-              minHeight: "100vh",
-              position: "relative"
+              py: { xs: 10, md: 14 },
+              background: "linear-gradient(135deg, rgba(255,255,255,0.03), rgba(0,0,0,0.05))",
             }}
           >
-            {/* HERO */}
-            <Box sx={{ position: "relative" }}>
-              <HeroSection
-                videoUrl="/Assessly.mp4"
-                fallbackImage="/hero-fallback.jpg"
-                enableAudio={false}
-              />
-            </Box>
-
-            {/* FEATURES */}
-            <Box id="features-section" ref={featuresRef} sx={{ py: { xs: 8, md: 12 } }}>
-              <Fade in={showFeatures} timeout={800}>
-                <Box>
-                  <Container maxWidth="lg">
-                    <FeaturesSection />
-                  </Container>
-                </Box>
-              </Fade>
-            </Box>
-
-            {/* TESTIMONIALS */}
-            <Box
-              id="testimonials"
-              ref={testimonialsRef}
-              sx={{
-                py: { xs: 10, md: 14 },
-                background: "linear-gradient(135deg, rgba(255,255,255,0.03), rgba(0,0,0,0.05))"
-              }}
-            >
-              <Fade in={showTestimonials} timeout={900}>
-                <Box>
-                  <Container maxWidth="xl">
-                    <Testimonials />
-                  </Container>
-                </Box>
-              </Fade>
-            </Box>
-
-            {/* CTA */}
-            <Box
-              id="cta-section"
-              ref={ctaRef}
-              sx={{
-                py: { xs: 10, md: 14 },
-                background: "linear-gradient(135deg, rgba(25,118,210,0.08), rgba(0,0,0,0.08))"
-              }}
-            >
-              <Fade in={showCTA} timeout={1000}>
-                <Box>
-                  <CallToAction />
-                </Box>
-              </Fade>
-            </Box>
-
-            {/* FOOTER */}
-            <Footer />
+            <Fade in={showTestimonials} timeout={900}>
+              <Box>
+                <Container maxWidth="xl">
+                  <Testimonials />
+                </Container>
+              </Box>
+            </Fade>
           </Box>
-        </Suspense>
-      </div>
 
-      {/* Example Sidebar */}
-      {/* You would typically have a sidebar component here */}
-      {/* <Sidebar open={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} /> */}
+          {/* CTA */}
+          <Box
+            id="cta-section"
+            ref={ctaRef}
+            sx={{
+              py: { xs: 10, md: 14 },
+              background: "linear-gradient(135deg, rgba(25,118,210,0.08), rgba(0,0,0,0.08))",
+            }}
+          >
+            <Fade in={showCTA} timeout={1000}>
+              <Box>
+                <CallToAction />
+              </Box>
+            </Fade>
+          </Box>
+
+          {/* FOOTER */}
+          <Suspense fallback={<Box sx={{ height: 120 }} />}>
+            <Footer />
+          </Suspense>
+        </Box>
+      </Suspense>
     </>
   );
 };
