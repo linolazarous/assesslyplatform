@@ -10,24 +10,27 @@ import LoadingScreen from "./components/ui/LoadingScreen";
 import ProtectedRoute from "./components/common/ProtectedRoute";
 import ErrorBoundary from "./ErrorBoundary";
 
-/* ============================================================
-   ✅ Lazy Import Utility with Retry (Optimized)
-============================================================ */
-const lazyWithRetry = (importFunc, retries = 2, interval = 1200) =>
+/* -------------------------
+   Lazy import with retry
+   ------------------------- */
+const lazyWithRetry = (importFn, retries = 2, interval = 1200) =>
   lazy(async () => {
+    let lastErr;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        return await importFunc();
+        return await importFn();
       } catch (err) {
-        if (attempt === retries) throw new Error("Failed to load component after retries.");
-        await new Promise((res) => setTimeout(res, interval));
+        lastErr = err;
+        if (attempt === retries) throw lastErr;
+        await new Promise((r) => setTimeout(r, interval));
       }
     }
+    throw lastErr;
   });
 
-/* ============================================================
-   ✅ Lazy-Loaded Pages
-============================================================ */
+/* -------------------------
+   Route-level lazy imports
+   ------------------------- */
 const AssessmentDashboard = lazyWithRetry(() => import("./components/AssessmentDashboard"));
 const CreateAssessment = lazyWithRetry(() => import("./components/CreateAssessment"));
 const TakeAssessment = lazyWithRetry(() => import("./components/TakeAssessment"));
@@ -39,9 +42,9 @@ const AdminDashboard = lazyWithRetry(() => import("./pages/Admin/Dashboard"));
 const PricingPage = lazyWithRetry(() => import("./pages/Pricing"));
 const ContactPage = lazyWithRetry(() => import("./pages/Contact"));
 
-/* ============================================================
-   ✅ Custom Theme Hook with Local Persistence
-============================================================ */
+/* -------------------------
+   Theme hook with local persistence
+   ------------------------- */
 const useThemeMode = () => {
   const [darkMode, setDarkMode] = useState(() => {
     try {
@@ -54,7 +57,9 @@ const useThemeMode = () => {
   const toggleDarkMode = useCallback(() => {
     setDarkMode((prev) => {
       const next = !prev;
-      localStorage.setItem("darkMode", JSON.stringify(next));
+      try {
+        localStorage.setItem("darkMode", JSON.stringify(next));
+      } catch {}
       return next;
     });
   }, []);
@@ -63,48 +68,39 @@ const useThemeMode = () => {
   return { theme, darkMode, toggleDarkMode };
 };
 
-/* ============================================================
-   ✅ Layout Wrapper
-============================================================ */
-const MainLayoutWrapper = React.memo(({ darkMode, toggleDarkMode, children }) => (
-  <ErrorBoundary>
-    <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-      {children}
-    </MainLayout>
-  </ErrorBoundary>
-));
+/* -------------------------
+   Minimal loading skeleton used in production branches
+   ------------------------- */
+const ProductionLoading = React.memo(function ProductionLoading() {
+  return (
+    <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
+      <CircularProgress size={40} />
+    </Box>
+  );
+});
 
-/* ============================================================
-   ✅ Loading Placeholder (Minimal)
-============================================================ */
-const ProductionLoading = React.memo(() => (
-  <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
-    <CircularProgress size={40} />
-  </Box>
-));
-
-/* ============================================================
-   ✅ Main Application Component
-============================================================ */
+/* -------------------------
+   App component
+   ------------------------- */
 export default function App() {
   const { theme, darkMode, toggleDarkMode } = useThemeMode();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "info" });
 
   useEffect(() => {
-    const handleOnline = () => {
+    const onOnline = () => {
       setIsOnline(true);
       setSnackbar({ open: true, message: "You're back online!", severity: "success" });
     };
-    const handleOffline = () => {
+    const onOffline = () => {
       setIsOnline(false);
       setSnackbar({ open: true, message: "Offline mode: Some features unavailable.", severity: "warning" });
     };
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
     return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
     };
   }, []);
 
@@ -120,25 +116,30 @@ export default function App() {
           <AuthProvider>
             <Suspense fallback={<LoadingScreen fullScreen />}>
               <Routes>
-                {/* 🌍 Public Pages */}
+                {/* Public */}
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/pricing" element={<PricingPage />} />
                 <Route path="/contact" element={<ContactPage />} />
 
-                {/* 🔑 Authentication */}
-                {["/auth", "/login"].map((path) => (
-                  <Route
-                    key={path}
-                    path={path}
-                    element={
-                      <AuthLayout>
-                        <AuthPage />
-                      </AuthLayout>
-                    }
-                  />
-                ))}
+                {/* Auth */}
+                <Route
+                  path="/auth/*"
+                  element={
+                    <AuthLayout darkMode={darkMode}>
+                      <AuthPage />
+                    </AuthLayout>
+                  }
+                />
+                <Route
+                  path="/login"
+                  element={
+                    <AuthLayout darkMode={darkMode}>
+                      <AuthPage />
+                    </AuthLayout>
+                  }
+                />
 
-                {/* 🧠 Protected Pages */}
+                {/* Protected app routes */}
                 {[
                   { path: "/dashboard", component: AssessmentDashboard },
                   { path: "/create", component: CreateAssessment },
@@ -151,23 +152,23 @@ export default function App() {
                     key={path}
                     path={path}
                     element={
-                      <MainLayoutWrapper darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+                      <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
                         <ProtectedRoute roles={roles}>
                           <Suspense fallback={<ProductionLoading />}>
                             <Component />
                           </Suspense>
                         </ProtectedRoute>
-                      </MainLayoutWrapper>
+                      </MainLayout>
                     }
                   />
                 ))}
 
-                {/* 🚫 404 Fallback */}
+                {/* Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
 
-            {/* 🔔 Snackbar Notifications */}
+            {/* Snackbar */}
             <Snackbar
               open={snackbar.open}
               autoHideDuration={4000}
