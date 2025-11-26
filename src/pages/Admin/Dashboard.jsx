@@ -1,3 +1,4 @@
+// src/pages/Admin/Dashboard.jsx
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Box, 
@@ -109,7 +110,7 @@ const PermissionDenied = React.memo(() => (
 export default function AdminDashboard() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { claims } = useAuth();
+  const { claims, isAuthenticated } = useAuth(); // Added isAuthenticated
   const { enqueueSnackbar } = useSnackbar();
   
   const [loading, setLoading] = useState(true);
@@ -122,10 +123,27 @@ export default function AdminDashboard() {
   });
   const [assessments, setAssessments] = useState([]);
 
-  const token = useMemo(() => localStorage.getItem('token'), []);
-  const isAdmin = useMemo(() => claims?.role === 'admin', [claims]);
+  // FIXED: Better token handling and admin check
+  const token = useMemo(() => {
+    try {
+      return localStorage.getItem('token');
+    } catch (error) {
+      console.error('Error accessing localStorage:', error);
+      return null;
+    }
+  }, []);
+
+  const isAdmin = useMemo(() => {
+    return claims?.role === 'admin' && isAuthenticated;
+  }, [claims, isAuthenticated]);
 
   const fetchDashboardData = useCallback(async (isRefresh = false) => {
+    // Don't fetch if not admin or no token
+    if (!isAdmin || !token) {
+      setLoading(false);
+      return;
+    }
+
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -133,37 +151,73 @@ export default function AdminDashboard() {
     }
     
     try {
-      if (!token) throw new Error('Authentication token not found');
+      // FIXED: Added timeout and better error handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
-      // Fetch summary statistics
       const [statsResponse, assessmentsResponse] = await Promise.all([
         fetch('/api/admin/stats', {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          signal: controller.signal
         }),
         fetch('/api/admin/assessments', {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          signal: controller.signal
         })
       ]);
 
+      clearTimeout(timeoutId);
+
       // Handle stats response
       if (!statsResponse.ok) {
-        const errorData = await statsResponse.json();
-        throw new Error(errorData.message || 'Failed to fetch stats');
+        const errorText = await statsResponse.text();
+        let errorMessage = 'Failed to fetch stats';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
       const statsData = await statsResponse.json();
       setStats(statsData);
 
       // Handle assessments response
       if (!assessmentsResponse.ok) {
-        const errorData = await assessmentsResponse.json();
-        throw new Error(errorData.message || 'Failed to fetch assessments');
+        const errorText = await assessmentsResponse.text();
+        let errorMessage = 'Failed to fetch assessments';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
       const assessmentsData = await assessmentsResponse.json();
       setAssessments(assessmentsData);
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      enqueueSnackbar(error.message || 'Failed to load dashboard data', { 
+      
+      // FIXED: Better error messages
+      let userMessage = 'Failed to load dashboard data';
+      if (error.name === 'AbortError') {
+        userMessage = 'Request timeout. Please try again.';
+      } else if (error.message.includes('Authentication')) {
+        userMessage = 'Authentication failed. Please login again.';
+      } else {
+        userMessage = error.message || userMessage;
+      }
+
+      enqueueSnackbar(userMessage, { 
         variant: 'error',
         autoHideDuration: 4000,
       });
@@ -171,19 +225,32 @@ export default function AdminDashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [token, enqueueSnackbar]);
+  }, [token, isAdmin, enqueueSnackbar]);
 
   const handleRefresh = useCallback(() => {
-    fetchDashboardData(true);
-  }, [fetchDashboardData]);
-
-  useEffect(() => {
-    if (isAdmin && token) {
-      fetchDashboardData();
+    if (!loading) {
+      fetchDashboardData(true);
     }
+  }, [fetchDashboardData, loading]);
+
+  // FIXED: Better useEffect with cleanup
+  useEffect(() => {
+    let mounted = true;
+
+    if (isAdmin && token) {
+      if (mounted) {
+        fetchDashboardData();
+      }
+    } else if (mounted) {
+      setLoading(false);
+    }
+
+    return () => {
+      mounted = false;
+    };
   }, [isAdmin, token, fetchDashboardData]);
 
-  // Memoized stat cards data - FIXED: Removed TypeScript 'as const' assertions
+  // Memoized stat cards data
   const statCards = useMemo(() => [
     {
       title: "Total Assessments",
@@ -211,6 +278,15 @@ export default function AdminDashboard() {
     }
   ], [stats]);
 
+  // FIXED: Show loading state initially
+  if (loading && !refreshing) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+        <CircularProgress size={60} />
+      </Box>
+    );
+  }
+
   if (!isAdmin) {
     return <PermissionDenied />;
   }
@@ -232,6 +308,7 @@ export default function AdminDashboard() {
           aria-label="refresh dashboard data"
           disabled={loading || refreshing}
           color="primary"
+          size="large"
         >
           <RefreshIcon />
         </IconButton>
@@ -248,7 +325,7 @@ export default function AdminDashboard() {
               title={card.title}
               value={card.value}
               icon={card.icon}
-              loading={loading}
+              loading={loading || refreshing}
               trend={card.trend}
             />
           </Grid>
@@ -268,7 +345,7 @@ export default function AdminDashboard() {
               Recent Assessments Activity
             </Typography>
             <React.Suspense fallback={<ChartLoader />}>
-              <AssessmentChart data={assessments} loading={loading} />
+              <AssessmentChart data={assessments} loading={loading || refreshing} />
             </React.Suspense>
           </Paper>
         </Grid>
