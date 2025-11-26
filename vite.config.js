@@ -5,32 +5,52 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   base: '/',
-  
+
   plugins: [
     react(),
+
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+
+      // Keep only the existing assets in /public
+      includeAssets: ['favicon.ico', 'logo.png'],
+
       manifest: {
+        id: '/',
+        lang: 'en',
         name: 'Assessly',
         short_name: 'Assessly',
-        description: 'Modern AI-Powered Assessment Platform',
-        theme_color: '#ffffff',
+        description: 'AI-Powered Assessment Platform for creating, managing, and analyzing assessments.',
+        theme_color: '#3f51b5',
+        background_color: '#ffffff',
+        display: 'standalone',
+        scope: '/',
+        start_url: '/',
+        orientation: 'portrait-primary',
+
+        // ✔ Match your actual files — logo.png in different sizes
         icons: [
           {
-            src: '/pwa-192x192.png',
+            src: '/logo.png',
+            sizes: '48x48',
+            type: 'image/png'
+          },
+          {
+            src: '/logo.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: '/pwa-512x512.png',
+            src: '/logo.png',
             sizes: '512x512',
             type: 'image/png'
           }
         ]
       },
+
+      // Caching rules
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
       }
     })
   ],
@@ -43,7 +63,12 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          ui: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
+          ui: [
+            '@mui/material',
+            '@mui/icons-material',
+            '@emotion/react',
+            '@emotion/styled'
+          ],
           utils: ['axios', 'dayjs', 'jwt-decode']
         }
       }
@@ -65,9 +90,9 @@ export default defineConfig({
 
   optimizeDeps: {
     include: [
-      'react', 
-      'react-dom', 
-      '@mui/material', 
+      'react',
+      'react-dom',
+      '@mui/material',
       '@mui/icons-material',
       'axios',
       'dayjs'
