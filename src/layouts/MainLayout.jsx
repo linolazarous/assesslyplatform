@@ -39,6 +39,7 @@ export default function MainLayout({ children }) {
       {/* Main content */}
       <Box
         component="main"
+        {...(mobileOpen ? { inert: "" } : {})}
         sx={(theme) => ({
           flexGrow: 1,
           p: 3,
