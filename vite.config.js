@@ -146,7 +146,7 @@ export default defineConfig({
   },
 
   // Base path for deployment
-  base: './',
+  base: '/',
 
   // Environment variables
   define: {
