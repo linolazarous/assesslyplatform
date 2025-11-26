@@ -16,6 +16,7 @@ export default function AuthLayout({ children, darkMode = false }) {
 
   return (
     <Box
+      {...(false ? { inert: "" } : {})} // No drawer in auth layout, so always false
       sx={{
         display: 'flex',
         justifyContent: 'center',
