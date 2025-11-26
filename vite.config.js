@@ -3,22 +3,18 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-// ⚠️ IMPORTANT — Your frontend lives on its own domain
-// So assets must load from ROOT "/", not "./"
 export default defineConfig({
   base: '/',
-
+  
   plugins: [
     react(),
-
-    // Optional PWA support — safe defaults
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
         name: 'Assessly',
         short_name: 'Assessly',
-        description: 'Secure Authentication & Assessment Platform',
+        description: 'Modern AI-Powered Assessment Platform',
         theme_color: '#ffffff',
         icons: [
           {
@@ -34,44 +30,47 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}']
       }
     })
   ],
 
-  // Ensures correct build output on Render & S3-style hosting
   build: {
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: false,
-    manifest: true,
     rollupOptions: {
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          ui: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled']
+          ui: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
+          utils: ['axios', 'dayjs', 'jwt-decode']
         }
       }
     }
   },
 
-  // Development server configuration
   server: {
     port: 3000,
-    host: true, // Listen on all addresses
+    host: true,
     headers: {
       'Cache-Control': 'public, max-age=0'
     }
   },
 
-  // Preview server (for production build preview)
   preview: {
-    port: 3000,
+    port: 4173,
     host: true
   },
 
-  // Optimize dependencies
   optimizeDeps: {
-    include: ['react', 'react-dom', '@mui/material', '@mui/icons-material']
+    include: [
+      'react', 
+      'react-dom', 
+      '@mui/material', 
+      '@mui/icons-material',
+      'axios',
+      'dayjs'
+    ]
   }
 });
