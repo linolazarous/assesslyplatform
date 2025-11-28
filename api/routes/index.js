@@ -13,16 +13,13 @@ const router = express.Router();
 const API_VERSION = process.env.npm_package_version || "1.0.0";
 const startTime = Date.now();
 
-// Optional OAuth routers
+// Google OAuth router
 let googleAuthRouter = null;
-let githubAuthRouter = null;
 try {
   const g = await import("./auth/google.js").catch(() => null);
-  const gh = await import("./auth/github.js").catch(() => null);
   googleAuthRouter = g?.default || null;
-  githubAuthRouter = gh?.default || null;
 } catch (err) {
-  console.warn("⚠️ OAuth routers not available:", err.message);
+  console.warn("⚠️ Google OAuth router not available:", err.message);
 }
 
 /**
@@ -78,7 +75,7 @@ router.get("/", (req, res) => {
 router.get("/features", (req, res) => {
   const modules = [
     "authentication",
-    "user-management",
+    "user-management", 
     "assessments",
     "organizations",
     "subscriptions",
@@ -115,7 +112,6 @@ router.get("/features", (req, res) => {
  */
 router.use("/auth", authRouter);
 if (googleAuthRouter) router.use("/auth", googleAuthRouter);
-if (githubAuthRouter) router.use("/auth", githubAuthRouter);
 
 router.use("/users", usersRouter);
 router.use("/organizations", organizationsRouter);
