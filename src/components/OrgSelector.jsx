@@ -19,7 +19,7 @@ export default function OrgSelector({ currentOrg, setCurrentOrg, size = 'medium'
   const { enqueueSnackbar } = useSnackbar();
 
   // ✅ Fixed: Add API base URL
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform.onrender.com/api';
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform-t49h.onrender.com';
 
   const fetchOrganizations = useCallback(async () => {
     setLoading(true);
@@ -113,3 +113,4 @@ OrgSelector.propTypes = {
   setCurrentOrg: PropTypes.func.isRequired,
   size: PropTypes.oneOf(['small', 'medium'])
 };
+
