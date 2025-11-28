@@ -40,7 +40,7 @@ export default function CreateAssessment({ organizationId }) {
   const navigate = useNavigate();
 
   // ✅ Fixed: Add API base URL
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform.onrender.com/api';
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform-t49h.onrender.com';
 
   const addQuestion = () => {
     setQuestions([...questions, { id: Date.now(), text: '', type: 'text', options: [], required: true }]);
@@ -336,3 +336,4 @@ CreateAssessment.propTypes = {
 CreateAssessment.defaultProps = {
   organizationId: ''
 };
+
