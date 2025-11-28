@@ -9,13 +9,20 @@ import {
   LinearProgress,
   useMediaQuery,
   useTheme,
-  IconButton
+  IconButton,
+  Button,
+  Alert,
+  Chip
 } from '@mui/material';
 import { 
   Assessment as AssessmentIcon,
   People as PeopleIcon,
   Business as BusinessIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  Warning as WarningIcon,
+  Dashboard as DashboardIcon,
+  OnlinePrediction as OnlineIcon,
+  OfflineBolt as OfflineIcon
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useSnackbar } from 'notistack';
@@ -31,8 +38,32 @@ const ChartLoader = () => (
   </Box>
 );
 
+// Error Boundary for lazy components
+const ChartErrorBoundary = ({ children, componentName }) => {
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    const handleError = () => setHasError(true);
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
+
+  if (hasError) {
+    return (
+      <Box sx={{ p: 3, textAlign: 'center', color: 'text.secondary' }}>
+        <WarningIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
+        <Typography variant="body1">
+          Failed to load {componentName}
+        </Typography>
+      </Box>
+    );
+  }
+
+  return children;
+};
+
 // Memoized StatCard Component
-const StatCard = React.memo(({ title, value, icon, loading, trend }) => {
+const StatCard = React.memo(({ title, value, icon, loading, trend, subtitle }) => {
   const theme = useTheme();
   
   const trendColors = {
@@ -79,6 +110,11 @@ const StatCard = React.memo(({ title, value, icon, loading, trend }) => {
           <Typography variant="h4" fontWeight="bold" sx={{ minHeight: '2.5rem' }}>
             {displayValue}
           </Typography>
+          {subtitle && (
+            <Typography variant="caption" color="text.secondary">
+              {subtitle}
+            </Typography>
+          )}
         </Box>
         <Box sx={{ 
           display: 'flex', 
@@ -98,48 +134,206 @@ const StatCard = React.memo(({ title, value, icon, loading, trend }) => {
 // Permission Denied Component
 const PermissionDenied = React.memo(() => (
   <Box sx={{ p: 3, textAlign: 'center' }}>
-    <Typography variant="h6" color="error" gutterBottom>
+    <WarningIcon sx={{ fontSize: 64, color: 'warning.main', mb: 2 }} />
+    <Typography variant="h5" color="warning.main" gutterBottom>
       Access Denied
     </Typography>
-    <Typography variant="body1" color="text.secondary">
+    <Typography variant="body1" color="text.secondary" paragraph>
       You don't have permission to access the admin dashboard.
     </Typography>
+    <Button 
+      variant="contained" 
+      onClick={() => window.location.href = '/'}
+      startIcon={<DashboardIcon />}
+    >
+      Return to Home
+    </Button>
   </Box>
 ));
+
+// API Configuration based on documentation
+const API_CONFIG = {
+  baseURL: 'https://assesslyplatform-t49h.onrender.com/api/v1',
+  endpoints: {
+    // Health endpoints
+    health: '/health',
+    
+    // Admin statistics endpoints
+    adminStats: '/admin/stats',
+    adminAssessments: '/admin/assessments',
+    
+    // User endpoints
+    userProfile: '/users/profile',
+    
+    // Assessment endpoints
+    assessments: '/assessments',
+    
+    // Organization endpoints
+    organizations: '/organizations'
+  },
+  timeout: 10000,
+  rateLimit: {
+    auth: 10,    // 10 requests per minute for auth
+    other: 100   // 100 requests per minute for other endpoints
+  }
+};
+
+// Mock data for development and fallback
+const MOCK_DATA = {
+  stats: {
+    totalAssessments: 47,
+    activeUsers: 156,
+    totalOrganizations: 12,
+    completedAssessments: 324,
+    pendingAssessments: 23,
+    totalRevenue: 12500
+  },
+  assessments: [
+    { 
+      id: 1, 
+      title: 'React Skills Assessment', 
+      completions: 45, 
+      createdAt: '2024-01-15T00:00:00.000Z',
+      status: 'active',
+      organization: 'Tech Corp'
+    },
+    { 
+      id: 2, 
+      title: 'JavaScript Fundamentals', 
+      completions: 89, 
+      createdAt: '2024-01-14T00:00:00.000Z',
+      status: 'active',
+      organization: 'Dev Academy'
+    },
+    { 
+      id: 3, 
+      title: 'Node.js Backend Test', 
+      completions: 23, 
+      createdAt: '2024-01-13T00:00:00.000Z',
+      status: 'active',
+      organization: 'Startup Inc'
+    }
+  ]
+};
+
+// API Service functions
+const apiService = {
+  async request(endpoint, options = {}) {
+    const url = `${API_CONFIG.baseURL}${endpoint}`;
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    
+    const config = {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        ...options.headers
+      },
+      ...options
+    };
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.timeout);
+      config.signal = controller.signal;
+
+      const response = await fetch(url, config);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Handle API response format (success boolean field)
+      if (data.success === false) {
+        throw new Error(data.message || 'API request failed');
+      }
+
+      return data.data || data; // Return data field or entire response
+
+    } catch (error) {
+      console.error(`API request failed for ${endpoint}:`, error);
+      throw error;
+    }
+  },
+
+  async getHealth() {
+    return this.request(API_CONFIG.endpoints.health);
+  },
+
+  async getAdminStats() {
+    return this.request(API_CONFIG.endpoints.adminStats);
+  },
+
+  async getAdminAssessments() {
+    return this.request(API_CONFIG.endpoints.adminAssessments);
+  },
+
+  async getUserProfile() {
+    return this.request(API_CONFIG.endpoints.userProfile);
+  }
+};
 
 export default function AdminDashboard() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { claims, isAuthenticated } = useAuth(); // Added isAuthenticated
+  const { claims, isAuthenticated, user } = useAuth();
   const { enqueueSnackbar } = useSnackbar();
   
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({
-    assessments: 0,
+    totalAssessments: 0,
     activeUsers: 0,
-    organizations: 0,
-    completions: 0
+    totalOrganizations: 0,
+    completedAssessments: 0,
+    pendingAssessments: 0,
+    totalRevenue: 0
   });
   const [assessments, setAssessments] = useState([]);
+  const [apiStatus, setApiStatus] = useState('checking');
+  const [retryCount, setRetryCount] = useState(0);
 
-  // FIXED: Better token handling and admin check
-  const token = useMemo(() => {
+  // Enhanced admin check based on API user role
+  const isAdmin = useMemo(() => {
+    const userRole = user?.role || claims?.role || localStorage.getItem('userRole');
+    const userEmail = user?.email || localStorage.getItem('userEmail');
+    
+    const adminCheck = (
+      userRole === 'admin' || 
+      userRole === 'administrator' ||
+      userEmail === 'admin@assessly.com'
+    );
+
+    console.log('🔐 Admin Verification:', {
+      userRole,
+      userEmail,
+      isAuthenticated,
+      isAdmin: adminCheck,
+      userData: user
+    });
+
+    return adminCheck && isAuthenticated;
+  }, [claims, user, isAuthenticated]);
+
+  // Check API health
+  const checkApiHealth = useCallback(async () => {
     try {
-      return localStorage.getItem('token');
+      await apiService.getHealth();
+      setApiStatus('online');
+      return true;
     } catch (error) {
-      console.error('Error accessing localStorage:', error);
-      return null;
+      console.warn('API health check failed:', error);
+      setApiStatus('offline');
+      return false;
     }
   }, []);
 
-  const isAdmin = useMemo(() => {
-    return claims?.role === 'admin' && isAuthenticated;
-  }, [claims, isAuthenticated]);
-
+  // Enhanced data fetching compliant with API documentation
   const fetchDashboardData = useCallback(async (isRefresh = false) => {
-    // Don't fetch if not admin or no token
-    if (!isAdmin || !token) {
+    if (!isAdmin) {
       setLoading(false);
       return;
     }
@@ -149,83 +343,88 @@ export default function AdminDashboard() {
     } else {
       setLoading(true);
     }
+
+    const useMockData = process.env.NODE_ENV === 'development' || apiStatus === 'offline';
     
     try {
-      // FIXED: Added timeout and better error handling
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      // Use mock data in development or if API is offline after retries
+      if (useMockData && retryCount > 1) {
+        console.log('🛠️ Using mock data (development/fallback mode)');
+        setStats(MOCK_DATA.stats);
+        setAssessments(MOCK_DATA.assessments);
+        setApiStatus('mock');
+        return;
+      }
 
-      const [statsResponse, assessmentsResponse] = await Promise.all([
-        fetch('/api/admin/stats', {
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          signal: controller.signal
-        }),
-        fetch('/api/admin/assessments', {
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          signal: controller.signal
-        })
+      // Fetch actual data from API
+      const [statsData, assessmentsData] = await Promise.all([
+        apiService.getAdminStats(),
+        apiService.getAdminAssessments()
       ]);
 
-      clearTimeout(timeoutId);
+      // Transform API data to match our component expectations
+      setStats({
+        totalAssessments: statsData.totalAssessments || statsData.assessments || 0,
+        activeUsers: statsData.activeUsers || statsData.users || 0,
+        totalOrganizations: statsData.totalOrganizations || statsData.organizations || 0,
+        completedAssessments: statsData.completedAssessments || statsData.completions || 0,
+        pendingAssessments: statsData.pendingAssessments || 0,
+        totalRevenue: statsData.totalRevenue || 0
+      });
 
-      // Handle stats response
-      if (!statsResponse.ok) {
-        const errorText = await statsResponse.text();
-        let errorMessage = 'Failed to fetch stats';
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          errorMessage = errorText || errorMessage;
-        }
-        throw new Error(errorMessage);
-      }
-      const statsData = await statsResponse.json();
-      setStats(statsData);
+      setAssessments(assessmentsData || []);
+      setApiStatus('online');
+      setRetryCount(0);
 
-      // Handle assessments response
-      if (!assessmentsResponse.ok) {
-        const errorText = await assessmentsResponse.text();
-        let errorMessage = 'Failed to fetch assessments';
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          errorMessage = errorText || errorMessage;
-        }
-        throw new Error(errorMessage);
+      if (isRefresh) {
+        enqueueSnackbar('Dashboard updated successfully', { 
+          variant: 'success',
+          autoHideDuration: 2000,
+        });
       }
-      const assessmentsData = await assessmentsResponse.json();
-      setAssessments(assessmentsData);
 
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      
-      // FIXED: Better error messages
+      console.error('❌ Dashboard data fetch failed:', error);
+      setRetryCount(prev => prev + 1);
+
+      // Enhanced error handling with specific API error messages
       let userMessage = 'Failed to load dashboard data';
+      
       if (error.name === 'AbortError') {
-        userMessage = 'Request timeout. Please try again.';
-      } else if (error.message.includes('Authentication')) {
-        userMessage = 'Authentication failed. Please login again.';
+        userMessage = 'Request timeout - API server is not responding';
+      } else if (error.message.includes('401')) {
+        userMessage = 'Authentication failed - please login again';
+        setTimeout(() => window.location.href = '/auth?tab=login', 2000);
+      } else if (error.message.includes('403')) {
+        userMessage = 'Access denied - admin privileges required';
+      } else if (error.message.includes('404')) {
+        userMessage = 'Admin endpoints not found - check API version';
+      } else if (error.message.includes('429')) {
+        userMessage = 'Rate limit exceeded - please wait a moment';
+      } else if (error.message.includes('500')) {
+        userMessage = 'Server error - please try again later';
       } else {
         userMessage = error.message || userMessage;
       }
 
       enqueueSnackbar(userMessage, { 
         variant: 'error',
-        autoHideDuration: 4000,
+        autoHideDuration: 5000,
       });
+
+      // Fallback to mock data in development
+      if (process.env.NODE_ENV === 'development') {
+        setStats(MOCK_DATA.stats);
+        setAssessments(MOCK_DATA.assessments);
+        setApiStatus('mock');
+      } else {
+        setApiStatus('offline');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [token, isAdmin, enqueueSnackbar]);
+  }, [isAdmin, enqueueSnackbar, apiStatus, retryCount]);
 
   const handleRefresh = useCallback(() => {
     if (!loading) {
@@ -233,93 +432,205 @@ export default function AdminDashboard() {
     }
   }, [fetchDashboardData, loading]);
 
-  // FIXED: Better useEffect with cleanup
+  const handleRetry = useCallback(() => {
+    setRetryCount(0);
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  // Initialize dashboard with API compliance
   useEffect(() => {
     let mounted = true;
 
-    if (isAdmin && token) {
-      if (mounted) {
-        fetchDashboardData();
+    const initializeDashboard = async () => {
+      if (!mounted) return;
+
+      if (!isAdmin) {
+        setLoading(false);
+        return;
       }
-    } else if (mounted) {
-      setLoading(false);
-    }
+
+      console.log('🚀 Initializing Admin Dashboard with API:', API_CONFIG.baseURL);
+
+      // Check API health first
+      const apiHealthy = await checkApiHealth();
+      
+      if (mounted) {
+        if (apiHealthy) {
+          await fetchDashboardData();
+        } else {
+          // If API is down, use mock data in development
+          if (process.env.NODE_ENV === 'development') {
+            setStats(MOCK_DATA.stats);
+            setAssessments(MOCK_DATA.assessments);
+            setApiStatus('mock');
+            enqueueSnackbar('Development mode: Using demo data', { 
+              variant: 'info',
+            });
+          } else {
+            enqueueSnackbar('Cannot connect to API server', { 
+              variant: 'warning',
+            });
+          }
+          setLoading(false);
+        }
+      }
+    };
+
+    initializeDashboard();
 
     return () => {
       mounted = false;
     };
-  }, [isAdmin, token, fetchDashboardData]);
+  }, [isAdmin, fetchDashboardData, checkApiHealth, enqueueSnackbar]);
 
-  // Memoized stat cards data
+  // Debug info
+  useEffect(() => {
+    console.log('📊 Dashboard State:', {
+      isAdmin,
+      isAuthenticated,
+      loading,
+      refreshing,
+      apiStatus,
+      retryCount,
+      stats,
+      assessmentsCount: assessments.length,
+      apiBase: API_CONFIG.baseURL
+    });
+  }, [isAdmin, isAuthenticated, loading, refreshing, apiStatus, retryCount, stats, assessments]);
+
+  // Memoized stat cards data compliant with API response structure
   const statCards = useMemo(() => [
     {
       title: "Total Assessments",
-      value: stats.assessments,
+      value: stats.totalAssessments,
       icon: <AssessmentIcon />,
-      trend: "up"
+      trend: "up",
+      subtitle: apiStatus === 'mock' ? 'Demo Data' : 'Active assessments'
     },
     {
       title: "Active Users",
       value: stats.activeUsers,
       icon: <PeopleIcon />,
-      trend: "up"
+      trend: "up",
+      subtitle: apiStatus === 'mock' ? 'Demo Data' : 'Currently active'
     },
     {
       title: "Organizations",
-      value: stats.organizations,
+      value: stats.totalOrganizations,
       icon: <BusinessIcon />,
-      trend: "neutral"
+      trend: "neutral",
+      subtitle: apiStatus === 'mock' ? 'Demo Data' : 'Registered orgs'
     },
     {
       title: "Completions",
-      value: stats.completions,
+      value: stats.completedAssessments,
       icon: <AssessmentIcon />,
-      trend: "up"
+      trend: "up",
+      subtitle: apiStatus === 'mock' ? 'Demo Data' : 'Total completed'
     }
-  ], [stats]);
+  ], [stats, apiStatus]);
 
-  // FIXED: Show loading state initially
+  // Show loading state
   if (loading && !refreshing) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: 'column',
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '50vh',
+        gap: 2
+      }}>
         <CircularProgress size={60} />
+        <Typography variant="body1" color="text.secondary">
+          Loading admin dashboard...
+        </Typography>
+        <Chip 
+          icon={<OnlineIcon />} 
+          label="Connecting to API..." 
+          color="primary" 
+          variant="outlined" 
+        />
       </Box>
     );
   }
 
+  // Permission check
   if (!isAdmin) {
     return <PermissionDenied />;
   }
 
   return (
     <Box sx={{ p: isMobile ? 1 : 3 }}>
-      {/* Header */}
+      {/* Header with API status */}
       <Box sx={{ 
         display: 'flex', 
         justifyContent: 'space-between',
-        alignItems: 'center',
-        mb: 3
+        alignItems: 'flex-start',
+        mb: 3,
+        flexDirection: isMobile ? 'column' : 'row',
+        gap: isMobile ? 2 : 0
       }}>
-        <Typography variant="h4" component="h1" fontWeight="bold">
-          Admin Dashboard
-        </Typography>
-        <IconButton 
-          onClick={handleRefresh}
-          aria-label="refresh dashboard data"
-          disabled={loading || refreshing}
-          color="primary"
-          size="large"
-        >
-          <RefreshIcon />
-        </IconButton>
+        <Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+            <Typography variant="h4" component="h1" fontWeight="bold">
+              Admin Dashboard
+            </Typography>
+            <Chip 
+              icon={apiStatus === 'online' ? <OnlineIcon /> : <OfflineIcon />} 
+              label={apiStatus === 'online' ? 'API Online' : 'API Offline'} 
+              color={apiStatus === 'online' ? 'success' : 'warning'} 
+              size="small" 
+            />
+          </Box>
+          <Typography variant="body1" color="text.secondary">
+            Welcome back, {user?.name || 'Admin'} • {user?.email || 'admin@assessly.com'}
+          </Typography>
+        </Box>
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {apiStatus === 'offline' && (
+            <Button 
+              variant="outlined" 
+              color="warning" 
+              onClick={handleRetry}
+              size="small"
+              startIcon={<RefreshIcon />}
+            >
+              Retry Connection
+            </Button>
+          )}
+          <IconButton 
+            onClick={handleRefresh}
+            aria-label="refresh dashboard data"
+            disabled={loading || refreshing}
+            color="primary"
+            size="large"
+          >
+            <RefreshIcon />
+          </IconButton>
+        </Box>
       </Box>
+
+      {/* Status Alerts */}
+      {apiStatus === 'mock' && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <strong>Development Mode:</strong> Using demonstration data. API server is unavailable or endpoints are not implemented.
+        </Alert>
+      )}
+      
+      {apiStatus === 'offline' && retryCount > 0 && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          Cannot connect to Assessly Platform API. Please check your connection and ensure the API server is running.
+        </Alert>
+      )}
 
       {/* Loading Indicator */}
       {(loading || refreshing) && <LinearProgress sx={{ mb: 3 }} />}
 
       {/* Stat Cards Grid */}
       <Grid container spacing={isMobile ? 1 : 3} sx={{ mb: 3 }}>
-        {statCards.map((card, index) => (
+        {statCards.map((card) => (
           <Grid item xs={12} sm={6} md={3} key={card.title}>
             <StatCard 
               title={card.title}
@@ -327,6 +638,7 @@ export default function AdminDashboard() {
               icon={card.icon}
               loading={loading || refreshing}
               trend={card.trend}
+              subtitle={card.subtitle}
             />
           </Grid>
         ))}
@@ -342,11 +654,16 @@ export default function AdminDashboard() {
             minHeight: 400
           }}>
             <Typography variant="h6" gutterBottom>
-              Recent Assessments Activity
+              Assessment Activity
             </Typography>
-            <React.Suspense fallback={<ChartLoader />}>
-              <AssessmentChart data={assessments} loading={loading || refreshing} />
-            </React.Suspense>
+            <ChartErrorBoundary componentName="Assessment Chart">
+              <React.Suspense fallback={<ChartLoader />}>
+                <AssessmentChart 
+                  data={assessments} 
+                  loading={loading || refreshing} 
+                />
+              </React.Suspense>
+            </ChartErrorBoundary>
           </Paper>
         </Grid>
         
@@ -358,14 +675,23 @@ export default function AdminDashboard() {
             minHeight: 400
           }}>
             <Typography variant="h6" gutterBottom>
-              User Activity Feed
+              Recent Activity
             </Typography>
-            <React.Suspense fallback={<ChartLoader />}>
-              <UserActivityWidget />
-            </React.Suspense>
+            <ChartErrorBoundary componentName="Activity Widget">
+              <React.Suspense fallback={<ChartLoader />}>
+                <UserActivityWidget />
+              </React.Suspense>
+            </ChartErrorBoundary>
           </Paper>
         </Grid>
       </Grid>
+
+      {/* API Info Footer */}
+      <Box sx={{ mt: 4, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+        <Typography variant="caption" color="text.secondary">
+          API: {API_CONFIG.baseURL} • Status: {apiStatus} • Rate Limit: {API_CONFIG.rateLimit.other} req/min
+        </Typography>
+      </Box>
     </Box>
   );
-}
+  }
