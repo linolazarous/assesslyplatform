@@ -30,8 +30,8 @@ import { fileURLToPath } from "url";
 import routes from "./routes/index.js";               // router aggregator
 import { seedDatabase } from "./utils/seedDatabase.js"; // database seeding
 import { setupSwagger } from "./config/swagger.js";    // swagger config
-import healthRoutes from './routes/health.js';
-app.use('/api/v1/health', healthRoutes);
+
+// ✅ REMOVED: import healthRoutes from './routes/health.js';
 
 dotenv.config();
 
@@ -238,6 +238,8 @@ app.get("/api/status", (req, res) => {
 // ========== Swagger & App Routes ==========
 setupSwagger(app);
 app.use("/api/v1", routes);
+
+// ✅ REMOVED: app.use('/api/v1/health', healthRoutes);
 
 // ========== 404 & Error Handling ==========
 app.use((req, res) => {
