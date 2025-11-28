@@ -1,3 +1,4 @@
+// src/components/ui/LoadingScreen.jsx
 import React from 'react';
 import { 
   Box, 
@@ -9,10 +10,32 @@ import {
 } from '@mui/material';
 import PropTypes from 'prop-types';
 
+// Global styles - only inject once
+const globalStyles = `
+  @keyframes pulse {
+    0%, 80%, 100% {
+      transform: scale(0.8);
+      opacity: 0.5;
+    }
+    40% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+`;
+
+// Inject global styles once
+if (typeof document !== 'undefined' && !document.querySelector('#loading-screen-styles')) {
+  const styleSheet = document.createElement('style');
+  styleSheet.id = 'loading-screen-styles';
+  styleSheet.textContent = globalStyles;
+  document.head.appendChild(styleSheet);
+}
+
 /**
- * Production-ready loading screen with accessibility, performance, and UX enhancements
+ * Optimized loading screen component
  */
-const LoadingScreen = ({ 
+const LoadingScreen = React.memo(({ 
   fullScreen = false, 
   message = 'Loading...',
   size = 'medium',
@@ -27,7 +50,6 @@ const LoadingScreen = ({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [show, setShow] = React.useState(delay === 0);
 
-  // Delay showing loader to prevent flash for quick loads
   React.useEffect(() => {
     if (delay > 0) {
       const timer = setTimeout(() => setShow(true), delay);
@@ -35,7 +57,6 @@ const LoadingScreen = ({
     }
   }, [delay]);
 
-  // Size mapping for consistent sizing
   const sizeMap = {
     small: { progress: 24, typography: 'body2' },
     medium: { progress: 40, typography: 'body1' },
@@ -44,7 +65,6 @@ const LoadingScreen = ({
 
   const currentSize = sizeMap[size] || sizeMap.medium;
 
-  // Don't render if delayed and not yet shown
   if (!show && delay > 0) {
     return null;
   }
@@ -76,27 +96,17 @@ const LoadingScreen = ({
         aria-live="polite"
         aria-label={message}
       >
-        {/* Loading Spinner */}
-        <Box
-          sx={{
-            position: 'relative',
-            display: 'inline-flex',
-            mb: isMobile ? 1.5 : 2
-          }}
-        >
+        <Box sx={{ position: 'relative', display: 'inline-flex', mb: isMobile ? 1.5 : 2 }}>
           <CircularProgress 
             size={currentSize.progress}
             variant={progressVariant}
             value={progressValue}
             sx={{
               color: 'primary.main',
-              ...(progressVariant === 'determinate' && {
-                color: 'grey.300'
-              })
+              ...(progressVariant === 'determinate' && { color: 'grey.300' })
             }}
           />
           
-          {/* Determinate progress value display */}
           {progressVariant === 'determinate' && (
             <Box
               sx={{
@@ -110,19 +120,13 @@ const LoadingScreen = ({
                 justifyContent: 'center',
               }}
             >
-              <Typography
-                variant="caption"
-                component="div"
-                color="text.secondary"
-                sx={{ fontWeight: 'medium' }}
-              >
+              <Typography variant="caption" component="div" color="text.secondary" sx={{ fontWeight: 'medium' }}>
                 {`${Math.round(progressValue || 0)}%`}
               </Typography>
             </Box>
           )}
         </Box>
 
-        {/* Loading Message */}
         <Typography 
           variant={currentSize.typography}
           component="p"
@@ -136,16 +140,8 @@ const LoadingScreen = ({
           {message}
         </Typography>
 
-        {/* Optional loading dots animation */}
         {progressVariant === 'indeterminate' && (
-          <Box 
-            sx={{ 
-              display: 'flex', 
-              gap: 0.5, 
-              mt: 1,
-              opacity: 0.7
-            }}
-          >
+          <Box sx={{ display: 'flex', gap: 0.5, mt: 1, opacity: 0.7 }}>
             {[0, 1, 2].map((dot) => (
               <Box
                 key={dot}
@@ -164,65 +160,20 @@ const LoadingScreen = ({
       </Box>
     </Fade>
   );
-};
+});
 
 LoadingScreen.propTypes = {
-  /** Full screen mode - covers entire viewport */
   fullScreen: PropTypes.bool,
-  
-  /** Loading message to display */
   message: PropTypes.string,
-  
-  /** Size of the loading indicator */
   size: PropTypes.oneOf(['small', 'medium', 'large']),
-  
-  /** Show as overlay with backdrop */
   overlay: PropTypes.bool,
-  
-  /** Delay before showing loader (ms) - prevents flash for quick loads */
   delay: PropTypes.number,
-  
-  /** Progress variant - indeterminate or determinate */
   progressVariant: PropTypes.oneOf(['indeterminate', 'determinate']),
-  
-  /** Progress value for determinate variant (0-100) */
   progressValue: PropTypes.number,
-  
-  /** Additional CSS class */
   className: PropTypes.string,
-  
-  /** Additional styles */
   sx: PropTypes.object
 };
 
-LoadingScreen.defaultProps = {
-  fullScreen: false,
-  message: 'Loading...',
-  size: 'medium',
-  overlay: false,
-  delay: 0,
-  progressVariant: 'indeterminate'
-};
+LoadingScreen.displayName = 'LoadingScreen';
 
-// Add global styles for animations
-const globalStyles = `
-  @keyframes pulse {
-    0%, 80%, 100% {
-      transform: scale(0.8);
-      opacity: 0.5;
-    }
-    40% {
-      transform: scale(1);
-      opacity: 1;
-    }
-  }
-`;
-
-// Inject global styles
-if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement('style');
-  styleSheet.textContent = globalStyles;
-  document.head.appendChild(styleSheet);
-}
-
-export default React.memo(LoadingScreen);
+export default LoadingScreen;
