@@ -30,7 +30,7 @@ export default function TakeAssessment() {
   const timerRef = useRef(null);
 
   // ✅ Fixed: Add API base URL
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform.onrender.com/api';
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform-t49h.onrender.com';
 
   const handleSubmit = useCallback(async () => {
     if (submitting || !assessment) return;
@@ -306,3 +306,4 @@ export default function TakeAssessment() {
 TakeAssessment.propTypes = {
   // Component uses useParams, no external props needed
 };
+
