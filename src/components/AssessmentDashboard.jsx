@@ -32,7 +32,7 @@ export default function AssessmentDashboard() {
   const { enqueueSnackbar } = useSnackbar();
 
   // ✅ Fixed: Use correct API base URL from environment
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform.onrender.com/api';
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform-t49h.onrender.com';
 
   // ✅ Fixed: UseCallback with proper API URL
   const fetchAssessments = useCallback(async () => {
@@ -242,3 +242,4 @@ export default function AssessmentDashboard() {
 AssessmentDashboard.propTypes = {
   // no props yet, reserved for parent component usage
 };
+
