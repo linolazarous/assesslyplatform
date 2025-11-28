@@ -42,7 +42,7 @@ export default function QuestionnaireBuilder({ organizationId }) {
   const navigate = useNavigate();
 
   // ✅ Fixed: Add API base URL
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform.onrender.com/api';
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform-t49h.onrender.com';
 
   const addQuestion = () => {
     if (questions.length >= 50) {
@@ -383,3 +383,4 @@ QuestionnaireBuilder.propTypes = {
 QuestionnaireBuilder.defaultProps = {
   organizationId: ''
 };
+
