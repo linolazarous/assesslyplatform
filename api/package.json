@@ -15,7 +15,8 @@
     "seed:custom": "node scripts/seed.js --email custom@admin.com --name \"Custom Admin\"",
     "seed:help": "node scripts/seed.js --help",
     "check-deps": "npm list cors",
-    "docs": "node scripts/generateDocs.js"
+    "docs": "node scripts/generateDocs.js",
+    "create-indexes": "node api/scripts/createIndexes.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -48,9 +49,6 @@
     "eslint": "^8.57.0",
     "nodemon": "^3.1.7"
   },
-  "scripts": {
-  "create-indexes": "node api/scripts/createIndexes.js"
-  }
   "engines": {
     "node": ">=18.0.0"
   },
@@ -75,6 +73,5 @@
     "mustache",
     "templates"
   ],
-  "author": "Assessly Platform Team",
-  "license": "MIT"
+  "author": "Assessly Platform Team"
 }
