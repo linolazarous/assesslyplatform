@@ -13,15 +13,6 @@ const router = express.Router();
 const API_VERSION = process.env.npm_package_version || "1.0.0";
 const startTime = Date.now();
 
-// Google OAuth router
-let googleAuthRouter = null;
-try {
-  const g = await import("./auth/google.js").catch(() => null);
-  googleAuthRouter = g?.default || null;
-} catch (err) {
-  console.warn("⚠️ Google OAuth router not available:", err.message);
-}
-
 /**
  * =====================================================
  * 🩺 Health & Diagnostic Endpoints
@@ -110,8 +101,7 @@ router.get("/features", (req, res) => {
  * 📦 Mount API Routers
  * =====================================================
  */
-router.use("/auth", authRouter);
-if (googleAuthRouter) router.use("/auth", googleAuthRouter);
+router.use("/auth", authRouter); // This includes both email/password AND Google OAuth
 
 router.use("/users", usersRouter);
 router.use("/organizations", organizationsRouter);
