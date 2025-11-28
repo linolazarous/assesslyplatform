@@ -48,6 +48,9 @@
     "eslint": "^8.57.0",
     "nodemon": "^3.1.7"
   },
+  "scripts": {
+  "create-indexes": "node api/scripts/createIndexes.js"
+  }
   "engines": {
     "node": ">=18.0.0"
   },
