@@ -29,6 +29,8 @@ import {
 import { useSnackbar } from "notistack";
 import PropTypes from "prop-types";
 import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import config from "../config/env";
 
 export default function Auth({ disableSignup = false }) {
   const [formData, setFormData] = useState({
@@ -41,29 +43,18 @@ export default function Auth({ disableSignup = false }) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
-  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
 
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
   const location = useLocation();
-
-  // ✅ Production-ready API configuration
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform-t49h.onrender.com';
-  const API_V1_BASE = API_BASE.replace(/\/+$/, '') + '/api/v1';
+  const { login, register, isAuthenticated } = useAuth();
 
   // Redirect if already authenticated
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
+    if (isAuthenticated) {
       navigate("/dashboard", { replace: true });
     }
-  }, [navigate]);
-
-  // Clear errors when switching between login/signup
-  useEffect(() => {
-    setErrors({});
-    setHasAttemptedSubmit(false);
-  }, [isLogin]);
+  }, [isAuthenticated, navigate]);
 
   const handleInputChange = (field) => (event) => {
     setFormData(prev => ({
@@ -71,7 +62,6 @@ export default function Auth({ disableSignup = false }) {
       [field]: event.target.value
     }));
     
-    // Clear field error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({
         ...prev,
@@ -101,114 +91,51 @@ export default function Auth({ disableSignup = false }) {
       newErrors.password = "Password is required";
     } else if (formData.password.length < 6) {
       newErrors.password = "Password must be at least 6 characters";
-    } else if (!/(?=.*[a-zA-Z])(?=.*[0-9])/.test(formData.password)) {
-      newErrors.password = "Password must contain letters and numbers";
     }
 
     setErrors(newErrors);
-    setHasAttemptedSubmit(true);
-    
     return Object.keys(newErrors).length === 0;
   };
 
   const handleAuth = async (event) => {
-    if (event) {
-      event.preventDefault();
-    }
-
+    if (event) event.preventDefault();
     if (!validateForm()) return;
     
     setLoading(true);
 
     try {
-      const endpoint = isLogin 
-        ? `${API_V1_BASE}/auth/login`
-        : `${API_V1_BASE}/auth/register`;
-
-      const payload = isLogin 
-        ? { email: formData.email, password: formData.password }
-        : { 
-            name: formData.name.trim(),
-            email: formData.email,
-            password: formData.password,
-            role: formData.role
-          };
-
-      console.log('🚀 Auth Request:', { endpoint, payload });
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-      console.log('📨 Auth Response:', data);
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || 
-          data.error?.message || 
-          (isLogin ? "Login failed" : "Registration failed") ||
-          `Server error: ${response.status}`
-        );
+      let result;
+      
+      if (isLogin) {
+        result = await login(formData.email, formData.password);
+      } else {
+        result = await register({
+          name: formData.name.trim(),
+          email: formData.email,
+          password: formData.password,
+          role: formData.role
+        });
       }
 
-      if (isLogin) {
-        // Handle successful login
-        if (data.token) {
-          localStorage.setItem("token", data.token);
-          localStorage.setItem("user", JSON.stringify(data.user || { email: formData.email }));
-          
-          enqueueSnackbar("Login successful! Redirecting...", { 
-            variant: "success",
-            autoHideDuration: 2000,
-          });
-
-          // Redirect to intended page or dashboard
+      if (result.ok) {
+        if (isLogin) {
+          enqueueSnackbar("Login successful!", { variant: "success" });
           const from = location.state?.from?.pathname || "/dashboard";
-          setTimeout(() => navigate(from, { replace: true }), 1500);
+          navigate(from, { replace: true });
         } else {
-          throw new Error("No authentication token received");
+          enqueueSnackbar("Account created! Please sign in.", { variant: "success" });
+          setIsLogin(true);
+          setFormData(prev => ({ ...prev, password: "" }));
         }
       } else {
-        // Handle successful registration
-        enqueueSnackbar("Account created successfully! Please sign in.", {
-          variant: "success",
-          autoHideDuration: 4000,
-        });
-        
-        // Switch to login mode and clear form
-        setIsLogin(true);
-        setFormData(prev => ({
-          ...prev,
-          password: "" // Clear password only
-        }));
+        throw new Error(result.error);
       }
 
     } catch (error) {
-      console.error("🔴 Auth error:", error);
-      
-      let userMessage = error.message;
-      
-      // Handle specific error cases
-      if (error.message.includes("Network") || error.message.includes("Failed to fetch")) {
-        userMessage = "Network error. Please check your connection and try again.";
-      } else if (error.message.includes("404")) {
-        userMessage = "Service temporarily unavailable. Please try again later.";
-      } else if (error.message.includes("401")) {
-        userMessage = "Invalid email or password. Please try again.";
-      } else if (error.message.includes("409")) {
-        userMessage = "An account with this email already exists.";
-      }
-
-      enqueueSnackbar(userMessage, { 
+      console.error("Auth error:", error);
+      enqueueSnackbar(error.message, { 
         variant: "error", 
-        autoHideDuration: 6000,
-        persist: userMessage.includes("temporarily unavailable")
+        autoHideDuration: 6000 
       });
     } finally {
       setLoading(false);
@@ -216,8 +143,7 @@ export default function Auth({ disableSignup = false }) {
   };
 
   const handleGoogleLogin = () => {
-    const googleAuthUrl = `${API_BASE.replace(/\/+$/, '')}/auth/google`;
-    console.log('🔗 Redirecting to Google OAuth:', googleAuthUrl);
+    const googleAuthUrl = `${config.API_BASE_URL.replace(/\/+$/, '')}/auth/google`;
     window.location.href = googleAuthUrl;
   };
 
@@ -225,7 +151,7 @@ export default function Auth({ disableSignup = false }) {
     setIsLogin(!isLogin);
     setFormData(prev => ({
       ...prev,
-      password: "" // Clear password when toggling
+      password: ""
     }));
   };
 
@@ -239,16 +165,14 @@ export default function Auth({ disableSignup = false }) {
   };
 
   return (
-    <Box 
-      sx={{ 
-        display: "flex", 
-        justifyContent: "center", 
-        alignItems: "center",
-        minHeight: "100vh",
-        p: 2,
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-      }}
-    >
+    <Box sx={{ 
+      display: "flex", 
+      justifyContent: "center", 
+      alignItems: "center",
+      minHeight: "100vh",
+      p: 2,
+      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    }}>
       <Fade in timeout={800}>
         <Paper 
           elevation={8} 
@@ -257,14 +181,11 @@ export default function Auth({ disableSignup = false }) {
             maxWidth: 450, 
             width: "100%",
             borderRadius: 3,
-            backdropFilter: "blur(10px)",
-            backgroundColor: "rgba(255, 255, 255, 0.95)",
           }}
           component="form"
           onSubmit={handleAuth}
           noValidate
         >
-          {/* Header */}
           <Box sx={{ textAlign: "center", mb: 3 }}>
             <AccountCircle sx={{ fontSize: 64, color: "primary.main", mb: 1 }} />
             <Typography variant="h4" component="h1" fontWeight="bold" gutterBottom>
@@ -275,7 +196,6 @@ export default function Auth({ disableSignup = false }) {
             </Typography>
           </Box>
 
-          {/* Name Field - Only for Registration */}
           {!isLogin && (
             <TextField
               label="Full Name"
@@ -289,17 +209,9 @@ export default function Auth({ disableSignup = false }) {
               autoComplete="name"
               required
               disabled={loading}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Person color="action" />
-                  </InputAdornment>
-                ),
-              }}
             />
           )}
 
-          {/* Email Field */}
           <TextField
             label="Email Address"
             type="email"
@@ -312,16 +224,8 @@ export default function Auth({ disableSignup = false }) {
             autoComplete="email"
             required
             disabled={loading}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <AccountCircle color="action" />
-                </InputAdornment>
-              ),
-            }}
           />
 
-          {/* Password Field */}
           <TextField
             label="Password"
             type={showPassword ? "text" : "password"}
@@ -330,22 +234,16 @@ export default function Auth({ disableSignup = false }) {
             value={formData.password}
             onChange={handleInputChange('password')}
             error={!!errors.password}
-            helperText={errors.password || (isLogin ? "" : "Must be at least 6 characters with letters and numbers")}
+            helperText={errors.password}
             autoComplete={isLogin ? "current-password" : "new-password"}
             required
             disabled={loading}
             InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <VisibilityOff color="action" />
-                </InputAdornment>
-              ),
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton
                     onClick={() => setShowPassword(!showPassword)}
                     edge="end"
-                    aria-label="toggle password visibility"
                     disabled={loading}
                   >
                     {showPassword ? <VisibilityOff /> : <Visibility />}
@@ -355,7 +253,6 @@ export default function Auth({ disableSignup = false }) {
             }}
           />
 
-          {/* Role Selection - Only for Registration */}
           {!isLogin && !disableSignup && (
             <FormControl fullWidth margin="normal" disabled={loading}>
               <InputLabel>Role</InputLabel>
@@ -376,7 +273,6 @@ export default function Auth({ disableSignup = false }) {
             </FormControl>
           )}
 
-          {/* Submit Button */}
           <Button
             type="submit"
             variant="contained"
@@ -384,42 +280,24 @@ export default function Auth({ disableSignup = false }) {
             fullWidth
             disabled={loading}
             size="large"
-            startIcon={
-              loading ? <CircularProgress size={20} color="inherit" /> : null
-            }
-            sx={{ 
-              mt: 3, 
-              py: 1.5,
-              fontSize: "1.1rem",
-              fontWeight: "bold",
-            }}
+            sx={{ mt: 3, py: 1.5 }}
           >
-            {loading ? "Please Wait..." : (isLogin ? "Sign In" : "Create Account")}
+            {loading ? <CircularProgress size={24} /> : (isLogin ? "Sign In" : "Create Account")}
           </Button>
 
-          {/* OAuth Divider */}
-          <Divider sx={{ my: 3 }}>
-            <Typography variant="body2" color="text.secondary">
-              OR CONTINUE WITH
-            </Typography>
-          </Divider>
+          <Divider sx={{ my: 3 }}>OR</Divider>
 
-          {/* Google OAuth Button */}
           <Button
             variant="outlined"
             fullWidth
             onClick={handleGoogleLogin}
             startIcon={<Google />}
             disabled={loading}
-            sx={{ 
-              mb: 2,
-              py: 1.5
-            }}
+            sx={{ mb: 2, py: 1.5 }}
           >
-            Google
+            Continue with Google
           </Button>
 
-          {/* Toggle Auth Mode */}
           {!disableSignup && (
             <Box sx={{ textAlign: "center", mt: 3 }}>
               <Typography variant="body1" color="text.secondary">
@@ -428,12 +306,7 @@ export default function Auth({ disableSignup = false }) {
                   color="primary"
                   onClick={toggleAuthMode}
                   disabled={loading}
-                  sx={{ 
-                    ml: 1,
-                    fontWeight: "bold",
-                    textTransform: 'none',
-                    fontSize: '1rem'
-                  }}
+                  sx={{ ml: 1 }}
                 >
                   {isLogin ? "Sign up" : "Sign in"}
                 </Button>
@@ -441,27 +314,9 @@ export default function Auth({ disableSignup = false }) {
             </Box>
           )}
 
-          {/* Additional Links */}
-          <Box sx={{ textAlign: "center", mt: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              <Link 
-                to="/forgot-password" 
-                style={{ 
-                  color: "inherit",
-                  textDecoration: "none",
-                  opacity: loading ? 0.5 : 1
-                }}
-                onClick={(e) => loading && e.preventDefault()}
-              >
-                Forgot your password?
-              </Link>
-            </Typography>
-          </Box>
-
-          {/* Demo Hint */}
-          {import.meta.env.DEV && (
+          {config.IS_DEVELOPMENT && (
             <Alert severity="info" sx={{ mt: 2 }}>
-              <strong>Development Mode:</strong> API Base: {API_V1_BASE}
+              <strong>Development Mode:</strong> API Base: {config.API_V1_BASE}
             </Alert>
           )}
         </Paper>
