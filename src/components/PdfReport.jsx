@@ -1,15 +1,9 @@
-// src/components/PdfReport.jsx
-import React, { useState, useCallback, lazy, Suspense } from 'react';
+// src/components/PdfReport.jsx (Advanced version)
+import React, { useState, useCallback } from 'react';
 import { Button, CircularProgress, Box, Alert } from '@mui/material';
 import { PictureAsPdf, ErrorOutline } from '@mui/icons-material';
 import PropTypes from 'prop-types';
 
-// Lazy load heavy PDF dependencies
-const PdfGenerator = lazy(() => import('./PdfGenerator'));
-
-/**
- * Production-ready PDF report component with error boundaries and optimizations
- */
 export default function PdfReport({ assessment, answers, responses }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
@@ -19,57 +13,107 @@ export default function PdfReport({ assessment, answers, responses }) {
     
     setIsGenerating(true);
     setError(null);
-
+    
     try {
-      // Validate inputs
+      // Validate assessment data
       if (!assessment) {
         throw new Error('No assessment data provided');
       }
 
-      // Dynamic import for PDF generation
+      // Dynamic imports to reduce initial bundle size
       const { jsPDF } = await import('jspdf');
-      await import('jspdf-autotable');
-
-      // Generate PDF
-      const pdfDoc = new jsPDF();
+      const autoTable = await import('jspdf-autotable');
       
-      // Simple PDF generation without heavy dependencies
-      pdfDoc.setFontSize(16);
-      pdfDoc.setTextColor(40, 53, 147);
-      pdfDoc.text(assessment.title || 'Assessment Report', 105, 20, { align: 'center' });
-
-      // Add basic info
-      pdfDoc.setFontSize(10);
-      pdfDoc.setTextColor(100);
-      pdfDoc.text(`Generated on: ${new Date().toLocaleDateString()}`, 15, 35);
-
-      // Add questions and answers
-      let yPosition = 50;
-      const questions = assessment.questions || [];
+      // Initialize PDF document
+      const doc = new jsPDF();
       
-      questions.forEach((question, index) => {
-        if (yPosition > 250) {
-          pdfDoc.addPage();
-          yPosition = 20;
+      // Title Section
+      doc.setFontSize(18);
+      doc.setTextColor(40, 53, 147);
+      doc.text(assessment.title || 'Assessment Report', 105, 20, { align: 'center' });
+
+      // Metadata
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 15, 30);
+      
+      let currentY = 35;
+      
+      // Description (if available)
+      if (assessment.description) {
+        doc.setFontSize(12);
+        doc.setTextColor(60);
+        const splitDesc = doc.splitTextToSize(assessment.description, 180);
+        doc.text(splitDesc, 15, currentY);
+        currentY += splitDesc.length * 5 + 10;
+      }
+
+      // Prepare table data
+      const tableData = (assessment.questions || []).map((q, i) => {
+        let answer = 'Not answered';
+        
+        if (Array.isArray(answers) && answers[i] !== undefined) {
+          answer = answers[i];
+        } else if (Array.isArray(responses) && responses[i]?.answer !== undefined) {
+          answer = responses[i].answer;
+        } else if (answers?.[i] !== undefined) {
+          answer = answers[i];
         }
-
-        const answer = getAnswer(index, answers, responses);
         
-        pdfDoc.setFontSize(12);
-        pdfDoc.setTextColor(0, 0, 0);
-        pdfDoc.text(`Q${index + 1}: ${question.text || 'No question text'}`, 15, yPosition);
+        if (Array.isArray(answer)) answer = answer.join(', ');
+        if (answer === null || answer === undefined || answer === '') answer = 'N/A';
         
-        pdfDoc.setFontSize(10);
-        pdfDoc.setTextColor(100);
-        pdfDoc.text(`Answer: ${answer}`, 20, yPosition + 7);
-        
-        yPosition += 20;
+        return [
+          `Q${i+1}`,
+          q.text || 'No question text',
+          String(answer).substring(0, 200)
+        ];
       });
 
-      // Save PDF
-      const fileName = `${(assessment.title || 'report').replace(/[^a-z0-9]/gi, '_')}_report.pdf`;
-      pdfDoc.save(fileName);
+      // Create table if there's data
+      if (tableData.length > 0) {
+        autoTable.default(doc, {
+          startY: currentY,
+          head: [['#', 'Question', 'Answer']],
+          body: tableData,
+          theme: 'grid',
+          headStyles: {
+            fillColor: [40, 53, 147],
+            textColor: 255,
+            fontStyle: 'bold'
+          },
+          columnStyles: {
+            0: { cellWidth: 15 },
+            1: { cellWidth: 80 },
+            2: { cellWidth: 95 }
+          },
+          styles: {
+            fontSize: 10,
+            cellPadding: 3,
+            overflow: 'linebreak'
+          },
+          didDrawPage: (data) => {
+            doc.setFontSize(8);
+            doc.setTextColor(150);
+            doc.text(
+              `Page ${data.pageNumber}`,
+              105,
+              doc.internal.pageSize.height - 10,
+              { align: 'center' }
+            );
+          }
+        });
+      } else {
+        // No questions message
+        doc.setFontSize(12);
+        doc.setTextColor(150);
+        doc.text('No questions available in this assessment', 15, currentY);
+      }
 
+      // Save the PDF
+      const fileName = `${(assessment.title || 'report').replace(/[^a-z0-9]/gi, '_')}_report.pdf`;
+      doc.save(fileName);
+      
     } catch (err) {
       console.error('PDF generation failed:', err);
       setError(err.message || 'Failed to generate PDF. Please try again.');
@@ -78,25 +122,6 @@ export default function PdfReport({ assessment, answers, responses }) {
     }
   }, [assessment, answers, responses, isGenerating]);
 
-  // Helper function to get answer
-  const getAnswer = (index, answers, responses) => {
-    let answer = 'Not answered';
-    
-    if (Array.isArray(answers) && answers[index] !== undefined) {
-      answer = answers[index];
-    } else if (Array.isArray(responses) && responses[index]?.answer !== undefined) {
-      answer = responses[index].answer;
-    } else if (answers?.[index] !== undefined) {
-      answer = answers[index];
-    }
-    
-    if (Array.isArray(answer)) answer = answer.join(', ');
-    if (answer === null || answer === undefined || answer === '') answer = 'N/A';
-    
-    return String(answer).substring(0, 100); // Limit length
-  };
-
-  // Check if component should be disabled
   const isDisabled = isGenerating || !assessment;
 
   return (
@@ -109,7 +134,6 @@ export default function PdfReport({ assessment, answers, responses }) {
         disabled={isDisabled}
         size="small"
         sx={{ minWidth: 180 }}
-        aria-label={isGenerating ? 'Generating PDF report' : 'Download PDF report'}
       >
         {isGenerating ? 'Generating...' : 'Download PDF Report'}
       </Button>
@@ -127,7 +151,7 @@ export default function PdfReport({ assessment, answers, responses }) {
 
       {!assessment && (
         <Alert severity="warning" sx={{ maxWidth: 300 }}>
-          No assessment data available for PDF generation.
+          No assessment data available
         </Alert>
       )}
     </Box>
@@ -162,5 +186,4 @@ PdfReport.defaultProps = {
   responses: []
 };
 
-// Export memoized version for performance
 export const MemoizedPdfReport = React.memo(PdfReport);
