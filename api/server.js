@@ -30,7 +30,7 @@ import { fileURLToPath } from "url";
 import routes from "./routes/index.js";               // router aggregator
 import { seedDatabase } from "./utils/seedDatabase.js"; // database seeding
 import { setupSwagger } from "./config/swagger.js";    // swagger config
-import healthRoutes from './api/routes/health.js';
+import healthRoutes from './routes/health.js';
 app.use('/api/v1/health', healthRoutes);
 
 dotenv.config();
@@ -44,7 +44,7 @@ app.set("trust proxy", 1);
 
 const PORT = Number(process.env.PORT || 10000);
 const NODE_ENV = process.env.NODE_ENV || "production";
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://assessly-gedp.onrender.com";
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://assessly-gedp.onrender.com';
 const BACKEND_URL = process.env.BACKEND_URL || `https://assesslyplatform-t49h.onrender.com`;
 const MONGODB_URI = process.env.MONGODB_URI;
 const AUTO_SEED = process.env.AUTO_SEED === "true";
