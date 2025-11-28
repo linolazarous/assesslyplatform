@@ -1,3 +1,4 @@
+// src/components/Auth.jsx
 import React, { useState } from "react";
 import {
   Button,
@@ -29,13 +30,18 @@ export default function Auth({ disableSignup = false }) {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [name, setName] = useState(""); // ✅ ADDED: Missing name field for registration
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
 
-  // ✅ FIXED: Remove /api from base URL to avoid double /api/api
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'https://assesslyplatform-t49h.onrender.com';
+  // ✅ FIXED: Correct API base URL - point to /api/v1
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform-t49h.onrender.com/api/v1';
 
   const validateForm = () => {
+    if (!isLogin && !name) {
+      enqueueSnackbar("Please enter your name", { variant: "error" });
+      return false;
+    }
     if (!email || !email.includes("@")) {
       enqueueSnackbar("Please enter a valid email", { variant: "error" });
       return false;
@@ -53,21 +59,25 @@ export default function Auth({ disableSignup = false }) {
     if (!validateForm()) return;
     setLoading(true);
 
-    // ✅ FIXED: Now correctly points to /api/auth endpoints
-    const endpoint = isLogin ? `${API_BASE_URL}/api/auth/login` : `${API_BASE_URL}/api/auth/register`;
+    // ✅ FIXED: Correct endpoints
+    const endpoint = isLogin ? `${API_BASE_URL}/auth/login` : `${API_BASE_URL}/auth/register`;
 
     try {
+      const payload = isLogin 
+        ? { email, password }
+        : { name, email, password, role }; // ✅ ADDED: Include name for registration
+
+      console.log('🚀 Sending request to:', endpoint);
+      console.log('📦 Payload:', payload);
+
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          password,
-          role: isLogin ? undefined : role,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
+      console.log('📨 Response:', data);
 
       if (!response.ok) {
         throw new Error(data.message || (isLogin ? "Login failed" : "Registration failed"));
@@ -75,6 +85,7 @@ export default function Auth({ disableSignup = false }) {
 
       if (isLogin) {
         localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
         enqueueSnackbar("Login successful", { variant: "success" });
         navigate("/dashboard");
       } else {
@@ -82,6 +93,10 @@ export default function Auth({ disableSignup = false }) {
           variant: "success",
         });
         setIsLogin(true);
+        // Clear form
+        setName("");
+        setEmail("");
+        setPassword("");
       }
     } catch (err) {
       console.error("Auth error:", err);
@@ -92,7 +107,8 @@ export default function Auth({ disableSignup = false }) {
   };
 
   const googleLogin = () => {
-    enqueueSnackbar("Google login not implemented yet.", { variant: "info" });
+    // ✅ FIXED: Correct Google OAuth URL
+    window.location.href = `${API_BASE_URL.replace('/v1', '')}/auth/google`;
   };
 
   return (
@@ -104,6 +120,20 @@ export default function Auth({ disableSignup = false }) {
             {isLogin ? "Sign In" : "Create Account"}
           </Typography>
         </Box>
+
+        {/* ✅ ADDED: Name field for registration */}
+        {!isLogin && (
+          <TextField
+            label="Full Name"
+            type="text"
+            fullWidth
+            margin="normal"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="name"
+            required
+          />
+        )}
 
         <TextField
           label="Email"
@@ -214,4 +244,3 @@ export default function Auth({ disableSignup = false }) {
 Auth.propTypes = {
   disableSignup: PropTypes.bool,
 };
-
