@@ -1,6 +1,87 @@
+// api/models/ContactMessage.js
 import mongoose from 'mongoose';
 
+const locationSchema = new mongoose.Schema({
+  country: { type: String, maxlength: 100 },
+  region: { type: String, maxlength: 100 },
+  city: { type: String, maxlength: 100 },
+  timezone: { type: String, maxlength: 50 },
+  coordinates: {
+    latitude: { type: Number, min: -90, max: 90 },
+    longitude: { type: Number, min: -180, max: 180 }
+  }
+}, { _id: false });
+
+const followUpSchema = new mongoose.Schema({
+  scheduled: { type: Boolean, default: false },
+  scheduledDate: { type: Date, default: null },
+  reminderSent: { type: Boolean, default: false },
+  reminderCount: { type: Number, default: 0 },
+  notes: { type: String, maxlength: 1000 }
+}, { _id: false });
+
+const attachmentSchema = new mongoose.Schema({
+  filename: { type: String, required: true },
+  originalName: { type: String, required: true },
+  mimetype: { type: String, required: true },
+  size: { type: Number, min: 0, required: true },
+  url: { type: String, required: true },
+  storage: {
+    provider: { type: String, enum: ['s3', 'gcs', 'local'], default: 'local' },
+    bucket: String,
+    key: String
+  },
+  uploadedAt: { type: Date, default: Date.now }
+}, { _id: true });
+
+const interactionSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ['email', 'note', 'call', 'meeting', 'internal'],
+    required: true
+  },
+  content: { type: String, required: true, maxlength: 5000 },
+  createdBy: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  metadata: {
+    email: {
+      subject: String,
+      to: [String],
+      cc: [String],
+      bcc: [String],
+      messageId: String,
+      inReplyTo: String
+    },
+    call: {
+      duration: Number,
+      participants: [String],
+      recordingUrl: String
+    },
+    meeting: {
+      scheduledFor: Date,
+      duration: Number,
+      participants: [String],
+      meetingUrl: String
+    }
+  },
+  attachments: [attachmentSchema]
+}, {
+  timestamps: true
+});
+
 const contactMessageSchema = new mongoose.Schema({
+  // 🔥 MULTI-TENANT ARCHITECTURE
+  organization: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization',
+    required: true,
+    index: true
+  },
+
+  // Contact Information
   name: {
     type: String,
     required: [true, 'Name is required'],
@@ -20,20 +101,6 @@ const contactMessageSchema = new mongoose.Schema({
       message: 'Please provide a valid email address'
     }
   },
-  subject: {
-    type: String,
-    required: [true, 'Subject is required'],
-    trim: true,
-    minlength: [5, 'Subject must be at least 5 characters'],
-    maxlength: [200, 'Subject cannot exceed 200 characters']
-  },
-  message: {
-    type: String,
-    required: [true, 'Message is required'],
-    trim: true,
-    minlength: [10, 'Message must be at least 10 characters'],
-    maxlength: [5000, 'Message cannot exceed 5000 characters']
-  },
   company: {
     type: String,
     trim: true,
@@ -46,13 +113,56 @@ const contactMessageSchema = new mongoose.Schema({
     maxlength: [20, 'Phone number cannot exceed 20 characters'],
     default: ''
   },
+  position: {
+    type: String,
+    trim: true,
+    maxlength: [100, 'Position cannot exceed 100 characters'],
+    default: ''
+  },
+
+  // Message Content
+  subject: {
+    type: String,
+    required: [true, 'Subject is required'],
+    trim: true,
+    minlength: [5, 'Subject must be at least 5 characters'],
+    maxlength: [200, 'Subject cannot exceed 200 characters']
+  },
+  message: {
+    type: String,
+    required: [true, 'Message is required'],
+    trim: true,
+    minlength: [10, 'Message must be at least 10 characters'],
+    maxlength: [10000, 'Message cannot exceed 10000 characters']
+  },
+  attachments: [attachmentSchema],
+
+  // Categorization & Workflow
   category: {
     type: String,
     enum: {
-      values: ['general', 'support', 'sales', 'partnership', 'feedback', 'other'],
-      message: 'Category must be one of: general, support, sales, partnership, feedback, other'
+      values: [
+        'general-inquiry', 
+        'technical-support', 
+        'sales', 
+        'billing', 
+        'partnership', 
+        'enterprise', 
+        'feedback', 
+        'bug-report',
+        'feature-request',
+        'press',
+        'careers',
+        'other'
+      ],
+      message: 'Invalid category selected'
     },
-    default: 'general'
+    default: 'general-inquiry'
+  },
+  subcategory: {
+    type: String,
+    maxlength: [100, 'Subcategory cannot exceed 100 characters'],
+    default: ''
   },
   priority: {
     type: String,
@@ -65,21 +175,70 @@ const contactMessageSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: {
-      values: ['new', 'in-progress', 'responded', 'resolved', 'spam'],
-      message: 'Status must be one of: new, in-progress, responded, resolved, spam'
+      values: ['new', 'acknowledged', 'in-progress', 'awaiting-response', 'responded', 'resolved', 'escalated', 'spam'],
+      message: 'Invalid status'
     },
     default: 'new'
   },
+  source: {
+    type: String,
+    enum: ['contact-form', 'email', 'api', 'import', 'chat', 'phone'],
+    default: 'contact-form'
+  },
+
+  // Assignment & Ownership
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
   },
+  assignedAt: {
+    type: Date,
+    default: null
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null // Null for external submissions
+  },
+
+  // Response Tracking
   responseNote: {
     type: String,
-    maxlength: [2000, 'Response note cannot exceed 2000 characters'],
+    maxlength: [5000, 'Response note cannot exceed 5000 characters'],
     default: ''
   },
+  respondedAt: {
+    type: Date,
+    default: null
+  },
+  firstResponseTime: {
+    type: Number, // in minutes
+    default: null
+  },
+  satisfactionScore: {
+    type: Number,
+    min: 1,
+    max: 5,
+    default: null
+  },
+  satisfactionFeedback: {
+    type: String,
+    maxlength: [1000, 'Satisfaction feedback cannot exceed 1000 characters'],
+    default: ''
+  },
+
+  // Interaction History
+  interactions: [interactionSchema],
+  interactionCount: {
+    type: Number,
+    default: 0
+  },
+
+  // Follow-up Management
+  followUp: followUpSchema,
+
+  // Technical Metadata
   metadata: {
     ipAddress: {
       type: String,
@@ -89,12 +248,7 @@ const contactMessageSchema = new mongoose.Schema({
       type: String,
       default: ''
     },
-    location: {
-      country: String,
-      region: String,
-      city: String,
-      timezone: String
-    },
+    location: locationSchema,
     referrer: {
       type: String,
       default: ''
@@ -102,37 +256,108 @@ const contactMessageSchema = new mongoose.Schema({
     pageUrl: {
       type: String,
       default: ''
+    },
+    campaign: {
+      source: String,
+      medium: String,
+      name: String,
+      term: String,
+      content: String
+    },
+    formData: mongoose.Schema.Types.Mixed, // Store additional form fields
+    spamScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0
+    },
+    language: {
+      type: String,
+      default: 'en'
     }
   },
-  followUp: {
-    scheduled: {
-      type: Boolean,
-      default: false
-    },
-    scheduledDate: {
-      type: Date,
-      default: null
-    },
-    reminderSent: {
-      type: Boolean,
-      default: false
-    }
+
+  // SLA & Compliance
+  sla: {
+    targetResponseTime: { type: Number, default: 1440 }, // minutes (24 hours)
+    targetResolutionTime: { type: Number, default: 10080 }, // minutes (7 days)
+    breached: { type: Boolean, default: false },
+    breachReason: String
+  },
+
+  // Internal Tags & Classification
+  tags: [{
+    type: String,
+    maxlength: 50
+  }],
+  internalNotes: [{
+    note: String,
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    createdAt: { type: Date, default: Date.now },
+    isPrivate: { type: Boolean, default: false }
+  }],
+
+  // Analytics
+  analytics: {
+    openCount: { type: Number, default: 0 },
+    lastOpenedAt: Date,
+    clickCount: { type: Number, default: 0 },
+    lastClickedAt: Date,
+    engagementScore: { type: Number, default: 0 }
   }
+
 }, {
   timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  toJSON: { 
+    virtuals: true,
+    transform: function(doc, ret) {
+      ret.id = ret._id;
+      delete ret._id;
+      delete ret.__v;
+      return ret;
+    }
+  },
+  toObject: { 
+    virtuals: true 
+  }
 });
 
-// Indexes
-contactMessageSchema.index({ email: 1 });
-contactMessageSchema.index({ status: 1 });
-contactMessageSchema.index({ priority: 1 });
-contactMessageSchema.index({ category: 1 });
-contactMessageSchema.index({ createdAt: -1 });
-contactMessageSchema.index({ assignedTo: 1 });
+/* --------------------------------------------------------------------
+   🔥 MULTI-TENANT INDEXES - Production Optimized
+-------------------------------------------------------------------- */
 
-// Virtual for age (time since creation)
+// Primary query patterns
+contactMessageSchema.index({ organization: 1, status: 1 });
+contactMessageSchema.index({ organization: 1, priority: 1 });
+contactMessageSchema.index({ organization: 1, category: 1 });
+contactMessageSchema.index({ organization: 1, assignedTo: 1 });
+contactMessageSchema.index({ organization: 1, createdAt: -1 });
+
+// Performance indexes
+contactMessageSchema.index({ organization: 1, email: 1 });
+contactMessageSchema.index({ organization: 1, 'metadata.spamScore': 1 });
+contactMessageSchema.index({ organization: 1, respondedAt: -1 });
+
+// SLA and workflow indexes
+contactMessageSchema.index({ organization: 1, 'sla.breached': 1 });
+contactMessageSchema.index({ organization: 1, 'followUp.scheduledDate': 1 });
+
+// Search and discovery
+contactMessageSchema.index({ 
+  subject: 'text', 
+  message: 'text',
+  name: 'text',
+  company: 'text'
+});
+
+// Analytics indexes
+contactMessageSchema.index({ organization: 1, source: 1 });
+contactMessageSchema.index({ organization: 1, satisfactionScore: 1 });
+
+/* --------------------------------------------------------------------
+   VIRTUAL FIELDS
+-------------------------------------------------------------------- */
+
 contactMessageSchema.virtual('age').get(function() {
   const now = new Date();
   const created = new Date(this.createdAt);
@@ -147,44 +372,122 @@ contactMessageSchema.virtual('age').get(function() {
   return `${minutes} minute${minutes > 1 ? 's' : ''}`;
 });
 
-// Virtual for isNew
 contactMessageSchema.virtual('isNew').get(function() {
   return this.status === 'new';
 });
 
-// Virtual for requiresAction
 contactMessageSchema.virtual('requiresAction').get(function() {
-  return ['new', 'in-progress'].includes(this.status);
+  return ['new', 'in-progress', 'awaiting-response', 'escalated'].includes(this.status);
 });
 
-// Pre-save middleware to set priority based on category
-contactMessageSchema.pre('save', function(next) {
-  // Auto-set priority based on category
-  if (this.isModified('category') && this.priority === 'normal') {
-    const categoryPriority = {
-      'support': 'high',
-      'sales': 'normal',
-      'partnership': 'high',
-      'feedback': 'low',
-      'general': 'normal',
-      'other': 'normal'
-    };
-    
-    this.priority = categoryPriority[this.category] || 'normal';
-  }
+contactMessageSchema.virtual('responseTime').get(function() {
+  if (!this.respondedAt) return null;
+  return Math.floor((this.respondedAt - this.createdAt) / (1000 * 60)); // minutes
+});
+
+contactMessageSchema.virtual('isOverdue').get(function() {
+  if (this.status === 'resolved' || this.status === 'spam') return false;
   
-  next();
+  const now = new Date();
+  const targetTime = new Date(this.createdAt.getTime() + (this.sla.targetResponseTime * 60 * 1000));
+  return now > targetTime;
 });
 
-// Static method to find by status
-contactMessageSchema.statics.findByStatus = function(status) {
-  return this.find({ status })
-    .sort({ createdAt: -1 })
-    .populate('assignedTo', 'name email');
+contactMessageSchema.virtual('slaProgress').get(function() {
+  const now = new Date();
+  const elapsed = now - this.createdAt;
+  const target = this.sla.targetResponseTime * 60 * 1000;
+  
+  return Math.min(100, Math.round((elapsed / target) * 100));
+});
+
+/* --------------------------------------------------------------------
+   INSTANCE METHODS
+-------------------------------------------------------------------- */
+
+contactMessageSchema.methods.assignToUser = function(userId) {
+  this.assignedTo = userId;
+  this.assignedAt = new Date();
+  this.status = this.status === 'new' ? 'in-progress' : this.status;
+  
+  return this.save();
 };
 
-// Static method to get message statistics
-contactMessageSchema.statics.getMessageStats = async function(days = 30) {
+contactMessageSchema.methods.addInteraction = function(interactionData) {
+  this.interactions.push(interactionData);
+  this.interactionCount += 1;
+  this.lastActivityAt = new Date();
+  
+  return this.save();
+};
+
+contactMessageSchema.methods.markAsResponded = function(responseData) {
+  this.responseNote = responseData.note || '';
+  this.status = 'responded';
+  this.respondedAt = new Date();
+  
+  // Calculate first response time
+  if (!this.firstResponseTime) {
+    this.firstResponseTime = Math.floor((this.respondedAt - this.createdAt) / (1000 * 60));
+  }
+  
+  // Check SLA breach
+  if (this.firstResponseTime > this.sla.targetResponseTime) {
+    this.sla.breached = true;
+    this.sla.breachReason = 'Response time exceeded target';
+  }
+  
+  return this.save();
+};
+
+contactMessageSchema.methods.markAsResolved = function() {
+  this.status = 'resolved';
+  return this.save();
+};
+
+contactMessageSchema.methods.escalate = function(reason, escalatedBy) {
+  this.status = 'escalated';
+  this.addInteraction({
+    type: 'internal',
+    content: `Escalated: ${reason}`,
+    createdBy: escalatedBy
+  });
+  
+  return this.save();
+};
+
+contactMessageSchema.methods.calculateSpamScore = function() {
+  // Simple spam detection logic (can be enhanced with AI)
+  let score = 0;
+  
+  // Check for common spam patterns
+  const spamPatterns = [
+    { pattern: /http(s)?:\/\//gi, score: 10 },
+    { pattern: /[A-Z]{5,}/g, score: 5 },
+    { pattern: /[!@#$%^&*()]{3,}/g, score: 8 },
+    { pattern: /free|money|profit|earn/gi, score: 15 }
+  ];
+  
+  spamPatterns.forEach(({ pattern, score: patternScore }) => {
+    const matches = (this.subject + this.message).match(pattern);
+    if (matches) {
+      score += matches.length * patternScore;
+    }
+  });
+  
+  this.metadata.spamScore = Math.min(100, score);
+  return this.metadata.spamScore;
+};
+
+/* --------------------------------------------------------------------
+   STATIC METHODS
+-------------------------------------------------------------------- */
+
+contactMessageSchema.statics.findByOrganization = function(organizationId, query = {}) {
+  return this.find({ organization: organizationId, ...query });
+};
+
+contactMessageSchema.statics.getDashboardStats = async function(organizationId, days = 30) {
   const dateFilter = {
     createdAt: {
       $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000)
@@ -192,81 +495,151 @@ contactMessageSchema.statics.getMessageStats = async function(days = 30) {
   };
   
   const stats = await this.aggregate([
-    { $match: dateFilter },
+    { 
+      $match: { 
+        organization: new mongoose.Types.ObjectId(organizationId),
+        ...dateFilter
+      } 
+    },
     {
-      $group: {
-        _id: '$status',
-        count: { $sum: 1 },
-        avgResponseTime: { 
-          $avg: {
-            $cond: [
-              { $ne: ['$responseNote', ''] },
-              { $subtract: ['$updatedAt', '$createdAt'] },
-              null
-            ]
+      $facet: {
+        statusCounts: [
+          {
+            $group: {
+              _id: '$status',
+              count: { $sum: 1 }
+            }
           }
-        }
+        ],
+        categoryCounts: [
+          {
+            $group: {
+              _id: '$category',
+              count: { $sum: 1 }
+            }
+          }
+        ],
+        priorityCounts: [
+          {
+            $group: {
+              _id: '$priority',
+              count: { $sum: 1 }
+            }
+          }
+        ],
+        responseTimeStats: [
+          {
+            $match: {
+              firstResponseTime: { $ne: null }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              avgResponseTime: { $avg: '$firstResponseTime' },
+              minResponseTime: { $min: '$firstResponseTime' },
+              maxResponseTime: { $max: '$firstResponseTime' }
+            }
+          }
+        ],
+        slaBreaches: [
+          {
+            $match: {
+              'sla.breached': true
+            }
+          },
+          {
+            $count: 'count'
+          }
+        ]
       }
     }
   ]);
   
-  return stats.reduce((acc, stat) => {
-    acc[stat._id] = {
-      count: stat.count,
-      avgResponseTime: stat.avgResponseTime
-    };
-    return acc;
-  }, {});
+  return stats[0];
 };
 
-// Static method to get unresolved messages
-contactMessageSchema.statics.getUnresolvedMessages = function() {
+contactMessageSchema.statics.getUnassignedMessages = function(organizationId) {
   return this.find({
-    status: { $in: ['new', 'in-progress'] }
-  })
-  .sort({ priority: -1, createdAt: 1 })
-  .populate('assignedTo', 'name email');
+    organization: organizationId,
+    assignedTo: null,
+    status: { $in: ['new', 'acknowledged'] }
+  }).sort({ priority: -1, createdAt: 1 });
 };
 
-// Instance method to assign to user
-contactMessageSchema.methods.assignTo = function(userId) {
-  this.assignedTo = userId;
-  this.status = 'in-progress';
+contactMessageSchema.statics.getOverdueMessages = function(organizationId) {
+  const cutoffTime = new Date(Date.now() - (24 * 60 * 60 * 1000)); // 24 hours ago
   
-  return this.save();
+  return this.find({
+    organization: organizationId,
+    status: { $in: ['new', 'in-progress', 'awaiting-response'] },
+    createdAt: { $lte: cutoffTime }
+  }).sort({ createdAt: 1 });
 };
 
-// Instance method to mark as responded
-contactMessageSchema.methods.markAsResponded = function(responseNote, respondedBy) {
-  this.responseNote = responseNote;
-  this.status = 'responded';
-  this.assignedTo = respondedBy;
-  
-  return this.save();
-};
+/* --------------------------------------------------------------------
+   MIDDLEWARE
+-------------------------------------------------------------------- */
 
-// Instance method to mark as resolved
-contactMessageSchema.methods.markAsResolved = function(resolvedBy) {
-  this.status = 'resolved';
-  this.assignedTo = resolvedBy;
+contactMessageSchema.pre('save', function(next) {
+  // Auto-calculate spam score for new messages
+  if (this.isNew) {
+    this.calculateSpamScore();
+    
+    // Auto-mark as spam if score is too high
+    if (this.metadata.spamScore > 80) {
+      this.status = 'spam';
+      this.priority = 'low';
+    }
+  }
   
-  return this.save();
-};
+  // Update interaction count
+  if (this.isModified('interactions')) {
+    this.interactionCount = this.interactions.length;
+  }
+  
+  // Update last activity timestamp
+  if (this.isModified() && !this.isModified('lastActivityAt')) {
+    this.lastActivityAt = new Date();
+  }
+  
+  next();
+});
 
-// Instance method to mark as spam
-contactMessageSchema.methods.markAsSpam = function() {
-  this.status = 'spam';
+// Auto-assign priority based on category and content
+contactMessageSchema.pre('save', function(next) {
+  if (this.isNew || this.isModified('category')) {
+    const priorityMap = {
+      'technical-support': 'high',
+      'billing': 'high',
+      'enterprise': 'high',
+      'bug-report': 'high',
+      'sales': 'normal',
+      'partnership': 'normal',
+      'feature-request': 'normal',
+      'general-inquiry': 'normal',
+      'feedback': 'low',
+      'careers': 'low',
+      'press': 'low',
+      'other': 'normal'
+    };
+    
+    this.priority = priorityMap[this.category] || 'normal';
+  }
   
-  return this.save();
-};
-
-// Instance method to schedule follow-up
-contactMessageSchema.methods.scheduleFollowUp = function(followUpDate) {
-  this.followUp.scheduled = true;
-  this.followUp.scheduledDate = followUpDate;
-  this.followUp.reminderSent = false;
+  // Urgent priority for specific keywords
+  if (this.isNew && (this.priority === 'normal' || this.priority === 'high')) {
+    const urgentKeywords = ['urgent', 'emergency', 'critical', 'broken', 'not working', 'down'];
+    const hasUrgentKeyword = urgentKeywords.some(keyword => 
+      (this.subject + ' ' + this.message).toLowerCase().includes(keyword)
+    );
+    
+    if (hasUrgentKeyword) {
+      this.priority = 'urgent';
+    }
+  }
   
-  return this.save();
-};
+  next();
+});
 
 export default mongoose.model('ContactMessage', contactMessageSchema);
