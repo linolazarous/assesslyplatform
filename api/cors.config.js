@@ -1,8 +1,6 @@
 // Backend CORS configuration
 const allowedOrigins = [
-  'https://assessly-gedp.onrender.com',
-  'https://assesslv-qedp.onrender.com', // Keep both for transition
-  'http://localhost:3000'
+  'https://assessly-gedp.onrender.com'
 ];
 
 const corsOptions = {
