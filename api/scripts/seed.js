@@ -2,6 +2,7 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import slugify from "slugify";
+import chalk from "chalk";
 
 import User from "../models/User.js";
 import Organization from "../models/Organization.js";
@@ -11,259 +12,592 @@ import Subscription from "../models/Subscription.js";
 dotenv.config();
 
 // ---------------------------------------------------------------------
-// CONFIG – No hard-coded users. Multi-organization support added.
+// PRODUCTION CONFIGURATION
 // ---------------------------------------------------------------------
 const CONFIG = {
-  ORGANIZATIONS: [
+  // System organization for platform-level resources
+  SYSTEM_ORGANIZATION: {
+    name: "Assessly System",
+    description: "Platform system organization for templates and default content",
+    slug: "assessly-system",
+    type: "system",
+    plan: "enterprise"
+  },
+
+  // Default subscription plans for multi-tenant platform
+  SUBSCRIPTION_PLANS: [
     {
-      name: "Assessly Headquarters",
-      description: "Primary enterprise organization",
-      plan: "enterprise",
-      seedAssessment: true
+      name: "Free",
+      slug: "free",
+      description: "Perfect for individuals and small teams getting started",
+      price: { amount: 0, currency: "USD" },
+      billingCycle: "monthly",
+      features: {
+        maxUsers: 3,
+        maxAssessments: 10,
+        maxStorage: 100, // MB
+        advancedAnalytics: false,
+        customBranding: false,
+        apiAccess: false,
+        prioritySupport: false,
+        ssoIntegration: false
+      },
+      limits: {
+        questionsPerAssessment: 20,
+        candidatesPerAssessment: 50,
+        responseRetention: 30 // days
+      },
+      isActive: true,
+      isPublic: true
     },
     {
-      name: "TechCorp Learning Division",
-      description: "Technology company assessment unit",
-      plan: "professional",
-      seedAssessment: true
+      name: "Professional",
+      slug: "professional", 
+      description: "Advanced features for growing teams and businesses",
+      price: { amount: 49, currency: "USD" },
+      billingCycle: "monthly",
+      features: {
+        maxUsers: 25,
+        maxAssessments: 100,
+        maxStorage: 1000,
+        advancedAnalytics: true,
+        customBranding: true,
+        apiAccess: true,
+        prioritySupport: false,
+        ssoIntegration: false
+      },
+      limits: {
+        questionsPerAssessment: 50,
+        candidatesPerAssessment: 500,
+        responseRetention: 365
+      },
+      isActive: true,
+      isPublic: true
     },
     {
-      name: "Global Institute of Skills",
-      description: "Educational institution",
-      plan: "basic",
-      seedAssessment: false
+      name: "Enterprise",
+      slug: "enterprise",
+      description: "Full-featured plan for large organizations",
+      price: { amount: 299, currency: "USD" },
+      billingCycle: "yearly",
+      features: {
+        maxUsers: 1000,
+        maxAssessments: 500,
+        maxStorage: 10000,
+        advancedAnalytics: true,
+        customBranding: true,
+        apiAccess: true,
+        prioritySupport: true,
+        ssoIntegration: true
+      },
+      limits: {
+        questionsPerAssessment: 100,
+        candidatesPerAssessment: 5000,
+        responseRetention: 1095
+      },
+      isActive: true,
+      isPublic: true
     }
   ],
 
-  SAMPLE_ASSESSMENT: {
-    title: "Sample Technical Assessment",
-    description: "Demonstrates platform capabilities",
-    category: "Technical",
-    tags: ["javascript", "programming", "nodejs"],
-    status: "active"
-  }
+  // Sample assessment templates for new organizations
+  ASSESSMENT_TEMPLATES: [
+    {
+      title: "Full-Stack Developer Assessment",
+      description: "Comprehensive technical assessment covering frontend, backend, database, and system design concepts. Evaluates programming skills, problem-solving ability, and architectural knowledge.",
+      category: "Technical Screening",
+      tags: ["javascript", "react", "nodejs", "database", "system-design"],
+      status: "active",
+      access: "public",
+      isTemplate: true,
+      questions: [
+        {
+          type: "multiple-choice",
+          question: "Which of the following is NOT a React hook?",
+          points: 5,
+          options: [
+            { id: "1", text: "useState", isCorrect: false },
+            { id: "2", text: "useEffect", isCorrect: false },
+            { id: "3", text: "useComponent", isCorrect: true },
+            { id: "4", text: "useContext", isCorrect: false }
+          ],
+          explanation: "useComponent is not a valid React hook. The correct built-in hooks are useState, useEffect, useContext, useReducer, etc.",
+          metadata: {
+            difficulty: "easy",
+            tags: ["react", "frontend", "hooks"],
+            timeLimit: 30
+          }
+        },
+        {
+          type: "multiple-choice", 
+          question: "What is the purpose of database indexing?",
+          points: 8,
+          options: [
+            { id: "1", text: "To encrypt database contents", isCorrect: false },
+            { id: "2", text: "To improve query performance", isCorrect: true },
+            { id: "3", text: "To backup database files", isCorrect: false },
+            { id: "4", text: "To validate data types", isCorrect: false }
+          ],
+          explanation: "Database indexing improves query performance by creating a data structure that allows faster data retrieval through optimized search paths.",
+          metadata: {
+            difficulty: "medium",
+            tags: ["database", "performance", "indexing"],
+            timeLimit: 45
+          }
+        }
+      ],
+      settings: {
+        duration: 60,
+        attempts: 3,
+        shuffleQuestions: true,
+        shuffleOptions: true,
+        showResults: true,
+        allowBacktracking: true,
+        requireFullScreen: false,
+        webcamMonitoring: false
+      },
+      totalPoints: 13,
+      passingScore: 70
+    },
+    {
+      title: "Software Engineering Fundamentals",
+      description: "Assessment covering core computer science principles, algorithms, data structures, and software engineering best practices.",
+      category: "Computer Science", 
+      tags: ["algorithms", "data-structures", "complexity", "oop"],
+      status: "active",
+      access: "public",
+      isTemplate: true,
+      questions: [
+        {
+          type: "multiple-choice",
+          question: "What is the time complexity of binary search?",
+          points: 5,
+          options: [
+            { id: "1", text: "O(1)", isCorrect: false },
+            { id: "2", text: "O(log n)", isCorrect: true },
+            { id: "3", text: "O(n)", isCorrect: false },
+            { id: "4", text: "O(n log n)", isCorrect: false }
+          ],
+          explanation: "Binary search has O(log n) time complexity as it halves the search space with each iteration, making it very efficient for sorted arrays.",
+          metadata: {
+            difficulty: "easy",
+            tags: ["algorithms", "complexity", "search"],
+            timeLimit: 30
+          }
+        }
+      ],
+      settings: {
+        duration: 45,
+        attempts: 2,
+        shuffleQuestions: true,
+        shuffleOptions: true,
+        showResults: true,
+        allowBacktracking: true,
+        requireFullScreen: false,
+        webcamMonitoring: false
+      },
+      totalPoints: 5,
+      passingScore: 60
+    }
+  ]
 };
 
 // ---------------------------------------------------------------------
-// SEEDER CLASS
+// PRODUCTION SEEDER CLASS
 // ---------------------------------------------------------------------
 class DatabaseSeeder {
   constructor() {
+    this.session = null;
     this.stats = {
-      organizations: 0,
-      subscriptions: 0,
-      assessments: 0
+      systemOrganizations: 0,
+      subscriptionPlans: 0,
+      assessmentTemplates: 0,
+      sampleOrganizations: 0
     };
   }
 
   async connect() {
     if (!process.env.MONGODB_URI) {
-      throw new Error("❌ Missing MONGODB_URI");
+      throw new Error("❌ MONGODB_URI environment variable is required");
     }
 
-    await mongoose.connect(process.env.MONGODB_URI, {
-      maxPoolSize: 10
-    });
+    const options = {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    };
 
-    console.log("✅ Connected to MongoDB");
+    await mongoose.connect(process.env.MONGODB_URI, options);
+    console.log(chalk.green("✅ Connected to MongoDB"));
   }
 
   async disconnect() {
+    if (this.session) {
+      await this.session.endSession();
+    }
     await mongoose.connection.close();
-    console.log("🔌 DB connection closed");
+    console.log(chalk.blue("🔌 MongoDB connection closed"));
   }
 
-  //--------------------------------------------------------------------
-  // UTILITY: Get admin for organization
-  // Admin MUST be created via OAuth/email in the main platform.
-  //--------------------------------------------------------------------
-  async getAdminUser() {
-    const admin = await User.findOne({ role: "admin" });
+  async initializeTransaction() {
+    this.session = await mongoose.startSession();
+    await this.session.startTransaction();
+    console.log(chalk.cyan("🔧 Transaction started"));
+  }
 
-    if (!admin) {
-      console.log(
-        "\n⚠️ No admin user found.\n" +
-        "👉 Create an admin via Google OAuth / Email-Password before running the seeder.\n"
-      );
-      return null;
+  async commitTransaction() {
+    if (this.session) {
+      await this.session.commitTransaction();
+      await this.session.endSession();
+      this.session = null;
+      console.log(chalk.green("✅ Transaction committed"));
+    }
+  }
+
+  async rollbackTransaction() {
+    if (this.session) {
+      await this.session.abortTransaction();
+      await this.session.endSession();
+      this.session = null;
+      console.log(chalk.red("🔄 Transaction rolled back"));
+    }
+  }
+
+  /**
+   * Check if seeding should be skipped (already seeded)
+   */
+  async shouldSkipSeeding() {
+    const systemOrgExists = await Organization.findOne({ 
+      slug: CONFIG.SYSTEM_ORGANIZATION.slug 
+    });
+    
+    const plansExist = await Subscription.countDocuments({ 
+      isTemplate: true 
+    });
+
+    if (systemOrgExists && plansExist > 0) {
+      console.log(chalk.yellow("⚠️  Seeding skipped - system data already exists"));
+      return true;
     }
 
-    console.log(`👤 Using admin: ${admin.email}`);
-    return admin;
+    return false;
   }
 
-  //--------------------------------------------------------------------
-  // CREATE MULTIPLE ORGANIZATIONS
-  //--------------------------------------------------------------------
-  async createOrganizations(admin) {
-    const created = [];
+  /**
+   * Create system organization for platform management
+   */
+  async createSystemOrganization() {
+    try {
+      console.log(chalk.blue("🏢 Creating system organization..."));
 
-    for (const org of CONFIG.ORGANIZATIONS) {
-      let existing = await Organization.findOne({ name: org.name });
+      let systemOrg = await Organization.findOne({
+        slug: CONFIG.SYSTEM_ORGANIZATION.slug
+      }).session(this.session);
 
-      if (existing) {
-        console.log(`ℹ️ Organization already exists: ${org.name}`);
-        created.push(existing);
-        continue;
+      if (systemOrg) {
+        console.log(chalk.yellow("ℹ️  System organization already exists"));
+        return systemOrg;
       }
 
-      const organization = new Organization({
-        name: org.name,
-        slug: slugify(org.name, { lower: true }),
-        description: org.description,
-        owner: admin._id,
-        industry: "General",
-        size: "10-50",
-        contact: { email: admin.email },
-        members: [
-          {
-            user: admin._id,
-            role: "admin",
-            joinedAt: new Date(),
-            permissions: {
-              createAssessments: true,
-              manageUsers: true,
-              viewAnalytics: true,
-              manageSettings: true
-            }
-          }
-        ],
+      systemOrg = await Organization.create([{
+        name: CONFIG.SYSTEM_ORGANIZATION.name,
+        slug: CONFIG.SYSTEM_ORGANIZATION.slug,
+        description: CONFIG.SYSTEM_ORGANIZATION.description,
+        type: CONFIG.SYSTEM_ORGANIZATION.type,
+        industry: "Technology",
+        size: "1-10",
+        contact: {
+          email: "system@assessly.com"
+        },
+        settings: {
+          isPublic: false,
+          allowSelfRegistration: false,
+          requireApproval: true,
+          allowGoogleOAuth: true,
+          allowEmailPassword: true
+        },
         subscription: {
-          plan: org.plan,
+          plan: CONFIG.SYSTEM_ORGANIZATION.plan,
           status: "active"
+        },
+        metadata: {
+          totalMembers: 0,
+          totalAssessments: 0,
+          totalResponses: 0,
+          isSystem: true
         }
+      }], { session: this.session });
+
+      this.stats.systemOrganizations++;
+      console.log(chalk.green("✅ System organization created"));
+      return systemOrg[0];
+    } catch (error) {
+      console.error(chalk.red("❌ Failed to create system organization:"), error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Create default subscription plans
+   */
+  async createSubscriptionPlans() {
+    try {
+      console.log(chalk.blue("💳 Creating subscription plans..."));
+
+      const existingPlans = await Subscription.find({
+        slug: { $in: CONFIG.SUBSCRIPTION_PLANS.map(plan => plan.slug) }
+      }).session(this.session);
+
+      if (existingPlans.length === CONFIG.SUBSCRIPTION_PLANS.length) {
+        console.log(chalk.yellow("ℹ️  Subscription plans already exist"));
+        return existingPlans;
+      }
+
+      const plansWithMetadata = CONFIG.SUBSCRIPTION_PLANS.map(plan => ({
+        ...plan,
+        isTemplate: true,
+        status: plan.isActive ? "active" : "inactive",
+        metadata: {
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          isPublic: plan.isPublic
+        }
+      }));
+
+      const subscriptions = await Subscription.create(plansWithMetadata, { 
+        session: this.session 
       });
 
-      await organization.save();
-      this.stats.organizations++;
-
-      console.log(`🏢 Created organization: ${organization.name}`);
-      created.push(organization);
+      this.stats.subscriptionPlans += subscriptions.length;
+      console.log(chalk.green(`✅ ${subscriptions.length} subscription plans created`));
+      return subscriptions;
+    } catch (error) {
+      console.error(chalk.red("❌ Failed to create subscription plans:"), error.message);
+      throw error;
     }
-
-    return created;
   }
 
-  //--------------------------------------------------------------------
-  // SUBSCRIPTIONS
-  //--------------------------------------------------------------------
-  async createSubscription(organization, admin) {
-    const planInfo = {
-      free: { maxUsers: 10, maxAssessments: 5, price: 0 },
-      basic: { maxUsers: 50, maxAssessments: 20, price: 29 },
-      professional: { maxUsers: 200, maxAssessments: 100, price: 99 },
-      enterprise: { maxUsers: 1000, maxAssessments: 500, price: 299 }
-    };
-
-    const plan = organization.subscription.plan;
-    const details = planInfo[plan] || planInfo.basic;
-
-    const subscription = new Subscription({
-      organization: organization._id,
-      plan: plan,
-      billingCycle: "yearly",
-      status: "active",
-      price: { amount: details.price, currency: "USD" },
-      period: {
-        startDate: new Date(),
-        endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-      },
-      features: {
-        maxUsers: details.maxUsers,
-        maxAssessments: details.maxAssessments,
-        maxStorage: plan === "enterprise" ? 10000 : 1000,
-        advancedAnalytics: plan !== "free",
-        customBranding: plan === "enterprise",
-        apiAccess: plan === "enterprise",
-        prioritySupport: plan === "enterprise"
-      },
-      metadata: {
-        createdBy: admin._id,
-        autoRenew: true
-      }
-    });
-
-    await subscription.save();
-    this.stats.subscriptions++;
-
-    console.log(`💳 Subscription created for ${organization.name}`);
-    return subscription;
-  }
-
-  //--------------------------------------------------------------------
-  // SAMPLE ASSESSMENTS
-  //--------------------------------------------------------------------
-  async createAssessment(organization, admin) {
-    const exists = await Assessment.findOne({
-      title: CONFIG.SAMPLE_ASSESSMENT.title,
-      organization: organization._id
-    });
-
-    if (exists) {
-      console.log(`📘 Assessment already exists for ${organization.name}`);
-      return exists;
-    }
-
-    const assessment = new Assessment({
-      ...CONFIG.SAMPLE_ASSESSMENT,
-      organization: organization._id,
-      createdBy: admin._id,
-      totalPoints: 20,
-      passingScore: 70,
-      settings: {
-        duration: 30,
-        attempts: 3,
-        shuffleQuestions: true,
-        showResults: true
-      }
-    });
-
-    await assessment.save();
-    this.stats.assessments++;
-
-    console.log(`📝 Sample assessment created for ${organization.name}`);
-    return assessment;
-  }
-
-  //--------------------------------------------------------------------
-  // FULL SEED
-  //--------------------------------------------------------------------
-  async seed() {
+  /**
+   * Create assessment templates in system organization
+   */
+  async createAssessmentTemplates(systemOrg) {
     try {
-      console.log("🌱 Starting multi-organization seeding...");
-      await this.connect();
+      console.log(chalk.blue("📝 Creating assessment templates..."));
 
-      const admin = await this.getAdminUser();
-      if (!admin) return;
+      const existingTemplates = await Assessment.find({
+        organization: systemOrg._id,
+        isTemplate: true
+      }).session(this.session);
 
-      const organizations = await this.createOrganizations(admin);
-
-      for (const org of organizations) {
-        await this.createSubscription(org, admin);
-
-        // Add default assessment only if enabled
-        const config = CONFIG.ORGANIZATIONS.find(o => o.name === org.name);
-        if (config?.seedAssessment) {
-          await this.createAssessment(org, admin);
-        }
+      if (existingTemplates.length >= CONFIG.ASSESSMENT_TEMPLATES.length) {
+        console.log(chalk.yellow("ℹ️  Assessment templates already exist"));
+        return existingTemplates;
       }
 
-      console.log("\n🎉 MULTI-ORG SEED COMPLETE!");
-      console.log(`🏢 Organizations:  ${this.stats.organizations}`);
-      console.log(`💳 Subscriptions: ${this.stats.subscriptions}`);
-      console.log(`📝 Assessments:   ${this.stats.assessments}`);
+      const templatesWithOrg = CONFIG.ASSESSMENT_TEMPLATES.map(template => ({
+        ...template,
+        slug: slugify(template.title, { lower: true, strict: true }),
+        organization: systemOrg._id,
+        createdBy: null, // System-generated
+        schedule: {
+          startDate: new Date(),
+          endDate: null, // No expiration for templates
+          timezone: "UTC"
+        },
+        metadata: {
+          views: 0,
+          completions: 0,
+          averageScore: 0,
+          averageTime: 0,
+          isSample: true,
+          isTemplate: true
+        }
+      }));
 
-    } catch (err) {
-      console.error("❌ Seeding failed:", err);
+      const assessments = await Assessment.create(templatesWithOrg, { 
+        session: this.session 
+      });
+
+      this.stats.assessmentTemplates += assessments.length;
+      console.log(chalk.green(`✅ ${assessments.length} assessment templates created`));
+      return assessments;
+    } catch (error) {
+      console.error(chalk.red("❌ Failed to create assessment templates:"), error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Create sample organizations for demonstration (development only)
+   */
+  async createSampleOrganizations() {
+    if (process.env.NODE_ENV === "production") {
+      console.log(chalk.yellow("⚠️  Sample organizations skipped in production"));
+      return [];
+    }
+
+    try {
+      console.log(chalk.blue("🏢 Creating sample organizations..."));
+
+      const sampleOrgs = [
+        {
+          name: "TechCorp Solutions",
+          description: "Technology consulting and software development company",
+          industry: "Technology",
+          size: "50-200",
+          plan: "professional"
+        },
+        {
+          name: "Global Education Institute", 
+          description: "International educational institution focusing on skills development",
+          industry: "Education",
+          size: "200-1000",
+          plan: "enterprise"
+        }
+      ];
+
+      const createdOrgs = [];
+
+      for (const orgData of sampleOrgs) {
+        const slug = slugify(orgData.name, { lower: true, strict: true });
+        
+        let org = await Organization.findOne({ slug }).session(this.session);
+        if (org) {
+          console.log(chalk.yellow(`ℹ️  Sample organization already exists: ${orgData.name}`));
+          createdOrgs.push(org);
+          continue;
+        }
+
+        org = await Organization.create([{
+          name: orgData.name,
+          slug: slug,
+          description: orgData.description,
+          industry: orgData.industry,
+          size: orgData.size,
+          type: "sample",
+          contact: {
+            email: `contact@${slug}.com`
+          },
+          settings: {
+            isPublic: true,
+            allowSelfRegistration: false,
+            requireApproval: true,
+            allowGoogleOAuth: true,
+            allowEmailPassword: true
+          },
+          subscription: {
+            plan: orgData.plan,
+            status: "active"
+          },
+          metadata: {
+            totalMembers: 0,
+            totalAssessments: 0,
+            totalResponses: 0,
+            isSample: true
+          }
+        }], { session: this.session });
+
+        this.stats.sampleOrganizations++;
+        console.log(chalk.green(`✅ Sample organization created: ${orgData.name}`));
+        createdOrgs.push(org[0]);
+      }
+
+      return createdOrgs;
+    } catch (error) {
+      console.error(chalk.red("❌ Failed to create sample organizations:"), error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Main seeding method
+   */
+  async seed() {
+    const startTime = Date.now();
+
+    try {
+      console.log(chalk.cyan("\n🌱 Starting production database seeding..."));
+      
+      await this.connect();
+      await this.initializeTransaction();
+
+      // Check if we should skip seeding
+      if (await this.shouldSkipSeeding()) {
+        await this.rollbackTransaction();
+        return { 
+          success: true, 
+          skipped: true, 
+          message: "Seeding skipped - system data already exists" 
+        };
+      }
+
+      // Execute seeding steps
+      const systemOrg = await this.createSystemOrganization();
+      const subscriptionPlans = await this.createSubscriptionPlans();
+      const assessmentTemplates = await this.createAssessmentTemplates(systemOrg);
+      const sampleOrgs = await this.createSampleOrganizations();
+
+      await this.commitTransaction();
+
+      const duration = Date.now() - startTime;
+
+      // Summary
+      console.log(chalk.magenta("\n🎉 Production seeding completed successfully!"));
+      console.log(chalk.blue("📊 Seeding Statistics:"));
+      console.log(`   🏢 System Organizations: ${this.stats.systemOrganizations}`);
+      console.log(`   💳 Subscription Plans: ${this.stats.subscriptionPlans}`);
+      console.log(`   📝 Assessment Templates: ${this.stats.assessmentTemplates}`);
+      console.log(`   🎯 Sample Organizations: ${this.stats.sampleOrganizations}`);
+      console.log(`   ⏱️  Duration: ${duration}ms`);
+
+      console.log(chalk.green("\n🚀 Platform Ready For:"));
+      console.log(`   🔐 Google OAuth registration`);
+      console.log(`   📧 Email/password registration`); 
+      console.log(`   🏢 Multi-tenant organization creation`);
+      console.log(`   💰 Multiple subscription tiers`);
+      console.log(`   📊 Assessment template library`);
+
+      return {
+        success: true,
+        systemOrg,
+        subscriptionPlans, 
+        assessmentTemplates,
+        sampleOrgs,
+        stats: this.stats,
+        duration
+      };
+
+    } catch (error) {
+      await this.rollbackTransaction();
+      console.error(chalk.red("\n❌ Seeding failed:"), error.message);
+      
+      return {
+        success: false,
+        error: error.message,
+        stats: this.stats
+      };
     } finally {
       await this.disconnect();
     }
   }
 }
 
-// Auto-run if invoked directly
+// CLI execution handler
 if (import.meta.url === `file://${process.argv[1]}`) {
-  new DatabaseSeeder().seed();
+  const seeder = new DatabaseSeeder();
+  
+  seeder.seed()
+    .then(result => {
+      if (result.success) {
+        process.exit(0);
+      } else {
+        process.exit(1);
+      }
+    })
+    .catch(error => {
+      console.error(chalk.red("❌ Unhandled seeding error:"), error);
+      process.exit(1);
+    });
 }
 
 export { DatabaseSeeder, CONFIG };
