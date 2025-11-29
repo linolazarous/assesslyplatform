@@ -84,7 +84,7 @@ class DatabaseSeeder {
         size: '1-10',
         type: 'system',
         contact: {
-          email: 'system@assesslyplatform.com'
+          email: 'system@assessly.com'
         },
         settings: {
           isPublic: false,
