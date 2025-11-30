@@ -299,7 +299,7 @@ export async function submitContactForm(req, res) {
  */
 async function sendNotificationEmails(contactMessage, organization) {
   const supportEmail = process.env.SUPPORT_EMAIL || 'support@assessly.com';
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@assessly.com';
+  const adminEmail = process.env.ADMIN_EMAIL || 'system@assessly.com';
 
   // Email to support team
   const supportEmailTemplate = EmailTemplates.contactNotification({
