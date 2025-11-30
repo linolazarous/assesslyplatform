@@ -1,51 +1,219 @@
+// api/models/Subscription.js
 import mongoose from 'mongoose';
 
+const priceSchema = new mongoose.Schema({
+  amount: {
+    type: Number,
+    min: [0, 'Price cannot be negative'],
+    required: true
+  },
+  currency: {
+    type: String,
+    default: 'USD',
+    uppercase: true,
+    maxlength: 3
+  },
+  type: {
+    type: String,
+    enum: ['one-time', 'recurring', 'usage-based'],
+    default: 'recurring'
+  },
+  billingPeriod: {
+    type: String,
+    enum: ['monthly', 'quarterly', 'yearly'],
+    required: true
+  },
+  setupFee: {
+    amount: { type: Number, min: 0, default: 0 },
+    currency: { type: String, default: 'USD' }
+  },
+  overageRates: {
+    additionalUser: { type: Number, min: 0, default: 0 },
+    additionalAssessment: { type: Number, min: 0, default: 0 },
+    additionalStorage: { type: Number, min: 0, default: 0 } // per MB
+  },
+  discounts: [{
+    type: { type: String, enum: ['percentage', 'fixed', 'trial'] },
+    value: Number,
+    duration: Number, // in months
+    appliesTo: { type: String, enum: ['first-payment', 'all-payments'] },
+    code: String,
+    expiresAt: Date
+  }]
+}, { _id: false });
+
+const paymentSchema = new mongoose.Schema({
+  method: {
+    type: String,
+    enum: ['card', 'bank_transfer', 'paypal', 'stripe', 'manual', 'free'],
+    default: 'manual'
+  },
+  gateway: {
+    name: { type: String, enum: ['stripe', 'paypal', 'razorpay', 'none'], default: 'none' },
+    customerId: String,
+    subscriptionId: String,
+    priceId: String,
+    paymentMethodId: String
+  },
+  billingAddress: {
+    line1: String,
+    line2: String,
+    city: String,
+    state: String,
+    postalCode: String,
+    country: String
+  },
+  invoiceSettings: {
+    autoAdvance: { type: Boolean, default: true },
+    customFields: [{
+      name: String,
+      value: String
+    }]
+  },
+  lastPayment: {
+    amount: Number,
+    currency: String,
+    date: Date,
+    invoiceUrl: String,
+    receiptUrl: String,
+    status: { type: String, enum: ['succeeded', 'failed', 'pending'] }
+  },
+  nextPayment: {
+    amount: Number,
+    currency: String,
+    date: Date,
+    estimated: { type: Boolean, default: true }
+  },
+  paymentHistory: [{
+    date: Date,
+    amount: Number,
+    currency: String,
+    invoiceId: String,
+    invoiceUrl: String,
+    status: String,
+    description: String
+  }]
+}, { _id: false });
+
+const usageSchema = new mongoose.Schema({
+  users: {
+    current: { type: Number, min: 0, default: 1 },
+    limit: { type: Number, min: 1, required: true },
+    overage: { type: Number, min: 0, default: 0 }
+  },
+  assessments: {
+    current: { type: Number, min: 0, default: 0 },
+    limit: { type: Number, min: 1, required: true },
+    overage: { type: Number, min: 0, default: 0 }
+  },
+  storage: {
+    current: { type: Number, min: 0, default: 0 }, // in MB
+    limit: { type: Number, min: 0, required: true }, // in MB
+    overage: { type: Number, min: 0, default: 0 }
+  },
+  responses: {
+    current: { type: Number, min: 0, default: 0 },
+    limit: { type: Number, min: 0, default: 0 },
+    overage: { type: Number, min: 0, default: 0 }
+  },
+  api: {
+    calls: { type: Number, min: 0, default: 0 },
+    limit: { type: Number, min: 0, default: 0 },
+    overage: { type: Number, min: 0, default: 0 }
+  }
+}, { _id: false });
+
+const featureSchema = new mongoose.Schema({
+  // Core Platform Features
+  maxUsers: { type: Number, min: 1, required: true },
+  maxAssessments: { type: Number, min: 1, required: true },
+  maxStorage: { type: Number, min: 0, required: true }, // MB
+  maxResponses: { type: Number, min: 0, default: 0 },
+  
+  // Advanced Features
+  advancedAnalytics: { type: Boolean, default: false },
+  customBranding: { type: Boolean, default: false },
+  apiAccess: { type: Boolean, default: false },
+  prioritySupport: { type: Boolean, default: false },
+  ssoIntegration: { type: Boolean, default: false },
+  whiteLabeling: { type: Boolean, default: false },
+  
+  // Assessment Features
+  questionTypes: {
+    multipleChoice: { type: Boolean, default: true },
+    singleChoice: { type: Boolean, default: true },
+    trueFalse: { type: Boolean, default: true },
+    shortAnswer: { type: Boolean, default: true },
+    essay: { type: Boolean, default: false },
+    code: { type: Boolean, default: false },
+    fileUpload: { type: Boolean, default: false }
+  },
+  proctoring: {
+    basic: { type: Boolean, default: false },
+    advanced: { type: Boolean, default: false },
+    aiMonitoring: { type: Boolean, default: false }
+  },
+  
+  // Customization
+  customDomains: { type: Boolean, default: false },
+  customEmailTemplates: { type: Boolean, default: false },
+  customWorkflows: { type: Boolean, default: false },
+  
+  // Integration & API
+  webhooks: { type: Boolean, default: false },
+  zapierIntegration: { type: Boolean, default: false },
+  apiRateLimit: { type: Number, default: 1000 }, // requests per hour
+  
+  // Security & Compliance
+  compliance: {
+    gdpr: { type: Boolean, default: false },
+    hipaa: { type: Boolean, default: false },
+    soc2: { type: Boolean, default: false }
+  },
+  security: {
+    mfaEnforcement: { type: Boolean, default: false },
+    ipRestrictions: { type: Boolean, default: false },
+    auditLogs: { type: Boolean, default: false }
+  }
+}, { _id: false });
+
 const subscriptionSchema = new mongoose.Schema({
+  // 🔥 MULTI-TENANT ARCHITECTURE
   organization: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true
+    required: true,
+    index: true
   },
+
+  // Plan & Pricing
   plan: {
     type: String,
-    enum: {
-      values: ['free', 'basic', 'professional', 'enterprise'],
-      message: 'Plan must be one of: free, basic, professional, enterprise'
-    },
+    enum: ['free', 'starter', 'professional', 'enterprise', 'custom'],
     required: true
   },
-  billingCycle: {
+  planName: {
     type: String,
-    enum: {
-      values: ['monthly', 'quarterly', 'yearly'],
-      message: 'Billing cycle must be one of: monthly, quarterly, yearly'
-    },
-    required: true
+    required: true,
+    trim: true,
+    maxlength: 100
   },
+  price: priceSchema,
+
+  // Subscription Lifecycle
   status: {
     type: String,
-    enum: {
-      values: ['active', 'inactive', 'canceled', 'expired', 'past_due'],
-      message: 'Status must be one of: active, inactive, canceled, expired, past_due'
-    },
+    enum: [
+      'active', 
+      'trialing', 
+      'past_due', 
+      'canceled', 
+      'expired', 
+      'incomplete',
+      'incomplete_expired',
+      'paused'
+    ],
     default: 'active'
-  },
-  price: {
-    amount: {
-      type: Number,
-      min: [0, 'Price cannot be negative'],
-      required: true
-    },
-    currency: {
-      type: String,
-      default: 'USD',
-      uppercase: true
-    },
-    setupFee: {
-      type: Number,
-      min: [0, 'Setup fee cannot be negative'],
-      default: 0
-    }
   },
   period: {
     startDate: {
@@ -60,157 +228,549 @@ const subscriptionSchema = new mongoose.Schema({
     trialEndDate: {
       type: Date,
       default: null
-    }
-  },
-  payment: {
-    method: {
-      type: String,
-      enum: ['card', 'bank_transfer', 'paypal', 'manual'],
-      default: 'manual'
     },
-    lastPaymentDate: {
+    cancelAtPeriodEnd: {
+      type: Boolean,
+      default: false
+    },
+    canceledAt: {
       type: Date,
       default: null
-    },
-    nextPaymentDate: {
-      type: Date,
-      default: null
-    },
-    stripeSubscriptionId: {
-      type: String,
-      default: null
-    },
-    stripeCustomerId: {
-      type: String,
-      default: null
-    },
-    invoiceUrl: {
-      type: String,
-      default: null
     }
   },
-  features: {
-    maxUsers: {
-      type: Number,
-      min: [1, 'Max users must be at least 1'],
-      required: true
-    },
-    maxAssessments: {
-      type: Number,
-      min: [1, 'Max assessments must be at least 1'],
-      required: true
-    },
-    maxStorage: {
-      type: Number, // in MB
-      min: [0, 'Max storage cannot be negative'],
-      required: true
-    },
-    advancedAnalytics: {
-      type: Boolean,
-      default: false
-    },
-    customBranding: {
-      type: Boolean,
-      default: false
-    },
-    apiAccess: {
-      type: Boolean,
-      default: false
-    },
-    prioritySupport: {
-      type: Boolean,
-      default: false
-    },
-    ssoIntegration: {
-      type: Boolean,
-      default: false
-    }
-  },
-  limits: {
-    currentUsers: {
-      type: Number,
-      min: [0, 'Current users cannot be negative'],
-      default: 1
-    },
-    currentAssessments: {
-      type: Number,
-      min: [0, 'Current assessments cannot be negative'],
-      default: 0
-    },
-    currentStorage: {
-      type: Number, // in MB
-      min: [0, 'Current storage cannot be negative'],
-      default: 0
-    }
-  },
+
+  // Features & Usage
+  features: featureSchema,
+  usage: usageSchema,
+
+  // Payment & Billing
+  payment: paymentSchema,
+
+  // Metadata & Management
   metadata: {
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true
     },
+    salesRep: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
     notes: {
       type: String,
-      maxlength: [1000, 'Notes cannot exceed 1000 characters'],
+      maxlength: [2000, 'Notes cannot exceed 2000 characters'],
       default: ''
     },
+    tags: [{
+      type: String,
+      maxlength: 50
+    }],
     autoRenew: {
       type: Boolean,
       default: true
     },
-    cancellationReason: {
-      type: String,
-      maxlength: [500, 'Cancellation reason cannot exceed 500 characters'],
-      default: ''
+    renewalReminders: {
+      sent: { type: Boolean, default: false },
+      lastSent: Date,
+      count: { type: Number, default: 0 }
     },
-    cancellationDate: {
-      type: Date,
-      default: null
+    cancellation: {
+      requestedAt: Date,
+      effectiveAt: Date,
+      reason: {
+        type: String,
+        enum: [
+          'too_expensive',
+          'missing_features',
+          'switched_service',
+          'not_using',
+          'customer_service',
+          'product_complexity',
+          'other'
+        ],
+        default: 'other'
+      },
+      feedback: String,
+      followUp: {
+        scheduled: { type: Boolean, default: false },
+        scheduledAt: Date,
+        completed: { type: Boolean, default: false }
+      }
     }
+  },
+
+  // Audit & Compliance
+  auditLog: [{
+    action: String,
+    performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    oldValues: mongoose.Schema.Types.Mixed,
+    newValues: mongoose.Schema.Types.Mixed,
+    timestamp: { type: Date, default: Date.now },
+    ipAddress: String,
+    userAgent: String
+  }],
+
+  // Migration & History
+  migration: {
+    fromPlan: String,
+    fromPrice: Number,
+    migratedAt: Date,
+    migratedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    proratedAmount: Number
   }
+
 }, {
   timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  toJSON: { 
+    virtuals: true,
+    transform: function(doc, ret) {
+      ret.id = ret._id;
+      delete ret._id;
+      delete ret.__v;
+      return ret;
+    }
+  },
+  toObject: { 
+    virtuals: true 
+  }
 });
 
-// Indexes
+/* --------------------------------------------------------------------
+   🔥 MULTI-TENANT INDEXES - Production Optimized
+-------------------------------------------------------------------- */
+
+// Primary query patterns
 subscriptionSchema.index({ organization: 1 }, { unique: true });
 subscriptionSchema.index({ status: 1 });
-subscriptionSchema.index({ 'period.endDate': 1 });
-subscriptionSchema.index({ 'payment.stripeSubscriptionId': 1 });
-subscriptionSchema.index({ 'payment.stripeCustomerId': 1 });
+subscriptionSchema.index({ plan: 1 });
+subscriptionSchema.index({ 'price.billingPeriod': 1 });
 
-// Virtual for days remaining
+// Billing and renewal
+subscriptionSchema.index({ 'period.endDate': 1 });
+subscriptionSchema.index({ 'period.trialEndDate': 1 });
+subscriptionSchema.index({ 'payment.nextPayment.date': 1 });
+
+// Payment gateway integration
+subscriptionSchema.index({ 'payment.gateway.subscriptionId': 1 });
+subscriptionSchema.index({ 'payment.gateway.customerId': 1 });
+
+// Analytics and reporting
+subscriptionSchema.index({ 'metadata.salesRep': 1 });
+subscriptionSchema.index({ createdAt: -1 });
+subscriptionSchema.index({ 'metadata.cancellation.requestedAt': 1 });
+
+/* --------------------------------------------------------------------
+   VIRTUAL FIELDS
+-------------------------------------------------------------------- */
+
 subscriptionSchema.virtual('daysRemaining').get(function() {
   if (this.period.endDate) {
     const now = new Date();
     const end = new Date(this.period.endDate);
-    const diffTime = end - now;
+    const diffTime = Math.max(0, end - now);
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   }
   return null;
 });
 
-// Virtual for isActive
+subscriptionSchema.virtual('trialDaysRemaining').get(function() {
+  if (this.period.trialEndDate) {
+    const now = new Date();
+    const end = new Date(this.period.trialEndDate);
+    const diffTime = Math.max(0, end - now);
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
+  return null;
+});
+
 subscriptionSchema.virtual('isActive').get(function() {
-  return this.status === 'active' && 
-         (!this.period.endDate || new Date() < this.period.endDate);
+  return this.status === 'active' || this.status === 'trialing';
 });
 
-// Virtual for isTrial
 subscriptionSchema.virtual('isTrial').get(function() {
-  return this.period.trialEndDate && new Date() < this.period.trialEndDate;
+  return this.status === 'trialing' || 
+         (this.period.trialEndDate && new Date() < this.period.trialEndDate);
 });
 
-// Pre-save middleware to calculate end date and set default features
+subscriptionSchema.virtual('isCanceled').get(function() {
+  return this.status === 'canceled' || this.period.cancelAtPeriodEnd;
+});
+
+subscriptionSchema.virtual('totalOverage').get(function() {
+  const userOverage = this.usage.users.overage * this.price.overageRates.additionalUser;
+  const assessmentOverage = this.usage.assessments.overage * this.price.overageRates.additionalAssessment;
+  const storageOverage = this.usage.storage.overage * this.price.overageRates.additionalStorage;
+  
+  return userOverage + assessmentOverage + storageOverage;
+});
+
+subscriptionSchema.virtual('usagePercentages').get(function() {
+  return {
+    users: this.usage.users.limit > 0 ? (this.usage.users.current / this.usage.users.limit) * 100 : 0,
+    assessments: this.usage.assessments.limit > 0 ? (this.usage.assessments.current / this.usage.assessments.limit) * 100 : 0,
+    storage: this.usage.storage.limit > 0 ? (this.usage.storage.current / this.usage.storage.limit) * 100 : 0
+  };
+});
+
+/* --------------------------------------------------------------------
+   STATIC METHODS
+-------------------------------------------------------------------- */
+
+subscriptionSchema.statics.findByOrganization = function(organizationId) {
+  return this.findOne({ organization: organizationId })
+    .populate('organization', 'name slug industry size')
+    .populate('metadata.createdBy', 'name email')
+    .populate('metadata.salesRep', 'name email');
+};
+
+subscriptionSchema.statics.findActiveSubscriptions = function() {
+  return this.find({ 
+    status: { $in: ['active', 'trialing'] },
+    'period.endDate': { $gte: new Date() }
+  }).populate('organization', 'name slug industry');
+};
+
+subscriptionSchema.statics.findExpiringSubscriptions = function(days = 7) {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() + days);
+  
+  return this.find({
+    status: { $in: ['active', 'trialing'] },
+    'period.endDate': { 
+      $lte: cutoffDate,
+      $gte: new Date()
+    }
+  }).populate('organization', 'name slug contact.email');
+};
+
+subscriptionSchema.statics.findTrialsEnding = function(days = 3) {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() + days);
+  
+  return this.find({
+    status: 'trialing',
+    'period.trialEndDate': { 
+      $lte: cutoffDate,
+      $gte: new Date()
+    }
+  }).populate('organization', 'name slug contact.email');
+};
+
+subscriptionSchema.statics.getSubscriptionAnalytics = async function(organizationId = null) {
+  const matchStage = organizationId ? { organization: new mongoose.Types.ObjectId(organizationId) } : {};
+  
+  const analytics = await this.aggregate([
+    { $match: matchStage },
+    {
+      $facet: {
+        planDistribution: [
+          {
+            $group: {
+              _id: '$plan',
+              count: { $sum: 1 },
+              totalMRR: { $sum: '$price.amount' }
+            }
+          }
+        ],
+        statusBreakdown: [
+          {
+            $group: {
+              _id: '$status',
+              count: { $sum: 1 }
+            }
+          }
+        ],
+        revenueMetrics: [
+          {
+            $match: {
+              status: { $in: ['active', 'trialing'] }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              totalMRR: { $sum: '$price.amount' },
+              totalARR: { $sum: { $multiply: ['$price.amount', 12] } },
+              avgPlanValue: { $avg: '$price.amount' },
+              churnedThisMonth: {
+                $sum: {
+                  $cond: [
+                    { 
+                      $and: [
+                        { $eq: ['$status', 'canceled'] },
+                        { $gte: ['$period.canceledAt', new Date(new Date().getFullYear(), new Date().getMonth(), 1)] }
+                      ]
+                    },
+                    1,
+                    0
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        usageStatistics: [
+          {
+            $group: {
+              _id: null,
+              avgUserUsage: { $avg: '$usage.users.current' },
+              avgAssessmentUsage: { $avg: '$usage.assessments.current' },
+              avgStorageUsage: { $avg: '$usage.storage.current' },
+              totalOverageRevenue: { $sum: '$totalOverage' }
+            }
+          }
+        ]
+      }
+    }
+  ]);
+  
+  return analytics[0] || {};
+};
+
+subscriptionSchema.statics.getPlanTemplates = function() {
+  return {
+    free: {
+      planName: 'Free',
+      price: { amount: 0, currency: 'USD', billingPeriod: 'monthly' },
+      features: {
+        maxUsers: 3,
+        maxAssessments: 10,
+        maxStorage: 100,
+        maxResponses: 100,
+        questionTypes: { multipleChoice: true, singleChoice: true, trueFalse: true, shortAnswer: true },
+        apiRateLimit: 100
+      }
+    },
+    starter: {
+      planName: 'Starter',
+      price: { amount: 29, currency: 'USD', billingPeriod: 'monthly' },
+      features: {
+        maxUsers: 25,
+        maxAssessments: 100,
+        maxStorage: 1000,
+        maxResponses: 1000,
+        advancedAnalytics: true,
+        customBranding: true,
+        questionTypes: { multipleChoice: true, singleChoice: true, trueFalse: true, shortAnswer: true, essay: true },
+        apiRateLimit: 1000
+      }
+    },
+    professional: {
+      planName: 'Professional',
+      price: { amount: 99, currency: 'USD', billingPeriod: 'monthly' },
+      features: {
+        maxUsers: 100,
+        maxAssessments: 500,
+        maxStorage: 5000,
+        maxResponses: 5000,
+        advancedAnalytics: true,
+        customBranding: true,
+        apiAccess: true,
+        prioritySupport: true,
+        ssoIntegration: true,
+        questionTypes: { multipleChoice: true, singleChoice: true, trueFalse: true, shortAnswer: true, essay: true, code: true },
+        proctoring: { basic: true },
+        webhooks: true,
+        apiRateLimit: 5000
+      }
+    },
+    enterprise: {
+      planName: 'Enterprise',
+      price: { amount: 299, currency: 'USD', billingPeriod: 'yearly' },
+      features: {
+        maxUsers: 1000,
+        maxAssessments: 5000,
+        maxStorage: 50000,
+        maxResponses: 50000,
+        advancedAnalytics: true,
+        customBranding: true,
+        apiAccess: true,
+        prioritySupport: true,
+        ssoIntegration: true,
+        whiteLabeling: true,
+        questionTypes: { multipleChoice: true, singleChoice: true, trueFalse: true, shortAnswer: true, essay: true, code: true, fileUpload: true },
+        proctoring: { basic: true, advanced: true, aiMonitoring: true },
+        customDomains: true,
+        customEmailTemplates: true,
+        customWorkflows: true,
+        webhooks: true,
+        zapierIntegration: true,
+        compliance: { gdpr: true, hipaa: true, soc2: true },
+        security: { mfaEnforcement: true, ipRestrictions: true, auditLogs: true },
+        apiRateLimit: 50000
+      }
+    }
+  };
+};
+
+/* --------------------------------------------------------------------
+   INSTANCE METHODS
+-------------------------------------------------------------------- */
+
+subscriptionSchema.methods.cancel = function(reason = 'other', feedback = '') {
+  this.status = 'canceled';
+  this.period.cancelAtPeriodEnd = true;
+  this.period.canceledAt = new Date();
+  this.metadata.cancellation.reason = reason;
+  this.metadata.cancellation.feedback = feedback;
+  this.metadata.cancellation.requestedAt = new Date();
+  this.metadata.autoRenew = false;
+  
+  this.addAuditLog('subscription_canceled', this.metadata.createdBy, {
+    reason,
+    feedback
+  });
+  
+  return this.save();
+};
+
+subscriptionSchema.methods.renew = function() {
+  if (this.status !== 'active' && this.status !== 'trialing') {
+    throw new Error('Only active or trialing subscriptions can be renewed');
+  }
+  
+  const currentEndDate = new Date(this.period.endDate);
+  let newEndDate = new Date(currentEndDate);
+  
+  switch (this.price.billingPeriod) {
+    case 'monthly':
+      newEndDate.setMonth(newEndDate.getMonth() + 1);
+      break;
+    case 'quarterly':
+      newEndDate.setMonth(newEndDate.getMonth() + 3);
+      break;
+    case 'yearly':
+      newEndDate.setFullYear(newEndDate.getFullYear() + 1);
+      break;
+  }
+  
+  this.period.endDate = newEndDate;
+  this.payment.nextPayment.date = newEndDate;
+  
+  this.addAuditLog('subscription_renewed', this.metadata.createdBy, {
+    newEndDate,
+    billingPeriod: this.price.billingPeriod
+  });
+  
+  return this.save();
+};
+
+subscriptionSchema.methods.upgrade = function(newPlan, newPrice) {
+  const oldPlan = this.plan;
+  const oldPrice = this.price.amount;
+  
+  this.plan = newPlan;
+  this.price.amount = newPrice.amount;
+  this.price.billingPeriod = newPrice.billingPeriod;
+  
+  // Update features based on new plan
+  const planTemplates = this.constructor.getPlanTemplates();
+  if (planTemplates[newPlan]) {
+    this.features = { ...this.features, ...planTemplates[newPlan].features };
+  }
+  
+  this.migration = {
+    fromPlan: oldPlan,
+    fromPrice: oldPrice,
+    migratedAt: new Date(),
+    migratedBy: this.metadata.createdBy
+  };
+  
+  this.addAuditLog('subscription_upgraded', this.metadata.createdBy, {
+    fromPlan: oldPlan,
+    toPlan: newPlan,
+    fromPrice: oldPrice,
+    toPrice: newPrice.amount
+  });
+  
+  return this.save();
+};
+
+subscriptionSchema.methods.updateUsage = function(usageData) {
+  const updates = {};
+  
+  if (usageData.users !== undefined) {
+    this.usage.users.current = usageData.users;
+    this.usage.users.overage = Math.max(0, usageData.users - this.usage.users.limit);
+  }
+  
+  if (usageData.assessments !== undefined) {
+    this.usage.assessments.current = usageData.assessments;
+    this.usage.assessments.overage = Math.max(0, usageData.assessments - this.usage.assessments.limit);
+  }
+  
+  if (usageData.storage !== undefined) {
+    this.usage.storage.current = usageData.storage;
+    this.usage.storage.overage = Math.max(0, usageData.storage - this.usage.storage.limit);
+  }
+  
+  if (usageData.responses !== undefined) {
+    this.usage.responses.current = usageData.responses;
+    this.usage.responses.overage = Math.max(0, usageData.responses - this.usage.responses.limit);
+  }
+  
+  if (usageData.apiCalls !== undefined) {
+    this.usage.api.calls = usageData.apiCalls;
+    this.usage.api.overage = Math.max(0, usageData.apiCalls - this.usage.api.limit);
+  }
+  
+  this.addAuditLog('usage_updated', this.metadata.createdBy, usageData);
+  
+  return this.save();
+};
+
+subscriptionSchema.methods.hasFeature = function(featurePath) {
+  const paths = featurePath.split('.');
+  let current = this.features;
+  
+  for (const path of paths) {
+    if (current[path] === undefined) {
+      return false;
+    }
+    current = current[path];
+  }
+  
+  return current === true;
+};
+
+subscriptionSchema.methods.isWithinLimits = function() {
+  return this.usage.users.current <= this.usage.users.limit &&
+         this.usage.assessments.current <= this.usage.assessments.limit &&
+         this.usage.storage.current <= this.usage.storage.limit &&
+         this.usage.responses.current <= this.usage.responses.limit &&
+         this.usage.api.calls <= this.usage.api.limit;
+};
+
+subscriptionSchema.methods.addAuditLog = function(action, performedBy, changes = {}) {
+  this.auditLog.push({
+    action,
+    performedBy,
+    oldValues: changes.oldValues,
+    newValues: changes.newValues,
+    timestamp: new Date(),
+    ipAddress: changes.ipAddress,
+    userAgent: changes.userAgent
+  });
+  
+  // Keep only last 500 audit logs
+  if (this.auditLog.length > 500) {
+    this.auditLog = this.auditLog.slice(-500);
+  }
+};
+
+/* --------------------------------------------------------------------
+   MIDDLEWARE
+-------------------------------------------------------------------- */
+
 subscriptionSchema.pre('save', function(next) {
   // Set end date based on billing cycle if not provided
   if (!this.period.endDate) {
     const startDate = this.period.startDate || new Date();
     const endDate = new Date(startDate);
     
-    switch (this.billingCycle) {
+    switch (this.price.billingPeriod) {
       case 'monthly':
         endDate.setMonth(endDate.getMonth() + 1);
         break;
@@ -225,170 +785,29 @@ subscriptionSchema.pre('save', function(next) {
     this.period.endDate = endDate;
   }
   
-  // Set default features based on plan
-  if (this.isModified('plan')) {
-    const planFeatures = {
-      free: {
-        maxUsers: 10,
-        maxAssessments: 5,
-        maxStorage: 100,
-        advancedAnalytics: false,
-        customBranding: false,
-        apiAccess: false,
-        prioritySupport: false,
-        ssoIntegration: false
-      },
-      basic: {
-        maxUsers: 50,
-        maxAssessments: 20,
-        maxStorage: 500,
-        advancedAnalytics: true,
-        customBranding: false,
-        apiAccess: false,
-        prioritySupport: false,
-        ssoIntegration: false
-      },
-      professional: {
-        maxUsers: 200,
-        maxAssessments: 100,
-        maxStorage: 2000,
-        advancedAnalytics: true,
-        customBranding: true,
-        apiAccess: true,
-        prioritySupport: true,
-        ssoIntegration: false
-      },
-      enterprise: {
-        maxUsers: 1000,
-        maxAssessments: 500,
-        maxStorage: 10000,
-        advancedAnalytics: true,
-        customBranding: true,
-        apiAccess: true,
-        prioritySupport: true,
-        ssoIntegration: true
-      }
-    };
-    
-    this.features = { ...this.features, ...planFeatures[this.plan] };
+  // Set next payment date
+  if (!this.payment.nextPayment.date) {
+    this.payment.nextPayment.date = this.period.endDate;
+  }
+  
+  // Set usage limits from features
+  if (this.isNew) {
+    this.usage.users.limit = this.features.maxUsers;
+    this.usage.assessments.limit = this.features.maxAssessments;
+    this.usage.storage.limit = this.features.maxStorage;
+    this.usage.responses.limit = this.features.maxResponses;
+    this.usage.api.limit = this.features.apiRateLimit;
   }
   
   next();
 });
 
-// Static method to find active subscriptions
-subscriptionSchema.statics.findActive = function() {
-  return this.find({ 
-    status: 'active',
-    'period.endDate': { $gte: new Date() }
-  }).populate('organization', 'name slug');
-};
-
-// Static method to find expiring subscriptions
-subscriptionSchema.statics.findExpiring = function(days = 7) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  
-  return this.find({
-    status: 'active',
-    'period.endDate': { 
-      $lte: date,
-      $gte: new Date()
-    }
-  }).populate('organization', 'name slug contact.email');
-};
-
-// Static method to get subscription statistics
-subscriptionSchema.statics.getSubscriptionStats = async function() {
-  const stats = await this.aggregate([
-    {
-      $group: {
-        _id: '$plan',
-        count: { $sum: 1 },
-        totalRevenue: { $sum: '$price.amount' },
-        active: {
-          $sum: {
-            $cond: [
-              { 
-                $and: [
-                  { $eq: ['$status', 'active'] },
-                  { $gte: ['$period.endDate', new Date()] }
-                ]
-              }, 
-              1, 
-              0 
-            ]
-          }
-        }
-      }
-    }
-  ]);
-  
-  return stats;
-};
-
-// Instance method to cancel subscription
-subscriptionSchema.methods.cancel = function(reason = '') {
-  this.status = 'canceled';
-  this.metadata.cancellationReason = reason;
-  this.metadata.cancellationDate = new Date();
-  this.metadata.autoRenew = false;
-  
-  return this.save();
-};
-
-// Instance method to renew subscription
-subscriptionSchema.methods.renew = function() {
-  if (this.status !== 'active') {
-    throw new Error('Only active subscriptions can be renewed');
+subscriptionSchema.post('save', function(error, doc, next) {
+  if (error.name === 'MongoError' && error.code === 11000) {
+    next(new Error('Organization already has an active subscription.'));
+  } else {
+    next(error);
   }
-  
-  const currentEndDate = new Date(this.period.endDate);
-  let newEndDate = new Date(currentEndDate);
-  
-  switch (this.billingCycle) {
-    case 'monthly':
-      newEndDate.setMonth(newEndDate.getMonth() + 1);
-      break;
-    case 'quarterly':
-      newEndDate.setMonth(newEndDate.getMonth() + 3);
-      break;
-    case 'yearly':
-      newEndDate.setFullYear(newEndDate.getFullYear() + 1);
-      break;
-  }
-  
-  this.period.endDate = newEndDate;
-  this.payment.nextPaymentDate = newEndDate;
-  
-  return this.save();
-};
-
-// Instance method to check if feature is available
-subscriptionSchema.methods.hasFeature = function(feature) {
-  return this.features[feature] === true;
-};
-
-// Instance method to check usage limits
-subscriptionSchema.methods.isWithinLimits = function() {
-  return this.limits.currentUsers <= this.features.maxUsers &&
-         this.limits.currentAssessments <= this.features.maxAssessments &&
-         this.limits.currentStorage <= this.features.maxStorage;
-};
-
-// Instance method to update usage
-subscriptionSchema.methods.updateUsage = function(updates) {
-  if (updates.users !== undefined) {
-    this.limits.currentUsers = updates.users;
-  }
-  if (updates.assessments !== undefined) {
-    this.limits.currentAssessments = updates.assessments;
-  }
-  if (updates.storage !== undefined) {
-    this.limits.currentStorage = updates.storage;
-  }
-  
-  return this.save();
-};
+});
 
 export default mongoose.model('Subscription', subscriptionSchema);
