@@ -1,227 +1,709 @@
 // src/pages/Contact.jsx
-import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Box,
   Container,
   TextField,
   Button,
   Typography,
-  Snackbar,
-  Alert,
   Paper,
   CircularProgress,
-} from "@mui/material";
-import SendIcon from "@mui/icons-material/Send";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import { motion, AnimatePresence } from "framer-motion";
-import Confetti from "react-confetti";
+  Grid,
+  Card,
+  CardContent,
+  Alert,
+  useTheme,
+  alpha,
+  Divider,
+  IconButton,
+  Link as MuiLink,
+} from '@mui/material';
+import {
+  Send,
+  CheckCircle,
+  Email,
+  Phone,
+  LocationOn,
+  Business,
+  Schedule,
+  ArrowBack,
+  Download,
+} from '@mui/icons-material';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { useSnackbar } from '../contexts/SnackbarContext';
+import { contactApi } from '../api/contactApi';
+import Confetti from 'react-confetti';
 
 /**
- * Contact page with animated success popup + confetti.
- * - Moves timers into useEffect to avoid leaks.
- * - Guards Confetti usage behind window check to avoid SSR errors.
+ * Contact Page - Get in touch with Assessly Platform support
+ * Multi-tenant aware with organization support
  */
 
-// Success popup (pure UI)
-const SuccessPopup = React.memo(({ success }) => {
+// Success Popup Component
+const SuccessPopup = ({ success, onClose }) => {
+  const theme = useTheme();
+
   if (!success) return null;
+
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ scale: 0, opacity: 0, y: -20 }}
+        initial={{ scale: 0, opacity: 0, y: -50 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.8 }}
-        transition={{ type: "spring", stiffness: 200, damping: 20 }}
+        exit={{ scale: 0, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 200, damping: 25 }}
         style={{
-          position: "fixed",
-          top: "40%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
           zIndex: 2000,
-          background: "rgba(255,255,255,0.95)",
-          backdropFilter: "blur(12px)",
-          padding: "2rem 3rem",
-          borderRadius: "20px",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
-          textAlign: "center",
+          width: '90%',
+          maxWidth: 400,
         }}
       >
-        <motion.div initial={{ scale: 0 }} animate={{ scale: 1.2 }} transition={{ type: "spring", stiffness: 250, damping: 12 }}>
-          <CheckCircleIcon sx={{ color: "#22c55e", fontSize: 80, mb: 2 }} />
-        </motion.div>
-        <Typography variant="h5" fontWeight={700} gutterBottom>
-          Message Sent!
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Thanks for reaching out — we'll get back to you shortly.
-        </Typography>
+        <Card
+          elevation={24}
+          sx={{
+            borderRadius: 3,
+            background: `linear-gradient(135deg, ${alpha(theme.palette.success.light, 0.95)} 0%, ${alpha(theme.palette.success.main, 0.1)} 100%)`,
+            backdropFilter: 'blur(20px)',
+            border: `1px solid ${alpha(theme.palette.success.main, 0.2)}`,
+            overflow: 'hidden',
+          }}
+        >
+          <CardContent sx={{ p: 4, textAlign: 'center' }}>
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.1, type: 'spring', stiffness: 250 }}
+            >
+              <CheckCircle
+                sx={{
+                  fontSize: 80,
+                  color: theme.palette.success.main,
+                  mb: 3,
+                  filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.1))',
+                }}
+              />
+            </motion.div>
+            
+            <Typography variant="h5" fontWeight={700} gutterBottom color="success.dark">
+              Message Sent Successfully!
+            </Typography>
+            
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+              Thank you for reaching out to Assessly Platform. Our team will get back to you within 24 hours.
+            </Typography>
+            
+            <Button
+              variant="contained"
+              color="success"
+              onClick={onClose}
+              sx={{
+                px: 4,
+                py: 1,
+                borderRadius: 2,
+                fontWeight: 600,
+              }}
+            >
+              Close
+            </Button>
+          </CardContent>
+        </Card>
       </motion.div>
     </AnimatePresence>
   );
-});
+};
 
-// Contact form (stateless UI)
-const ContactForm = React.memo(({ formData, loading, onChange, onSubmit }) => {
+// Contact Form Component
+const ContactForm = ({ formData, loading, errors, onChange, onSubmit, organizationId }) => {
+  const theme = useTheme();
+
   return (
     <form onSubmit={onSubmit}>
-      <TextField fullWidth label="Full Name" name="name" value={formData.name} onChange={onChange} variant="outlined" margin="normal" required disabled={loading} />
-      <TextField fullWidth label="Email Address" name="email" value={formData.email} onChange={onChange} variant="outlined" margin="normal" required type="email" disabled={loading} />
-      <TextField fullWidth label="Your Message" name="message" value={formData.message} onChange={onChange} variant="outlined" margin="normal" required multiline rows={5} disabled={loading} />
-
-      <Button
-        type="submit"
-        fullWidth
-        variant="contained"
-        color="primary"
-        size="large"
-        disabled={loading}
-        endIcon={!loading && <SendIcon />}
-        sx={{
-          mt: 3,
-          py: 1.3,
-          borderRadius: 3,
-          fontWeight: 700,
-          textTransform: "none",
-          background: "linear-gradient(90deg, #3b82f6 0%, #6366f1 100%)",
-          "&:hover": {
-            background: "linear-gradient(90deg, #2563eb 0%, #4f46e5 100%)",
-          },
-          "&:disabled": {
-            background: "rgba(0, 0, 0, 0.12)",
-          },
-        }}
-      >
-        {loading ? <CircularProgress size={26} sx={{ color: "white" }} /> : "Send Message"}
-      </Button>
+      <Grid container spacing={3}>
+        <Grid item xs={12} sm={6}>
+          <TextField
+            fullWidth
+            label="Full Name"
+            name="name"
+            value={formData.name}
+            onChange={onChange}
+            error={!!errors.name}
+            helperText={errors.name}
+            required
+            disabled={loading}
+            InputProps={{
+              startAdornment: (
+                <Business sx={{ mr: 1, color: theme.palette.action.active }} />
+              ),
+            }}
+            sx={{ mb: 2 }}
+          />
+        </Grid>
+        
+        <Grid item xs={12} sm={6}>
+          <TextField
+            fullWidth
+            label="Email Address"
+            name="email"
+            type="email"
+            value={formData.email}
+            onChange={onChange}
+            error={!!errors.email}
+            helperText={errors.email}
+            required
+            disabled={loading}
+            InputProps={{
+              startAdornment: (
+                <Email sx={{ mr: 1, color: theme.palette.action.active }} />
+              ),
+            }}
+            sx={{ mb: 2 }}
+          />
+        </Grid>
+        
+        <Grid item xs={12}>
+          <TextField
+            fullWidth
+            label="Organization"
+            name="organization"
+            value={formData.organization}
+            onChange={onChange}
+            placeholder={organizationId ? 'Your organization' : 'Company name (optional)'}
+            disabled={!!organizationId || loading}
+            InputProps={{
+              startAdornment: (
+                <Business sx={{ mr: 1, color: theme.palette.action.active }} />
+              ),
+            }}
+            sx={{ mb: 2 }}
+          />
+        </Grid>
+        
+        <Grid item xs={12}>
+          <TextField
+            fullWidth
+            label="Subject"
+            name="subject"
+            value={formData.subject}
+            onChange={onChange}
+            error={!!errors.subject}
+            helperText={errors.subject}
+            required
+            disabled={loading}
+            placeholder="What would you like to discuss?"
+            sx={{ mb: 2 }}
+          />
+        </Grid>
+        
+        <Grid item xs={12}>
+          <TextField
+            fullWidth
+            label="Your Message"
+            name="message"
+            value={formData.message}
+            onChange={onChange}
+            error={!!errors.message}
+            helperText={errors.message}
+            required
+            multiline
+            rows={6}
+            disabled={loading}
+            placeholder="Please provide as much detail as possible..."
+            sx={{ mb: 3 }}
+          />
+        </Grid>
+        
+        <Grid item xs={12}>
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            fullWidth
+            size="large"
+            disabled={loading}
+            startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <Send />}
+            sx={{
+              py: 2,
+              borderRadius: 2,
+              fontWeight: 600,
+              fontSize: '1rem',
+              textTransform: 'none',
+              background: `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+              '&:hover': {
+                background: `linear-gradient(90deg, ${theme.palette.primary.dark} 0%, ${theme.palette.secondary.dark} 100%)`,
+                transform: 'translateY(-2px)',
+                boxShadow: theme.shadows[8],
+              },
+              '&:disabled': {
+                background: theme.palette.action.disabledBackground,
+              },
+              transition: 'all 0.3s ease',
+            }}
+          >
+            {loading ? 'Sending Message...' : 'Send Message'}
+          </Button>
+        </Grid>
+      </Grid>
     </form>
   );
-});
+};
 
-export default function Contact() {
-  const [formData, setFormData] = useState({ name: "", email: "", message: "" });
+// Contact Information Card
+const ContactInfoCard = () => {
+  const theme = useTheme();
+
+  const contactInfo = [
+    {
+      icon: <Email color="primary" />,
+      title: 'Email Support',
+      details: 'support@assessly.com',
+      subtitle: 'For technical issues and account support',
+    },
+    {
+      icon: <Phone color="primary" />,
+      title: 'Phone Support',
+      details: '+1 (555) 123-4567',
+      subtitle: 'Mon-Fri, 9am-6pm EST',
+    },
+    {
+      icon: <Business color="primary" />,
+      title: 'Sales Inquiries',
+      details: 'sales@assessly.com',
+      subtitle: 'For enterprise plans and pricing',
+    },
+    {
+      icon: <LocationOn color="primary" />,
+      title: 'Office Location',
+      details: 'San Francisco, CA',
+      subtitle: 'Remote team across 12 countries',
+    },
+    {
+      icon: <Schedule color="primary" />,
+      title: 'Response Time',
+      details: 'Within 24 hours',
+      subtitle: 'For all support inquiries',
+    },
+    {
+      icon: <Download color="primary" />,
+      title: 'Documentation',
+      details: 'docs.assessly.com',
+      subtitle: 'API docs and user guides',
+    },
+  ];
+
+  return (
+    <Card
+      elevation={2}
+      sx={{
+        height: '100%',
+        borderRadius: 3,
+        border: `1px solid ${theme.palette.divider}`,
+        background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.05)} 0%, transparent 100%)`,
+      }}
+    >
+      <CardContent sx={{ p: 4 }}>
+        <Typography variant="h5" gutterBottom color="primary" sx={{ fontWeight: 600, mb: 3 }}>
+          Contact Information
+        </Typography>
+        
+        <Grid container spacing={3}>
+          {contactInfo.map((item, index) => (
+            <Grid item xs={12} sm={6} key={index}>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: 2 }}>
+                <Box
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2,
+                    bgcolor: alpha(theme.palette.primary.main, 0.1),
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {item.icon}
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                    {item.title}
+                  </Typography>
+                  <Typography variant="body2" color="text.primary" fontWeight={500}>
+                    {item.details}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {item.subtitle}
+                  </Typography>
+                </Box>
+              </Box>
+            </Grid>
+          ))}
+        </Grid>
+        
+        <Divider sx={{ my: 3 }} />
+        
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <strong>Business Hours:</strong> Monday - Friday, 9:00 AM - 6:00 PM EST
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          <strong>Emergency Support:</strong> Available 24/7 for critical system issues
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+};
+
+/**
+ * Main Contact Page Component
+ */
+export default function Contact({ organizationId = null }) {
+  const theme = useTheme();
+  const navigate = useNavigate();
+  const { showSnackbar, showSuccess, showError } = useSnackbar();
+  
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    organization: '',
+    subject: '',
+    message: '',
+    category: 'general',
+    priority: 'normal',
+    organizationId,
+  });
+
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
+  const [errors, setErrors] = useState({});
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [confettiKey, setConfettiKey] = useState(0);
+
+  // Load user information if available
+  useEffect(() => {
+    const loadUserInfo = () => {
+      try {
+        const user = localStorage.getItem('user');
+        if (user) {
+          const userData = JSON.parse(user);
+          setFormData(prev => ({
+            ...prev,
+            name: `${userData.firstName || ''} ${userData.lastName || ''}`.trim(),
+            email: userData.email || '',
+            organization: userData.organizationName || '',
+          }));
+        }
+      } catch (error) {
+        console.error('Error loading user info:', error);
+      }
+    };
+
+    loadUserInfo();
+  }, []);
 
   const handleChange = useCallback((e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  }, []);
+    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Clear error for this field when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: undefined }));
+    }
+  }, [errors]);
 
-  const handleSubmit = useCallback(
-    async (e) => {
-      e.preventDefault();
+  const validateForm = () => {
+    const newErrors = {};
 
-      // Basic validation
-      if (!formData.name?.trim() || !formData.email?.trim() || !formData.message?.trim()) {
-        setSnackbar({ open: true, message: "Please fill in all fields before submitting.", severity: "warning" });
-        return;
-      }
+    if (!formData.name.trim()) {
+      newErrors.name = 'Name is required';
+    }
 
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email)) {
-        setSnackbar({ open: true, message: "Please enter a valid email address.", severity: "warning" });
-        return;
-      }
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
 
-      try {
-        setLoading(true);
+    if (!formData.subject.trim()) {
+      newErrors.subject = 'Subject is required';
+    } else if (formData.subject.length < 5) {
+      newErrors.subject = 'Subject must be at least 5 characters';
+    }
 
-        // Use relative URL if same origin; fallback to full URL if needed
-        const res = await fetch("/api/contact", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: formData.name.trim(),
-            email: formData.email.trim(),
-            message: formData.message.trim(),
-          }),
+    if (!formData.message.trim()) {
+      newErrors.message = 'Message is required';
+    } else if (formData.message.length < 20) {
+      newErrors.message = 'Please provide more details (minimum 20 characters)';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault();
+
+    if (!validateForm()) {
+      showSnackbar('Please fix the errors in the form', 'error');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await contactApi.sendContactMessage({
+        ...formData,
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent,
+        pageUrl: window.location.href,
+      });
+
+      if (response.success) {
+        // Show success state
+        setSuccess(true);
+        setShowConfetti(true);
+        setConfettiKey(prev => prev + 1);
+        
+        // Show success message
+        showSuccess('Message sent successfully! We\'ll get back to you soon.');
+        
+        // Reset form
+        setFormData({
+          name: '',
+          email: '',
+          organization: '',
+          subject: '',
+          message: '',
+          category: 'general',
+          priority: 'normal',
+          organizationId,
         });
-
-        const data = await res.json().catch(() => ({}));
-
-        if (res.ok) {
-          setSuccess(true);
-          setSnackbar({ open: true, message: "✅ Message sent successfully! We'll get back to you soon.", severity: "success" });
-          setFormData({ name: "", email: "", message: "" });
-        } else {
-          throw new Error(data?.message || "Failed to send message.");
-        }
-      } catch (err) {
-        console.error("Contact form error:", err);
-        setSnackbar({ open: true, message: err.message || "Network error. Please try again.", severity: "error" });
-      } finally {
-        setLoading(false);
+        
+        // Auto-hide confetti after 5 seconds
+        setTimeout(() => {
+          setShowConfetti(false);
+        }, 5000);
+      } else {
+        throw new Error(response.message || 'Failed to send message');
       }
-    },
-    [formData]
-  );
+    } catch (error) {
+      console.error('Contact form error:', error);
+      showError(error.response?.data?.message || error.message || 'Failed to send message. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [formData, organizationId, showSnackbar, showSuccess, showError]);
 
-  // Auto-hide success popup after 5s (cleaned up)
-  useEffect(() => {
-    if (!success) return;
-    const timer = setTimeout(() => setSuccess(false), 5000);
-    return () => clearTimeout(timer);
-  }, [success]);
-
-  const handleSnackbarClose = useCallback(() => {
-    setSnackbar((prev) => ({ ...prev, open: false }));
+  const handleCloseSuccessPopup = useCallback(() => {
+    setSuccess(false);
+    setShowConfetti(false);
   }, []);
 
-  // Memoize background style to avoid re-creating
-  const backgroundStyle = useMemo(
-    () => ({
-      py: { xs: 6, md: 10 },
-      minHeight: "100vh",
-      background: "linear-gradient(135deg, #f8faff 0%, #e0e7ff 50%, #eef2ff 100%)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      position: "relative",
-      overflow: "hidden",
-    }),
-    []
-  );
+  const handleBack = useCallback(() => {
+    navigate(-1);
+  }, [navigate]);
+
+  // Confetti effect (client-side only)
+  const renderConfetti = () => {
+    if (typeof window === 'undefined' || !showConfetti) return null;
+    
+    return (
+      <Confetti
+        key={confettiKey}
+        recycle={false}
+        numberOfPieces={200}
+        gravity={0.1}
+        wind={0.01}
+        colors={[
+          theme.palette.primary.main,
+          theme.palette.secondary.main,
+          theme.palette.success.main,
+          theme.palette.warning.main,
+          theme.palette.info.main,
+        ]}
+        style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1000 }}
+      />
+    );
+  };
 
   return (
-    <Box sx={backgroundStyle}>
-      {/* Confetti only in browser and only when success */}
-      {typeof window !== "undefined" && success && <Confetti recycle={false} numberOfPieces={200} gravity={0.3} />}
-
-      <Container maxWidth="sm">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <Paper
-            elevation={10}
-            sx={{
-              p: { xs: 4, sm: 5 },
-              borderRadius: 4,
-              backdropFilter: "blur(15px)",
-              background: "rgba(255,255,255,0.75)",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-            }}
-          >
-            <Typography variant="h4" align="center" gutterBottom sx={{ fontWeight: 800, color: "primary.main", letterSpacing: "-0.5px" }}>
-              Get in Touch
-            </Typography>
-
-            <Typography variant="body1" align="center" sx={{ mb: 3, color: "text.secondary" }}>
-              We'd love to hear from you. Fill out the form below and we'll reply soon.
-            </Typography>
-
-            <ContactForm formData={formData} loading={loading} onChange={handleChange} onSubmit={handleSubmit} />
-          </Paper>
-        </motion.div>
-      </Container>
-
+    <Box
+      sx={{
+        minHeight: '100vh',
+        background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.1)} 0%, ${alpha(theme.palette.secondary.light, 0.05)} 100%)`,
+        py: { xs: 4, md: 6 },
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Confetti Effect */}
+      {renderConfetti()}
+      
       {/* Success Popup */}
-      <SuccessPopup success={success} />
+      <SuccessPopup success={success} onClose={handleCloseSuccessPopup} />
+      
+      {/* Background decorative elements */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: -100,
+          right: -100,
+          width: 400,
+          height: 400,
+          borderRadius: '50%',
+          background: `radial-gradient(${alpha(theme.palette.primary.light, 0.2)} 0%, transparent 70%)`,
+          zIndex: 0,
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: -100,
+          left: -100,
+          width: 300,
+          height: 300,
+          borderRadius: '50%',
+          background: `radial-gradient(${alpha(theme.palette.secondary.light, 0.15)} 0%, transparent 70%)`,
+          zIndex: 0,
+        }}
+      />
 
-      {/* Snackbar Notifications */}
-      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={handleSnackbarClose} anchorOrigin={{ vertical: "top", horizontal: "center" }}>
-        <Alert severity={snackbar.severity} sx={{ width: "100%", fontWeight: 500 }} onClose={handleSnackbarClose}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
+      <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
+        {/* Header */}
+        <Box sx={{ mb: 4 }}>
+          <Button
+            startIcon={<ArrowBack />}
+            onClick={handleBack}
+            sx={{ mb: 2, textTransform: 'none' }}
+          >
+            Back
+          </Button>
+          
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Typography variant="h3" fontWeight={800} gutterBottom color="primary">
+              Contact Us
+            </Typography>
+            <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
+              We're here to help you succeed with Assessly Platform
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Whether you have questions about features, need technical support, or want to discuss enterprise solutions, 
+              our team is ready to assist you.
+            </Typography>
+          </motion.div>
+        </Box>
+
+        {/* Main Content */}
+        <Grid container spacing={4}>
+          {/* Contact Form */}
+          <Grid item xs={12} lg={8}>
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1, duration: 0.5 }}
+            >
+              <Card
+                elevation={6}
+                sx={{
+                  borderRadius: 3,
+                  overflow: 'hidden',
+                  border: `1px solid ${theme.palette.divider}`,
+                }}
+              >
+                <CardContent sx={{ p: { xs: 3, md: 5 } }}>
+                  <Typography variant="h5" gutterBottom color="primary" sx={{ fontWeight: 600, mb: 4 }}>
+                    Send us a Message
+                  </Typography>
+                  
+                  {organizationId && (
+                    <Alert severity="info" sx={{ mb: 3 }}>
+                      <Typography variant="body2">
+                        This message will be associated with your organization. 
+                        Our support team will have access to your organization context.
+                      </Typography>
+                    </Alert>
+                  )}
+                  
+                  <ContactForm
+                    formData={formData}
+                    loading={loading}
+                    errors={errors}
+                    onChange={handleChange}
+                    onSubmit={handleSubmit}
+                    organizationId={organizationId}
+                  />
+                  
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 3, textAlign: 'center' }}>
+                    By submitting this form, you agree to our{' '}
+                    <MuiLink href="/privacy" color="primary">
+                      Privacy Policy
+                    </MuiLink>
+                    . We'll never share your information with third parties.
+                  </Typography>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </Grid>
+
+          {/* Contact Information */}
+          <Grid item xs={12} lg={4}>
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2, duration: 0.5 }}
+            >
+              <ContactInfoCard />
+              
+              {/* FAQ/Help Links */}
+              <Card sx={{ mt: 3, borderRadius: 3 }}>
+                <CardContent sx={{ p: 3 }}>
+                  <Typography variant="h6" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
+                    Quick Help
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Check our resources before contacting support:
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <MuiLink href="/help/faq" color="primary" sx={{ textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+                      Frequently Asked Questions
+                    </MuiLink>
+                    <MuiLink href="/help/documentation" color="primary" sx={{ textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+                      Product Documentation
+                    </MuiLink>
+                    <MuiLink href="/help/api" color="primary" sx={{ textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+                      API Reference
+                    </MuiLink>
+                    <MuiLink href="/help/troubleshooting" color="primary" sx={{ textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+                      Troubleshooting Guide
+                    </MuiLink>
+                  </Box>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </Grid>
+        </Grid>
+
+        {/* Status Messages */}
+        <Box sx={{ mt: 4, textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary">
+            Average response time: <strong>2 hours</strong> for urgent issues, <strong>24 hours</strong> for general inquiries
+          </Typography>
+        </Box>
+      </Container>
     </Box>
   );
 }
+
+Contact.propTypes = {
+  /** Organization ID for multi-tenant context */
+  organizationId: PropTypes.string,
+};
+
+Contact.defaultProps = {
+  organizationId: null,
+};
