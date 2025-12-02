@@ -1,12 +1,11 @@
 // src/components/admin/UserActivityWidget.jsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import PropTypes from "prop-types";
 import {
   Box,
   Typography,
   Button,
   List,
-  ListItem,
   ListItemText,
   ListItemAvatar,
   ListItemButton,
@@ -18,6 +17,15 @@ import {
   Tooltip,
   Paper,
   Divider,
+  Card,
+  CardContent,
+  CardHeader,
+  Grid,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  alpha,
 } from "@mui/material";
 import {
   Person,
@@ -30,37 +38,93 @@ import {
   Settings,
   Download,
   Visibility,
+  Refresh,
+  FilterList,
+  ClearAll,
+  History,
 } from "@mui/icons-material";
 import { formatDistanceToNow, format } from "date-fns";
 import { fetchUserActivities, fetchUserActivityAnalytics } from "../../api/userActivityApi";
 import { useNavigate } from "react-router-dom";
+import { useSnackbar } from "../../contexts/SnackbarContext";
 
-const activityIcons = {
-  login: Login,
-  logout: Logout,
-  assessment_created: Assessment,
-  assessment_completed: AssignmentTurnedIn,
-  user_created: Person,
-  profile_updated: Settings,
-  file_downloaded: Download,
-  assessment_viewed: Visibility,
-  assessment_deleted: Delete,
-  assessment_updated: Create,
+// Activity configuration for consistent mapping
+const ACTIVITY_CONFIG = {
+  login: { 
+    icon: Login, 
+    color: "success", 
+    label: "Login",
+    description: (activity) => `${activity.userName || activity.userEmail || "User"} logged in`
+  },
+  logout: { 
+    icon: Logout, 
+    color: "default", 
+    label: "Logout",
+    description: (activity) => `${activity.userName || activity.userEmail || "User"} logged out`
+  },
+  assessment_created: { 
+    icon: Assessment, 
+    color: "primary", 
+    label: "Assessment Created",
+    description: (activity) => `${activity.userName || activity.userEmail || "User"} created assessment: ${activity.assessmentName || "Untitled"}`
+  },
+  assessment_completed: { 
+    icon: AssignmentTurnedIn, 
+    color: "success", 
+    label: "Assessment Completed",
+    description: (activity) => `${activity.userName || activity.userEmail || "User"} completed assessment: ${activity.assessmentName || "Untitled"}`
+  },
+  assessment_updated: { 
+    icon: Create, 
+    color: "warning", 
+    label: "Assessment Updated",
+    description: (activity) => `${activity.userName || activity.userEmail || "User"} updated assessment: ${activity.assessmentName || "Untitled"}`
+  },
+  assessment_deleted: { 
+    icon: Delete, 
+    color: "error", 
+    label: "Assessment Deleted",
+    description: (activity) => `${activity.userName || activity.userEmail || "User"} deleted assessment: ${activity.assessmentName || "Untitled"}`
+  },
+  assessment_viewed: { 
+    icon: Visibility, 
+    color: "info", 
+    label: "Assessment Viewed",
+    description: (activity) => `${activity.userName || activity.userEmail || "User"} viewed assessment: ${activity.assessmentName || "Untitled"}`
+  },
+  user_created: { 
+    icon: Person, 
+    color: "info", 
+    label: "User Created",
+    description: (activity) => `${activity.userName || activity.userEmail || "User"} account was created`
+  },
+  profile_updated: { 
+    icon: Settings, 
+    color: "warning", 
+    label: "Profile Updated",
+    description: (activity) => `${activity.userName || activity.userEmail || "User"} updated their profile`
+  },
+  file_downloaded: { 
+    icon: Download, 
+    color: "secondary", 
+    label: "File Downloaded",
+    description: (activity) => `${activity.userName || activity.userEmail || "User"} downloaded ${activity.fileType || "file"}`
+  },
 };
 
-const activityColors = {
-  login: "success",
-  logout: "default",
-  assessment_created: "primary",
-  assessment_completed: "success",
-  user_created: "info",
-  profile_updated: "warning",
-  file_downloaded: "secondary",
-  assessment_viewed: "info",
-  assessment_deleted: "error",
-  assessment_updated: "warning",
-};
+const TIME_RANGE_OPTIONS = [
+  { value: "1h", label: "Last Hour" },
+  { value: "today", label: "Today" },
+  { value: "yesterday", label: "Yesterday" },
+  { value: "7d", label: "Last 7 Days" },
+  { value: "30d", label: "Last 30 Days" },
+  { value: "90d", label: "Last 90 Days" },
+];
 
+/**
+ * User Activity Widget Component
+ * Displays recent user activities with filtering and analytics for multi-tenant monitoring
+ */
 function UserActivityWidget({ 
   limit = 10, 
   organizationId = null, 
@@ -69,10 +133,13 @@ function UserActivityWidget({
   showFilters = true,
   showMetrics = true,
   showViewAll = true,
-  autoRefresh = true,
-  refreshInterval = 30000, // 30 seconds
+  autoRefresh = false,
+  refreshInterval = 30000,
+  compact = false,
+  elevation = 0,
 }) {
   const navigate = useNavigate();
+  const { showSnackbar } = useSnackbar();
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -80,33 +147,61 @@ function UserActivityWidget({
   const [selectedUser, setSelectedUser] = useState(userId);
   const [selectedType, setSelectedType] = useState(activityType);
   const [timeRange, setTimeRange] = useState("today");
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const activityTypes = useMemo(() => 
+    Object.entries(ACTIVITY_CONFIG).map(([key, config]) => ({
+      value: key,
+      label: config.label,
+      icon: config.icon,
+      color: config.color,
+    })), 
+  []);
 
   const loadActivities = useCallback(async () => {
     try {
       setLoading(true);
+      
       const params = {
         limit,
         organizationId,
         userId: selectedUser,
         activityType: selectedType,
         timeRange,
+        includeUserDetails: true,
       };
 
-      const [activityData, analyticsData] = await Promise.all([
+      const [activityResponse, analyticsResponse] = await Promise.all([
         fetchUserActivities(params),
         showMetrics ? fetchUserActivityAnalytics(params) : Promise.resolve(null),
       ]);
 
-      setActivities(activityData.data || activityData);
-      setAnalytics(analyticsData?.data || analyticsData);
+      // Handle API response format
+      if (activityResponse.success) {
+        setActivities(activityResponse.data?.activities || activityResponse.data || []);
+      } else {
+        throw new Error(activityResponse.message || "Failed to load activities");
+      }
+
+      if (analyticsResponse?.success) {
+        setAnalytics(analyticsResponse.data);
+      }
+
       setError(null);
+      setLastUpdated(new Date());
+      
+      if (activityResponse.data?.activities?.length === 0 && !selectedUser && !selectedType) {
+        showSnackbar("No recent activities found", "info");
+      }
     } catch (err) {
-      setError(err.message || "Failed to load user activities");
+      const errorMessage = err.response?.data?.message || err.message || "Failed to load user activities";
+      setError(errorMessage);
+      showSnackbar(errorMessage, "error");
       console.error("Error loading user activities:", err);
     } finally {
       setLoading(false);
     }
-  }, [limit, organizationId, selectedUser, selectedType, timeRange, showMetrics]);
+  }, [limit, organizationId, selectedUser, selectedType, timeRange, showMetrics, showSnackbar]);
 
   useEffect(() => {
     loadActivities();
@@ -128,6 +223,7 @@ function UserActivityWidget({
       navigate(`/admin/assessments/${activity.assessmentId}`);
     } else if (activity.userId && activity.userId !== selectedUser) {
       setSelectedUser(activity.userId);
+      showSnackbar(`Filtered to user: ${activity.userName || activity.userId}`, "info");
     }
   };
 
@@ -135,284 +231,443 @@ function UserActivityWidget({
     setSelectedUser(null);
     setSelectedType(null);
     setTimeRange("today");
+    showSnackbar("Filters cleared", "info");
   };
 
-  const getActivityIcon = (type) => {
-    const IconComponent = activityIcons[type] || Person;
-    const color = activityColors[type] || "default";
-    return (
-      <Avatar sx={{ bgcolor: `${color}.light`, color: `${color}.dark` }}>
-        <IconComponent fontSize="small" />
-      </Avatar>
-    );
-  };
-
-  const getActivityDescription = (activity) => {
-    const userName = activity.userName || activity.userEmail || "User";
-    
-    switch (activity.type) {
-      case "login":
-        return `${userName} logged in`;
-      case "logout":
-        return `${userName} logged out`;
-      case "assessment_created":
-        return `${userName} created assessment: ${activity.assessmentName || "Untitled"}`;
-      case "assessment_completed":
-        return `${userName} completed assessment: ${activity.assessmentName || "Untitled"}`;
-      case "assessment_updated":
-        return `${userName} updated assessment: ${activity.assessmentName || "Untitled"}`;
-      case "assessment_deleted":
-        return `${userName} deleted assessment: ${activity.assessmentName || "Untitled"}`;
-      case "assessment_viewed":
-        return `${userName} viewed assessment: ${activity.assessmentName || "Untitled"}`;
-      case "user_created":
-        return `${userName} account was created`;
-      case "profile_updated":
-        return `${userName} updated their profile`;
-      case "file_downloaded":
-        return `${userName} downloaded ${activity.fileType || "file"}`;
-      default:
-        return activity.description || activity.title || "User activity";
-    }
+  const getActivityConfig = (type) => {
+    return ACTIVITY_CONFIG[type] || { 
+      icon: Person, 
+      color: "default", 
+      label: type?.replace('_', ' ') || 'Activity',
+      description: (activity) => activity.description || activity.title || "User activity"
+    };
   };
 
   const renderActivityMetrics = () => {
     if (!analytics || !showMetrics) return null;
 
+    const metrics = [
+      { 
+        label: "Total Activities", 
+        value: analytics.totalActivities || activities.length,
+        color: "primary",
+        icon: <History fontSize="small" />
+      },
+      { 
+        label: "Active Users", 
+        value: analytics.uniqueUsers || new Set(activities.map(a => a.userId)).size,
+        color: "success",
+        icon: <Person fontSize="small" />
+      },
+      { 
+        label: "Assessments", 
+        value: analytics.assessmentActivities || activities.filter(a => a.type?.includes('assessment')).length,
+        color: "info",
+        icon: <Assessment fontSize="small" />
+      },
+      { 
+        label: "Most Active", 
+        value: analytics.mostActiveUser || "N/A",
+        color: "warning",
+        icon: <Person fontSize="small" />
+      },
+    ];
+
     return (
-      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-        <Chip 
-          label={`Total: ${analytics.totalActivities || activities.length}`}
-          color="primary" 
-          variant="outlined" 
-          size="small"
-        />
-        <Chip 
-          label={`Users: ${analytics.uniqueUsers || new Set(activities.map(a => a.userId)).size}`}
-          color="secondary" 
-          variant="outlined" 
-          size="small"
-        />
-        <Chip 
-          label={`Today: ${analytics.todayCount || activities.filter(a => 
-            new Date(a.timestamp).toDateString() === new Date().toDateString()
-          ).length}`}
-          color="success" 
-          variant="outlined" 
-          size="small"
-        />
-        {analytics.mostActiveUser && (
-          <Chip 
-            label={`Most Active: ${analytics.mostActiveUser}`}
-            color="info" 
-            variant="outlined" 
-            size="small"
-          />
-        )}
-      </Box>
+      <Grid container spacing={1} sx={{ mb: 2 }}>
+        {metrics.map((metric, index) => (
+          <Grid item xs={6} sm={3} key={index}>
+            <Card 
+              variant="outlined" 
+              sx={{ 
+                p: 1, 
+                height: '100%',
+                borderColor: `${metric.color}.light`,
+                bgcolor: alpha(theme => theme.palette[metric.color].light, 0.1),
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Avatar 
+                  sx={{ 
+                    bgcolor: `${metric.color}.light`, 
+                    color: `${metric.color}.dark`,
+                    width: 30, 
+                    height: 30 
+                  }}
+                >
+                  {metric.icon}
+                </Avatar>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    {metric.label}
+                  </Typography>
+                  <Typography variant="body2" fontWeight="bold" color={`${metric.color}.dark`}>
+                    {metric.value}
+                  </Typography>
+                </Box>
+              </Box>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
     );
   };
 
   const renderFilters = () => {
     if (!showFilters) return null;
 
+    const hasFilters = selectedUser || selectedType || timeRange !== "today";
+
     return (
-      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        <Chip
-          label="Today"
-          onClick={() => setTimeRange("today")}
-          color={timeRange === "today" ? "primary" : "default"}
-          variant={timeRange === "today" ? "filled" : "outlined"}
-          size="small"
-        />
-        <Chip
-          label="Week"
-          onClick={() => setTimeRange("week")}
-          color={timeRange === "week" ? "primary" : "default"}
-          variant={timeRange === "week" ? "filled" : "outlined"}
-          size="small"
-        />
-        <Chip
-          label="Month"
-          onClick={() => setTimeRange("month")}
-          color={timeRange === "month" ? "primary" : "default"}
-          variant={timeRange === "month" ? "filled" : "outlined"}
-          size="small"
-        />
+      <Box sx={{ mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          <FilterList fontSize="small" color="action" />
+          <Typography variant="caption" color="text.secondary">
+            Filter Activities
+          </Typography>
+        </Box>
         
-        {selectedUser && (
-          <Chip
-            label={`User: ${selectedUser}`}
-            onDelete={() => setSelectedUser(null)}
-            color="info"
-            size="small"
-          />
-        )}
-        
-        {selectedType && (
-          <Chip
-            label={`Type: ${selectedType.replace('_', ' ')}`}
-            onDelete={() => setSelectedType(null)}
-            color="warning"
-            size="small"
-          />
-        )}
-        
-        {(selectedUser || selectedType || timeRange !== "today") && (
-          <Chip
-            label="Clear Filters"
-            onClick={handleClearFilters}
-            color="error"
-            variant="outlined"
-            size="small"
-          />
-        )}
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Time Range</InputLabel>
+            <Select
+              value={timeRange}
+              label="Time Range"
+              onChange={(e) => setTimeRange(e.target.value)}
+              size="small"
+            >
+              {TIME_RANGE_OPTIONS.map(option => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel>Activity Type</InputLabel>
+            <Select
+              value={selectedType || ""}
+              label="Activity Type"
+              onChange={(e) => setSelectedType(e.target.value || null)}
+              size="small"
+            >
+              <MenuItem value="">All Types</MenuItem>
+              {activityTypes.map(type => (
+                <MenuItem key={type.value} value={type.value}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <type.icon fontSize="small" color={type.color} />
+                    {type.label}
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {hasFilters && (
+            <Tooltip title="Clear all filters">
+              <Button
+                size="small"
+                onClick={handleClearFilters}
+                startIcon={<ClearAll />}
+                variant="outlined"
+                color="inherit"
+              >
+                Clear
+              </Button>
+            </Tooltip>
+          )}
+
+          {selectedUser && (
+            <Chip
+              label={`User: ${selectedUser}`}
+              onDelete={() => setSelectedUser(null)}
+              color="info"
+              size="small"
+              variant="outlined"
+            />
+          )}
+        </Box>
       </Box>
     );
   };
 
-  if (loading && activities.length === 0) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-        <CircularProgress size={24} />
-      </Box>
-    );
-  }
+  const renderActivityItem = (activity, index) => {
+    const config = getActivityConfig(activity.type);
+    const IconComponent = config.icon;
+    const description = config.description(activity);
+    const timeAgo = formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true });
+    const exactTime = format(new Date(activity.timestamp), 'PPpp');
 
-  if (error && activities.length === 0) {
     return (
-      <Alert severity="error" sx={{ mt: 2 }}>
-        Failed to load activities: {error}
-        <Button size="small" onClick={loadActivities} sx={{ ml: 1 }}>
+      <React.Fragment key={activity.id || activity._id || index}>
+        <ListItemButton 
+          onClick={() => handleActivityClick(activity)}
+          sx={{
+            borderRadius: 1,
+            py: 1,
+            '&:hover': {
+              bgcolor: 'action.hover',
+            },
+          }}
+        >
+          <ListItemAvatar>
+            <Avatar 
+              sx={{ 
+                bgcolor: `${config.color}.light`, 
+                color: `${config.color}.dark`,
+                width: 36, 
+                height: 36 
+              }}
+            >
+              <IconComponent fontSize="small" />
+            </Avatar>
+          </ListItemAvatar>
+          <ListItemText
+            primary={
+              <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+                {description}
+              </Typography>
+            }
+            secondary={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Chip
+                  label={config.label}
+                  size="small"
+                  color={config.color}
+                  variant="outlined"
+                />
+                <Tooltip title={exactTime}>
+                  <Typography variant="caption" color="text.secondary">
+                    {timeAgo}
+                  </Typography>
+                </Tooltip>
+                {activity.ipAddress && (
+                  <Typography variant="caption" color="text.secondary">
+                    • IP: {activity.ipAddress}
+                  </Typography>
+                )}
+                {activity.organizationName && (
+                  <Typography variant="caption" color="text.secondary">
+                    • Org: {activity.organizationName}
+                  </Typography>
+                )}
+              </Box>
+            }
+            secondaryTypographyProps={{ component: 'div' }}
+          />
+        </ListItemButton>
+        {index < activities.length - 1 && <Divider variant="inset" component="li" />}
+      </React.Fragment>
+    );
+  };
+
+  const renderEmptyState = () => (
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      py: 4,
+      textAlign: 'center'
+    }}>
+      <History sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
+      <Typography variant="body1" color="text.secondary" gutterBottom>
+        No activities found
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        {selectedUser || selectedType || timeRange !== "today" 
+          ? "Try adjusting your filters" 
+          : "User activities will appear here"}
+      </Typography>
+      {(selectedUser || selectedType || timeRange !== "today") && (
+        <Button
+          size="small"
+          onClick={handleClearFilters}
+          startIcon={<ClearAll />}
+        >
+          Clear Filters
+        </Button>
+      )}
+    </Box>
+  );
+
+  const renderErrorState = () => (
+    <Alert 
+      severity="error" 
+      sx={{ my: 2 }}
+      action={
+        <Button 
+          color="inherit" 
+          size="small" 
+          onClick={loadActivities}
+          disabled={loading}
+        >
           Retry
         </Button>
-      </Alert>
-    );
-  }
+      }
+    >
+      <Typography variant="body2">
+        Failed to load activities
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        {error}
+      </Typography>
+    </Alert>
+  );
 
-  if (!loading && activities.length === 0) {
-    return (
-      <Alert severity="info" sx={{ mt: 2 }}>
-        No user activity found for the selected filters.
-        {(selectedUser || selectedType) && (
-          <Button size="small" onClick={handleClearFilters} sx={{ ml: 1 }}>
-            Clear Filters
-          </Button>
-        )}
-      </Alert>
-    );
-  }
+  const renderLoadingState = () => (
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      py: 4 
+    }}>
+      <CircularProgress size={32} sx={{ mb: 2 }} />
+      <Typography variant="body2" color="text.secondary">
+        Loading user activities...
+      </Typography>
+    </Box>
+  );
 
   return (
-    <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 2 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6" color="primary">
-          Recent User Activity
-        </Typography>
-        <Tooltip title="Refresh">
-          <IconButton size="small" onClick={loadActivities} disabled={loading}>
-            {loading ? <CircularProgress size={20} /> : <Settings fontSize="small" />}
-          </IconButton>
-        </Tooltip>
-      </Box>
-
-      {renderActivityMetrics()}
-      {renderFilters()}
-
-      <List dense sx={{ maxHeight: 400, overflow: 'auto' }}>
-        {activities.map((activity, idx) => {
-          const IconComponent = activityIcons[activity.type] || Person;
-          const color = activityColors[activity.type] || "default";
-          
-          return (
-            <React.Fragment key={activity.id || idx}>
-              <ListItemButton 
-                onClick={() => handleActivityClick(activity)}
-                sx={{
-                  borderRadius: 1,
-                  mb: 0.5,
-                  '&:hover': {
-                    bgcolor: 'action.hover',
-                  },
-                }}
+    <Card 
+      elevation={elevation}
+      sx={{ 
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        border: elevation === 0 ? 1 : 0,
+        borderColor: 'divider',
+      }}
+    >
+      <CardHeader
+        title={
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <History color="primary" />
+            <Typography variant="h6">
+              User Activity
+            </Typography>
+          </Box>
+        }
+        subheader={compact ? null : "Recent user actions and system events"}
+        action={
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {lastUpdated && !compact && (
+              <Tooltip title={`Last updated: ${format(lastUpdated, 'PPpp')}`}>
+                <Typography variant="caption" color="text.secondary">
+                  {formatDistanceToNow(lastUpdated, { addSuffix: true })}
+                </Typography>
+              </Tooltip>
+            )}
+            <Tooltip title="Refresh activities">
+              <IconButton 
+                size="small" 
+                onClick={loadActivities} 
+                disabled={loading}
+                color="primary"
               >
-                <ListItemAvatar>
-                  {getActivityIcon(activity.type)}
-                </ListItemAvatar>
-                <ListItemText
-                  primary={
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {getActivityDescription(activity)}
-                    </Typography>
-                  }
-                  secondary={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                      <Chip
-                        label={activity.type?.replace('_', ' ') || 'activity'}
-                        size="small"
-                        color={color}
-                        variant="outlined"
-                      />
-                      <Typography variant="caption" color="text.secondary">
-                        {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
-                      </Typography>
-                      {activity.ipAddress && (
-                        <Typography variant="caption" color="text.secondary">
-                          • IP: {activity.ipAddress}
-                        </Typography>
-                      )}
-                    </Box>
-                  }
-                />
-              </ListItemButton>
-              {idx < activities.length - 1 && <Divider variant="inset" component="li" />}
-            </React.Fragment>
-          );
-        })}
-      </List>
+                {loading ? <CircularProgress size={20} /> : <Refresh />}
+              </IconButton>
+            </Tooltip>
+          </Box>
+        }
+        sx={{ pb: showFilters || showMetrics ? 1 : 2 }}
+      />
+      
+      <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', pt: 0 }}>
+        {showMetrics && renderActivityMetrics()}
+        {showFilters && renderFilters()}
 
-      {showViewAll && (
-        <Box textAlign="center" mt={2}>
-          <Button 
-            variant="outlined" 
-            color="primary" 
-            size="small"
-            onClick={() => navigate("/admin/activities")}
-            startIcon={<Visibility />}
-          >
-            View All Activities
-          </Button>
+        <Box sx={{ flex: 1, overflow: 'hidden' }}>
+          {loading && activities.length === 0 ? (
+            renderLoadingState()
+          ) : error && activities.length === 0 ? (
+            renderErrorState()
+          ) : activities.length === 0 ? (
+            renderEmptyState()
+          ) : (
+            <List 
+              dense={!compact}
+              sx={{ 
+                maxHeight: compact ? 300 : 400, 
+                overflow: 'auto',
+                pr: 1,
+                '&::-webkit-scrollbar': {
+                  width: 6,
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: 'transparent',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: theme => theme.palette.divider,
+                  borderRadius: 3,
+                },
+              }}
+            >
+              {activities.map(renderActivityItem)}
+            </List>
+          )}
         </Box>
-      )}
 
-      {autoRefresh && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
-          Auto-refresh every {refreshInterval / 1000} seconds
-        </Typography>
-      )}
-    </Paper>
+        {showViewAll && activities.length > 0 && (
+          <Box sx={{ 
+            pt: 2, 
+            borderTop: 1, 
+            borderColor: 'divider',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <Typography variant="caption" color="text.secondary">
+              Showing {activities.length} of {analytics?.totalActivities || 'many'} activities
+            </Typography>
+            <Button 
+              variant="outlined" 
+              color="primary" 
+              size="small"
+              onClick={() => navigate("/admin/activities")}
+              startIcon={<Visibility />}
+            >
+              View All
+            </Button>
+          </Box>
+        )}
+
+        {autoRefresh && !compact && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
+            Auto-refresh: {refreshInterval / 1000}s interval
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
 UserActivityWidget.propTypes = {
   /** Number of activities to display */
   limit: PropTypes.number,
-  /** Filter by organization ID for multitenancy */
+  /** Organization ID for multi-tenant filtering (null for super admin) */
   organizationId: PropTypes.string,
   /** Filter by specific user ID */
   userId: PropTypes.string,
   /** Filter by activity type */
   activityType: PropTypes.string,
-  /** Show filter chips */
+  /** Show filter controls */
   showFilters: PropTypes.bool,
-  /** Show activity metrics */
+  /** Show analytics metrics */
   showMetrics: PropTypes.bool,
   /** Show "View All" button */
   showViewAll: PropTypes.bool,
-  /** Auto-refresh data */
+  /** Enable auto-refresh of data */
   autoRefresh: PropTypes.bool,
   /** Auto-refresh interval in milliseconds */
   refreshInterval: PropTypes.number,
+  /** Compact mode for dashboard widgets */
+  compact: PropTypes.bool,
+  /** Card elevation level */
+  elevation: PropTypes.number,
 };
 
 UserActivityWidget.defaultProps = {
@@ -423,8 +678,10 @@ UserActivityWidget.defaultProps = {
   showFilters: true,
   showMetrics: true,
   showViewAll: true,
-  autoRefresh: true,
+  autoRefresh: false,
   refreshInterval: 30000,
+  compact: false,
+  elevation: 0,
 };
 
 export default React.memo(UserActivityWidget);
