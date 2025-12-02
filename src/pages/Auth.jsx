@@ -1,7 +1,8 @@
 // src/pages/Auth.jsx
-import React, { useState, useEffect } from "react";
-import PropTypes from "prop-types";
+import React, { useState, useEffect, useMemo } from 'react';
+import PropTypes from 'prop-types';
 import {
+  Box,
   Button,
   TextField,
   Typography,
@@ -11,360 +12,694 @@ import {
   CircularProgress,
   InputAdornment,
   IconButton,
-  Box,
   Paper,
   FormControl,
   InputLabel,
-} from "@mui/material";
+  Container,
+  Card,
+  CardContent,
+  Alert,
+  alpha,
+  useTheme,
+} from '@mui/material';
 import {
   Visibility,
   VisibilityOff,
-  Google as GoogleIcon,
-} from "@mui/icons-material";
-import { useSnackbar } from "notistack";
-import { useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext.jsx";
+  Google,
+  AccountCircle,
+  Lock,
+  Email,
+  PersonAdd,
+  Login as LoginIcon,
+  VpnKey,
+  Link as LinkIcon,
+} from '@mui/icons-material';
+import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { useSnackbar } from '../contexts/SnackbarContext';
+import { authApi } from '../api/authApi';
 
 /**
- * Auth Page
- * Supports: Login / Signup / Forgot / Reset / Magic Link
- * Social logins redirect to API endpoints.
+ * Authentication Page
+ * Supports: Login, Signup, Forgot Password, Reset Password, Magic Link
+ * Multi-tenant aware with organization support
  */
-export default function AuthPage({ disableSignup = false }) {
-  const { login, register, logout, currentUser } = useAuth();
+export default function AuthPage({ 
+  defaultMode = 'login',
+  disableSignup = false,
+  organizationId = null,
+  inviteToken = null,
+  showTitle = true,
+  compact = false,
+}) {
+  const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const { enqueueSnackbar } = useSnackbar();
+  const { login, register, currentUser, isLoading: authLoading } = useAuth();
+  const { showSnackbar, showSuccess, showError } = useSnackbar();
 
-  const params = new URLSearchParams(location.search);
-  const urlToken = params.get("token") || params.get("magic_token") || null;
+  // Parse URL parameters
+  const queryParams = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return {
+      token: params.get('token') || params.get('reset_token'),
+      magicToken: params.get('magic_token'),
+      oauthToken: params.get('oauth_token'),
+      mode: params.get('mode') || params.get('tab') || defaultMode,
+      invite: params.get('invite') || inviteToken,
+      redirect: params.get('redirect') || '/dashboard',
+      organization: params.get('organization') || organizationId,
+      email: params.get('email'),
+    };
+  }, [location.search, defaultMode, inviteToken, organizationId]);
 
   // Form state
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [role, setRole] = useState("assessor");
+  const [formData, setFormData] = useState({
+    email: queryParams.email || '',
+    password: '',
+    confirmPassword: '',
+    firstName: '',
+    lastName: '',
+    role: 'assessor',
+    organizationName: '',
+    acceptTerms: false,
+  });
+
+  const [mode, setMode] = useState(queryParams.mode);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
 
-  // Page modes
-  const [isLogin, setIsLogin] = useState(true);
-  const [isForgot, setIsForgot] = useState(false);
-  const [isReset, setIsReset] = useState(false);
-  const [isMagic, setIsMagic] = useState(false);
-
-  // Process URL token (magic/OAuth return)
+  // Handle URL tokens and mode changes
   useEffect(() => {
-    if (urlToken) {
-      try {
-        // Persist token client-side (you may want to hand-off to auth context instead)
-        localStorage.setItem("token", urlToken);
-        enqueueSnackbar("Logged in via external provider.", { variant: "success" });
-        navigate("/dashboard", { replace: true });
-      } catch (err) {
-        console.error("Failed to handle token:", err);
-        enqueueSnackbar("External login failed.", { variant: "error" });
+    const handleUrlTokens = async () => {
+      if (queryParams.token) {
+        // Handle password reset token
+        setMode('reset');
+        try {
+          // Verify reset token
+          const response = await authApi.verifyResetToken(queryParams.token);
+          if (response.success) {
+            setFormData(prev => ({ ...prev, email: response.data.email }));
+            showSnackbar('Please enter your new password', 'info');
+          } else {
+            showError('Invalid or expired reset token');
+            setMode('login');
+          }
+        } catch (error) {
+          showError('Invalid reset token');
+          setMode('login');
+        }
+      } else if (queryParams.magicToken) {
+        // Handle magic link token
+        try {
+          setLoading(true);
+          const response = await authApi.verifyMagicLink(queryParams.magicToken);
+          if (response.success) {
+            await login({ token: queryParams.magicToken, type: 'magic' });
+            showSuccess('Magic link login successful!');
+            navigate(queryParams.redirect, { replace: true });
+          }
+        } catch (error) {
+          showError('Invalid or expired magic link');
+          setMode('login');
+        } finally {
+          setLoading(false);
+        }
+      } else if (queryParams.oauthToken) {
+        // Handle OAuth callback
+        try {
+          setLoading(true);
+          await login({ token: queryParams.oauthToken, type: 'oauth' });
+          showSuccess('OAuth login successful!');
+          navigate(queryParams.redirect, { replace: true });
+        } catch (error) {
+          showError('OAuth login failed');
+          setMode('login');
+        } finally {
+          setLoading(false);
+        }
+      } else if (queryParams.invite) {
+        // Handle organization invitation
+        setMode('signup');
+        try {
+          const response = await authApi.verifyInvite(queryParams.invite);
+          if (response.success) {
+            setFormData(prev => ({ 
+              ...prev, 
+              email: response.data.email,
+              organizationId: response.data.organizationId,
+              role: response.data.role,
+            }));
+          }
+        } catch (error) {
+          showError('Invalid or expired invitation');
+        }
       }
+    };
+
+    handleUrlTokens();
+  }, [queryParams, login, navigate, showSuccess, showError, showSnackbar]);
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (currentUser && !authLoading) {
+      const redirectTo = location.state?.from || queryParams.redirect;
+      navigate(redirectTo, { replace: true });
+    }
+  }, [currentUser, authLoading, navigate, location.state, queryParams.redirect]);
+
+  const validateForm = () => {
+    const errors = {};
+
+    // Email validation
+    if (!formData.email || !/\S+@\S+\.\S+/.test(formData.email)) {
+      errors.email = 'Please enter a valid email address';
+    }
+
+    // Password validation (for login, signup, reset)
+    if (['login', 'signup', 'reset'].includes(mode)) {
+      if (!formData.password) {
+        errors.password = 'Password is required';
+      } else if (formData.password.length < 8) {
+        errors.password = 'Password must be at least 8 characters';
+      } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(formData.password)) {
+        errors.password = 'Password must contain uppercase, lowercase, and numbers';
+      }
+    }
+
+    // Confirm password validation
+    if (mode === 'reset' || mode === 'signup') {
+      if (formData.password !== formData.confirmPassword) {
+        errors.confirmPassword = 'Passwords do not match';
+      }
+    }
+
+    // Name validation for signup
+    if (mode === 'signup') {
+      if (!formData.firstName?.trim()) {
+        errors.firstName = 'First name is required';
+      }
+      if (!formData.lastName?.trim()) {
+        errors.lastName = 'Last name is required';
+      }
+    }
+
+    // Organization name for new organization signup
+    if (mode === 'signup' && !queryParams.organization && !formData.organizationName) {
+      errors.organizationName = 'Organization name is required';
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleInputChange = (field) => (event) => {
+    setFormData(prev => ({ ...prev, [field]: event.target.value }));
+    // Clear validation error for this field
+    if (validationErrors[field]) {
+      setValidationErrors(prev => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    
+    if (!validateForm()) {
       return;
     }
 
-    const tab = params.get("tab");
-    switch (tab) {
-      case "signup":
-        if (!disableSignup) {
-          setIsLogin(false);
-          setIsForgot(false);
-          setIsMagic(false);
-          setIsReset(false);
-        }
-        break;
-      case "forgot":
-        setIsForgot(true);
-        setIsLogin(false);
-        setIsReset(false);
-        setIsMagic(false);
-        break;
-      case "magic":
-        setIsMagic(true);
-        setIsLogin(false);
-        setIsForgot(false);
-        setIsReset(false);
-        break;
-      case "reset":
-        setIsReset(true);
-        setIsLogin(false);
-        setIsForgot(false);
-        setIsMagic(false);
-        break;
-      default:
-        setIsLogin(true);
-        setIsForgot(false);
-        setIsMagic(false);
-        setIsReset(false);
-    }
-
-    // Force logout to reset any stale state (only if logout exists)
-    try {
-      logout?.();
-    } catch (err) {
-      // ignore
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.search, urlToken]);
-
-  // If already logged in, redirect
-  useEffect(() => {
-    if (currentUser) {
-      const from = location.state?.from?.pathname || "/dashboard";
-      navigate(from, { replace: true });
-    }
-  }, [currentUser, navigate, location.state]);
-
-  const validateForm = () => {
-    if (!email || !email.includes("@")) {
-      enqueueSnackbar("Enter a valid email.", { variant: "error" });
-      return false;
-    }
-
-    if (!isForgot && !isMagic && !isReset && (!password || password.length < 6)) {
-      enqueueSnackbar("Password must be at least 6 characters.", { variant: "error" });
-      return false;
-    }
-
-    if (isReset && password !== confirmPassword) {
-      enqueueSnackbar("Passwords do not match.", { variant: "error" });
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleAuth = async () => {
-    if (!validateForm()) return;
     setLoading(true);
 
     try {
-      if (isMagic) {
-        const res = await fetch("/api/auth/magic-link", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email,
-            // server will append token value, we provide redirect base
-            redirectTo: `${window.location.origin}/auth?magic_token=`,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Magic link failed.");
-        enqueueSnackbar("Magic link sent. Check your email.", { variant: "success" });
-
-      } else if (isForgot) {
-        const res = await fetch("/api/auth/forgot-password", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Password reset request failed.");
-        enqueueSnackbar("Password reset link sent.", { variant: "success" });
-        setIsForgot(false);
-        setIsLogin(true);
-
-      } else if (isReset) {
-        if (!urlToken) throw new Error("Reset token missing.");
-        const res = await fetch("/api/auth/reset-password", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: urlToken, password }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Password reset failed.");
-        enqueueSnackbar("Password reset successful!", { variant: "success" });
-        navigate("/auth?tab=login", { replace: true });
-
-      } else if (isLogin) {
-        const success = await login(email, password);
-        if (success) {
-          enqueueSnackbar("Login successful!", { variant: "success" });
-          const from = location.state?.from?.pathname || "/dashboard";
-          navigate(from, { replace: true });
-        } else {
-          enqueueSnackbar("Invalid credentials.", { variant: "error" });
-        }
-
-      } else {
-        // Signup
-        await register({ email, password, role });
-        enqueueSnackbar("Account created! Please sign in.", { variant: "success" });
-        setIsLogin(true);
-        navigate("/auth?tab=login", { replace: true });
+      switch (mode) {
+        case 'login':
+          await handleLogin();
+          break;
+        case 'signup':
+          await handleSignup();
+          break;
+        case 'forgot':
+          await handleForgotPassword();
+          break;
+        case 'reset':
+          await handleResetPassword();
+          break;
+        case 'magic':
+          await handleMagicLink();
+          break;
+        default:
+          throw new Error('Invalid auth mode');
       }
-    } catch (err) {
-      console.error("Auth error:", err);
-      enqueueSnackbar(err?.message || "An error occurred.", { variant: "error", autoHideDuration: 5000 });
+    } catch (error) {
+      console.error('Auth error:', error);
+      showError(error.message || 'Authentication failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const redirectToOAuth = (provider) => {
-    window.location.href = `/api/auth/${provider}`;
+  const handleLogin = async () => {
+    const result = await login({
+      email: formData.email,
+      password: formData.password,
+      organizationId: queryParams.organization,
+    });
+
+    if (result.success) {
+      showSuccess('Login successful!');
+      navigate(queryParams.redirect, { replace: true });
+    } else {
+      throw new Error(result.message || 'Invalid credentials');
+    }
   };
 
-  const switchMode = (mode) => {
-    setIsLogin(mode === "login");
-    setIsForgot(mode === "forgot");
-    setIsReset(mode === "reset");
-    setIsMagic(mode === "magic");
-    navigate(`/auth?tab=${mode}`, { replace: true });
+  const handleSignup = async () => {
+    const signupData = {
+      email: formData.email,
+      password: formData.password,
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      role: formData.role,
+      organizationId: queryParams.organization,
+      organizationName: formData.organizationName,
+      inviteToken: queryParams.invite,
+    };
+
+    const result = await register(signupData);
+    
+    if (result.success) {
+      if (result.data?.requiresVerification) {
+        showSuccess('Account created! Please check your email to verify your account.');
+        setMode('login');
+      } else {
+        showSuccess('Account created successfully!');
+        navigate('/auth?mode=login', { replace: true });
+      }
+    } else {
+      throw new Error(result.message || 'Registration failed');
+    }
   };
+
+  const handleForgotPassword = async () => {
+    const response = await authApi.forgotPassword({
+      email: formData.email,
+      redirectUrl: `${window.location.origin}/auth?mode=reset&reset_token=`,
+    });
+
+    if (response.success) {
+      showSuccess('Password reset link sent to your email');
+      setMode('login');
+    } else {
+      throw new Error(response.message || 'Failed to send reset link');
+    }
+  };
+
+  const handleResetPassword = async () => {
+    const response = await authApi.resetPassword({
+      token: queryParams.token,
+      password: formData.password,
+    });
+
+    if (response.success) {
+      showSuccess('Password reset successful!');
+      setMode('login');
+    } else {
+      throw new Error(response.message || 'Password reset failed');
+    }
+  };
+
+  const handleMagicLink = async () => {
+    const response = await authApi.requestMagicLink({
+      email: formData.email,
+      redirectUrl: `${window.location.origin}/auth?magic_token=`,
+    });
+
+    if (response.success) {
+      showSuccess('Magic link sent to your email');
+      setMode('login');
+    } else {
+      throw new Error(response.message || 'Failed to send magic link');
+    }
+  };
+
+  const handleSocialLogin = (provider) => {
+    const redirectUrl = `${window.location.origin}/auth?oauth_token=`;
+    const state = JSON.stringify({
+      redirect: queryParams.redirect,
+      organization: queryParams.organization,
+      invite: queryParams.invite,
+    });
+    
+    window.location.href = `/api/auth/${provider}?redirect_uri=${encodeURIComponent(redirectUrl)}&state=${encodeURIComponent(state)}`;
+  };
+
+  const switchMode = (newMode) => {
+    setMode(newMode);
+    setValidationErrors({});
+    navigate(`/auth?mode=${newMode}${queryParams.organization ? `&organization=${queryParams.organization}` : ''}`, { replace: true });
+  };
+
+  const renderHeader = () => (
+    <Box sx={{ textAlign: 'center', mb: compact ? 2 : 3 }}>
+      {showTitle && (
+        <Typography variant={compact ? "h5" : "h4"} color="primary" gutterBottom sx={{ fontWeight: 600 }}>
+          Assessly Platform
+        </Typography>
+      )}
+      <Typography variant={compact ? "h6" : "h5"} sx={{ fontWeight: 500 }}>
+        {mode === 'reset' ? 'Reset Password' :
+         mode === 'forgot' ? 'Forgot Password' :
+         mode === 'magic' ? 'Magic Link Login' :
+         mode === 'signup' ? 'Create Account' : 'Welcome Back'}
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+        {mode === 'reset' ? 'Enter your new password' :
+         mode === 'forgot' ? "We'll send a reset link to your email" :
+         mode === 'magic' ? 'Receive a secure login link in your email' :
+         mode === 'signup' ? 'Join thousands of organizations using Assessly' :
+         'Sign in to your account to continue'}
+      </Typography>
+    </Box>
+  );
+
+  const renderEmailField = () => (
+    <TextField
+      label="Email Address"
+      type="email"
+      fullWidth
+      value={formData.email}
+      onChange={handleInputChange('email')}
+      error={!!validationErrors.email}
+      helperText={validationErrors.email}
+      required
+      disabled={mode === 'reset' || !!queryParams.invite}
+      InputProps={{
+        startAdornment: (
+          <InputAdornment position="start">
+            <Email color="action" />
+          </InputAdornment>
+        ),
+      }}
+      sx={{ mb: 2 }}
+    />
+  );
+
+  const renderPasswordField = (label = 'Password', field = 'password') => (
+    <TextField
+      label={label}
+      type={showPassword ? 'text' : 'password'}
+      fullWidth
+      value={formData[field]}
+      onChange={handleInputChange(field)}
+      error={!!validationErrors[field]}
+      helperText={validationErrors[field]}
+      required
+      InputProps={{
+        startAdornment: (
+          <InputAdornment position="start">
+            <Lock color="action" />
+          </InputAdornment>
+        ),
+        endAdornment: (
+          <InputAdornment position="end">
+            <IconButton
+              onClick={() => setShowPassword(!showPassword)}
+              edge="end"
+              aria-label="toggle password visibility"
+            >
+              {showPassword ? <VisibilityOff /> : <Visibility />}
+            </IconButton>
+          </InputAdornment>
+        ),
+      }}
+      sx={{ mb: 2 }}
+    />
+  );
+
+  const renderNameFields = () => (
+    <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+      <TextField
+        label="First Name"
+        fullWidth
+        value={formData.firstName}
+        onChange={handleInputChange('firstName')}
+        error={!!validationErrors.firstName}
+        helperText={validationErrors.firstName}
+        required
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <AccountCircle color="action" />
+            </InputAdornment>
+          ),
+        }}
+      />
+      <TextField
+        label="Last Name"
+        fullWidth
+        value={formData.lastName}
+        onChange={handleInputChange('lastName')}
+        error={!!validationErrors.lastName}
+        helperText={validationErrors.lastName}
+        required
+      />
+    </Box>
+  );
+
+  const renderOrganizationField = () => (
+    <TextField
+      label="Organization Name"
+      fullWidth
+      value={formData.organizationName}
+      onChange={handleInputChange('organizationName')}
+      error={!!validationErrors.organizationName}
+      helperText={validationErrors.organizationName || 'Leave empty if joining existing organization'}
+      disabled={!!queryParams.organization}
+      sx={{ mb: 2 }}
+    />
+  );
+
+  const renderRoleField = () => (
+    <FormControl fullWidth sx={{ mb: 2 }}>
+      <InputLabel>Role</InputLabel>
+      <Select
+        value={formData.role}
+        label="Role"
+        onChange={handleInputChange('role')}
+        disabled={!!queryParams.invite}
+      >
+        <MenuItem value="admin">Administrator</MenuItem>
+        <MenuItem value="assessor">Assessor</MenuItem>
+        <MenuItem value="candidate">Candidate</MenuItem>
+      </Select>
+    </FormControl>
+  );
+
+  const renderSubmitButton = () => {
+    const buttonText = {
+      login: 'Sign In',
+      signup: 'Create Account',
+      forgot: 'Send Reset Link',
+      reset: 'Reset Password',
+      magic: 'Send Magic Link',
+    }[mode];
+
+    return (
+      <Button
+        type="submit"
+        variant="contained"
+        color="primary"
+        fullWidth
+        size={compact ? 'medium' : 'large'}
+        disabled={loading}
+        startIcon={
+          loading ? (
+            <CircularProgress size={20} color="inherit" />
+          ) : mode === 'login' ? (
+            <LoginIcon />
+          ) : mode === 'signup' ? (
+            <PersonAdd />
+          ) : (
+            <VpnKey />
+          )
+        }
+        sx={{ py: compact ? 1.2 : 1.5, mt: 2 }}
+      >
+        {loading ? 'Processing...' : buttonText}
+      </Button>
+    );
+  };
+
+  const renderSocialLogin = () => {
+    if (mode !== 'login' && mode !== 'signup') return null;
+
+    return (
+      <>
+        <Divider sx={{ my: 3 }}>
+          <Typography variant="caption" color="text.secondary">
+            OR CONTINUE WITH
+          </Typography>
+        </Divider>
+        <Button
+          variant="outlined"
+          fullWidth
+          startIcon={<Google />}
+          onClick={() => handleSocialLogin('google')}
+          sx={{ mb: 1 }}
+        >
+          Google
+        </Button>
+      </>
+    );
+  };
+
+  const renderModeSwitcher = () => {
+    const modeSwitches = {
+      login: [
+        { text: "Don't have an account?", action: () => switchMode('signup'), disabled: disableSignup },
+        { text: 'Forgot password?', action: () => switchMode('forgot') },
+        { text: 'Use magic link', action: () => switchMode('magic') },
+      ],
+      signup: [
+        { text: 'Already have an account?', action: () => switchMode('login') },
+      ],
+      forgot: [
+        { text: 'Back to login', action: () => switchMode('login') },
+      ],
+      reset: [
+        { text: 'Back to login', action: () => switchMode('login') },
+      ],
+      magic: [
+        { text: 'Back to login', action: () => switchMode('login') },
+      ],
+    };
+
+    const switches = modeSwitches[mode] || [];
+
+    return (
+      <Box sx={{ textAlign: 'center', mt: 3 }}>
+        {switches.map((switchItem, index) => (
+          <Typography key={index} variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {switchItem.text}
+            <Button
+              color="primary"
+              onClick={switchItem.action}
+              disabled={switchItem.disabled || loading}
+              size="small"
+              sx={{ ml: 1 }}
+            >
+              {switchItem.action.toString().includes('signup') ? 'Sign up' :
+               switchItem.action.toString().includes('login') ? 'Sign in' : 'Click here'}
+            </Button>
+          </Typography>
+        ))}
+      </Box>
+    );
+  };
+
+  const renderTerms = () => {
+    if (mode !== 'signup') return null;
+
+    return (
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 2 }}>
+        By creating an account, you agree to our{' '}
+        <RouterLink to="/terms" style={{ color: theme.palette.primary.main }}>
+          Terms of Service
+        </RouterLink>{' '}
+        and{' '}
+        <RouterLink to="/privacy" style={{ color: theme.palette.primary.main }}>
+          Privacy Policy
+        </RouterLink>
+      </Typography>
+    );
+  };
+
+  const renderInviteNotice = () => {
+    if (!queryParams.invite) return null;
+
+    return (
+      <Alert severity="info" sx={{ mb: 2 }}>
+        <Typography variant="body2">
+          You've been invited to join an organization. Complete your registration below.
+        </Typography>
+      </Alert>
+    );
+  };
+
+  if (authLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "linear-gradient(135deg,#f6f8fb,#e8eefc)",
-        p: 2,
-      }}
-    >
-      <Paper elevation={6} sx={{ width: "100%", maxWidth: 460, p: 4, borderRadius: 3 }}>
-        <Box sx={{ textAlign: "center", mb: 3 }}>
-          <Typography variant="h5" sx={{ fontWeight: 600 }}>
-            {isReset ? "Reset Your Password" : isForgot ? "Forgot Password" : isMagic ? "Sign in with Magic Link" : isLogin ? "Sign In" : "Create Account"}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            {isReset
-              ? "Enter a new password below."
-              : isForgot
-              ? "We'll send a reset link to your email."
-              : isMagic
-              ? "Enter your email to receive a login link."
-              : isLogin
-              ? "Welcome back — sign in to continue."
-              : "Create an account to get started."}
-          </Typography>
-        </Box>
-
-        {/* Email */}
-        <TextField
-          label="Email"
-          type="email"
-          fullWidth
-          margin="normal"
-          value={email}
-          onChange={(e) => setEmail(e.target.value.trimStart())}
-          required
-          autoComplete="email"
-        />
-
-        {/* Password */}
-        {!isForgot && !isMagic && (
-          <TextField
-            label="Password"
-            type={showPassword ? "text" : "password"}
-            fullWidth
-            margin="normal"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required={!isReset}
-            autoComplete={isLogin ? "current-password" : "new-password"}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton onClick={() => setShowPassword((p) => !p)} edge="end" aria-label="toggle password">
-                    {showPassword ? <VisibilityOff /> : <Visibility />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
-        )}
-
-        {/* Confirm Password */}
-        {isReset && (
-          <TextField
-            label="Confirm Password"
-            type="password"
-            fullWidth
-            margin="normal"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-          />
-        )}
-
-        {/* Role selector for signup */}
-        {!isLogin && !disableSignup && !isForgot && !isMagic && !isReset && (
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel id="role-label">Role</InputLabel>
-            <Select labelId="role-label" label="Role" value={role} onChange={(e) => setRole(e.target.value)}>
-              <MenuItem value="admin">Admin</MenuItem>
-              <MenuItem value="assessor">Assessor</MenuItem>
-              <MenuItem value="candidate">Candidate</MenuItem>
-            </Select>
-          </FormControl>
-        )}
-
-        {/* Action button */}
-        <Button
-          variant="contained"
-          color="primary"
-          fullWidth
-          onClick={handleAuth}
-          disabled={loading}
-          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
-          sx={{ mt: 3, py: 1.4 }}
+    <Container maxWidth="sm">
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          py: 4,
+        }}
+      >
+        <Card
+          elevation={compact ? 1 : 3}
+          sx={{
+            width: '100%',
+            maxWidth: compact ? 400 : 480,
+            borderRadius: compact ? 2 : 3,
+            overflow: 'hidden',
+          }}
         >
-          {loading ? "Processing..." : isReset ? "Reset Password" : isForgot ? "Send Reset Link" : isMagic ? "Send Magic Link" : isLogin ? "Sign In" : "Sign Up"}
-        </Button>
+          <CardContent sx={{ p: compact ? 3 : 4 }}>
+            <form onSubmit={handleSubmit}>
+              {renderHeader()}
+              {renderInviteNotice()}
+              {renderEmailField()}
 
-        {/* Social logins - Only Google OAuth */}
-        {!isForgot && !isReset && !isMagic && (
-          <>
-            <Divider sx={{ my: 3 }}>OR</Divider>
-            <Button variant="outlined" fullWidth startIcon={<GoogleIcon />} onClick={() => redirectToOAuth("google")} sx={{ mb: 1 }}>
-              Continue with Google
-            </Button>
-            {/* REMOVED: GitHub and LinkedIn OAuth buttons */}
-          </>
-        )}
+              {mode === 'signup' && renderNameFields()}
+              {mode === 'signup' && !queryParams.organization && renderOrganizationField()}
+              {mode === 'signup' && renderRoleField()}
 
-        {/* Mode switches */}
-        <Box sx={{ textAlign: "center", mt: 2 }}>
-          {!isForgot && !isReset && !isMagic && !disableSignup && (
-            <Typography variant="body2">
-              {isLogin ? "Don't have an account?" : "Already have an account?"}
-              <Button color="primary" onClick={() => switchMode(isLogin ? "signup" : "login")} size="small" sx={{ ml: 1 }}>
-                {isLogin ? "Sign up" : "Sign in"}
-              </Button>
-            </Typography>
-          )}
+              {['login', 'signup', 'reset'].includes(mode) && renderPasswordField()}
+              {['reset', 'signup'].includes(mode) && renderPasswordField('Confirm Password', 'confirmPassword')}
 
-          {!isForgot && !isReset && (
-            <Box sx={{ mt: 1 }}>
-              <Button color="secondary" size="small" onClick={() => switchMode("forgot")} sx={{ mr: 1 }}>
-                Forgot password?
-              </Button>
-              <Button color="secondary" size="small" onClick={() => switchMode("magic")}>
-                Use magic link
-              </Button>
-            </Box>
-          )}
-
-          {(isForgot || isReset || isMagic) && (
-            <Button color="primary" size="small" sx={{ mt: 2 }} onClick={() => switchMode("login")}>
-              Back to Sign In
-            </Button>
-          )}
-        </Box>
-      </Paper>
-    </Box>
+              {renderSubmitButton()}
+              {renderSocialLogin()}
+              {renderModeSwitcher()}
+              {renderTerms()}
+            </form>
+          </CardContent>
+        </Card>
+      </Box>
+    </Container>
   );
 }
 
 AuthPage.propTypes = {
+  /** Default authentication mode */
+  defaultMode: PropTypes.oneOf(['login', 'signup', 'forgot', 'reset', 'magic']),
+  /** Disable signup mode (for invite-only systems) */
   disableSignup: PropTypes.bool,
+  /** Organization ID for multi-tenant signup/login */
+  organizationId: PropTypes.string,
+  /** Invite token for organization invitations */
+  inviteToken: PropTypes.string,
+  /** Show platform title */
+  showTitle: PropTypes.bool,
+  /** Compact mode for embedded/auth modal use */
+  compact: PropTypes.bool,
+};
+
+AuthPage.defaultProps = {
+  defaultMode: 'login',
+  disableSignup: false,
+  organizationId: null,
+  inviteToken: null,
+  showTitle: true,
+  compact: false,
 };
