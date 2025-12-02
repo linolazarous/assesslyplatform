@@ -578,7 +578,7 @@ router.post('/', validateOrganizationAccess, authorizeRoles('admin', 'team_lead'
  *         description: User updated successfully
  */
 router.put('/:id', validateOrganizationAccess, asyncHandler(async (req, res) => {
-  const { organizationRole, teams, ...userData } = req.body;
+  let { organizationRole, teams, ...userData } = req.body;
   
   // Authorization check
   const isSelf = req.params.id === req.user._id.toString();
@@ -615,10 +615,15 @@ router.put('/:id', validateOrganizationAccess, asyncHandler(async (req, res) => 
   
   // Non-admin users cannot change certain fields
   if (req.user.role !== 'superadmin' && !['admin', 'team_lead'].includes(req.userOrganization?.role)) {
-    delete userData.role;
-    delete userData.isActive;
-    delete organizationRole;
-    delete teams;
+    // Remove restricted fields from userData
+    const restrictedFields = ['role', 'isActive'];
+    restrictedFields.forEach(field => {
+      delete userData[field];
+    });
+    
+    // Don't allow non-admin users to change organizationRole or teams
+    organizationRole = undefined;
+    teams = undefined;
   }
   
   const updateData = { ...userData };
