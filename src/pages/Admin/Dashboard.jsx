@@ -1,10 +1,10 @@
 // src/pages/Admin/Dashboard.jsx
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-  Box, 
-  Typography, 
-  CircularProgress, 
-  Grid, 
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
+import {
+  Box,
+  Typography,
+  CircularProgress,
+  Grid,
   Paper,
   LinearProgress,
   useMediaQuery,
@@ -12,9 +12,39 @@ import {
   IconButton,
   Button,
   Alert,
-  Chip
-} from '@mui/material';
-import { 
+  Chip,
+  Card,
+  CardContent,
+  Divider,
+  Stack,
+  Tabs,
+  Tab,
+  Badge,
+  Avatar,
+  Tooltip,
+  Fade,
+  Slide,
+  Zoom,
+  Container,
+  SpeedDial,
+  SpeedDialAction,
+  SpeedDialIcon,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  Switch,
+  FormControlLabel,
+  TextField,
+} from "@mui/material";
+import {
   Assessment as AssessmentIcon,
   People as PeopleIcon,
   Business as BusinessIcon,
@@ -22,676 +52,794 @@ import {
   Warning as WarningIcon,
   Dashboard as DashboardIcon,
   OnlinePrediction as OnlineIcon,
-  OfflineBolt as OfflineIcon
-} from '@mui/icons-material';
-import { useAuth } from '../../contexts/AuthContext.jsx';
-import { useSnackbar } from 'notistack';
+  OfflineBolt as OfflineIcon,
+  AdminPanelSettings,
+  Security,
+  Timeline,
+  BarChart,
+  TrendingUp,
+  TrendingDown,
+  Equalizer,
+  InsertChart,
+  PieChart,
+  ShowChart,
+  Download,
+  Print,
+  Share,
+  FilterList,
+  Sort,
+  ViewList,
+  GridView,
+  CalendarToday,
+  Timer,
+  CheckCircle,
+  Error,
+  Info,
+  Help,
+  Settings,
+  MoreVert,
+  ArrowDropDown,
+  ArrowDropUp,
+  Add,
+  Edit,
+  Delete,
+  Archive,
+  Unarchive,
+  Visibility,
+  ContentCopy,
+  Email,
+  Notifications,
+  VpnKey,
+  Lock,
+  Cloud,
+  Storage,
+  Speed,
+  VerifiedUser,
+  SupervisedUserCircle,
+  CorporateFare,
+  Group,
+  Person,
+  School,
+  Work,
+  BusinessCenter,
+  AccountBalance,
+  Public,
+  Language,
+  Brightness4,
+  Brightness7,
+} from "@mui/icons-material";
+import { useAuth } from "../../contexts/AuthContext";
+import { useSnackbar } from "notistack";
+import { useNavigate } from "react-router-dom";
+import { useLoading } from "../../hooks/useLoading";
+import LoadingScreen from "../../components/ui/LoadingScreen";
+import RoleGuard from "../../components/RoleGuard";
+import { fetchAdminStats, fetchSystemHealth, fetchRecentActivities } from "../../api/adminApi";
 
 // Lazy load heavy components
-const AssessmentChart = React.lazy(() => import('../../components/admin/AssessmentChart.jsx'));
-const UserActivityWidget = React.lazy(() => import('../../components/admin/UserActivityWidget.jsx'));
+const AssessmentChart = lazy(() => import("../../components/admin/AssessmentChart"));
+const UserActivityWidget = lazy(() => import("../../components/admin/UserActivityWidget"));
+const OrganizationStats = lazy(() => import("../../components/admin/OrganizationStats"));
+const SystemHealthMonitor = lazy(() => import("../../components/admin/SystemHealthMonitor"));
+const RevenueChart = lazy(() => import("../../components/admin/RevenueChart"));
+const RecentActivities = lazy(() => import("../../components/admin/RecentActivities"));
 
-// Loading fallback for lazy components
-const ChartLoader = () => (
-  <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-    <CircularProgress />
+// Loading fallbacks
+const LoadingFallback = ({ message = "Loading..." }) => (
+  <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", p: 4, minHeight: 200 }}>
+    <CircularProgress size={40} />
+    {message && (
+      <Typography variant="body2" color="text.secondary" sx={{ ml: 2 }}>
+        {message}
+      </Typography>
+    )}
   </Box>
 );
 
-// Error Boundary for lazy components
-const ChartErrorBoundary = ({ children, componentName }) => {
-  const [hasError, setHasError] = useState(false);
-
-  useEffect(() => {
-    const handleError = () => setHasError(true);
-    window.addEventListener('error', handleError);
-    return () => window.removeEventListener('error', handleError);
-  }, []);
-
-  if (hasError) {
-    return (
-      <Box sx={{ p: 3, textAlign: 'center', color: 'text.secondary' }}>
-        <WarningIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
-        <Typography variant="body1">
-          Failed to load {componentName}
-        </Typography>
-      </Box>
-    );
+// Error Boundary Component
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
   }
 
-  return children;
-};
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
 
-// Memoized StatCard Component
-const StatCard = React.memo(({ title, value, icon, loading, trend, subtitle }) => {
+  componentDidCatch(error, errorInfo) {
+    console.error("Dashboard Error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Card sx={{ p: 3, textAlign: "center", bgcolor: "error.light" }}>
+          <Error sx={{ fontSize: 48, color: "error.main", mb: 2 }} />
+          <Typography variant="h6" color="error.main" gutterBottom>
+            Component Error
+          </Typography>
+          <Typography variant="body2" color="text.secondary" paragraph>
+            {this.props.componentName} failed to load: {this.state.error?.message}
+          </Typography>
+          <Button variant="outlined" onClick={() => window.location.reload()}>
+            Reload Dashboard
+          </Button>
+        </Card>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+// StatCard Component
+const StatCard = React.memo(({ title, value, icon, loading = false, trend, subtitle, color = "primary", onClick }) => {
   const theme = useTheme();
-  
-  const trendColors = {
-    up: theme.palette.success.main,
-    down: theme.palette.error.main,
-    neutral: theme.palette.text.secondary
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+
+  const trendConfig = {
+    up: { icon: <ArrowDropUp sx={{ color: "success.main" }} />, color: "success" },
+    down: { icon: <ArrowDropDown sx={{ color: "error.main" }} />, color: "error" },
+    neutral: { icon: null, color: "default" },
   };
 
-  const displayValue = useMemo(() => 
-    loading ? '--' : value.toLocaleString(),
-    [loading, value]
-  );
+  const trendInfo = trendConfig[trend] || trendConfig.neutral;
 
   return (
-    <Paper 
-      elevation={2} 
-      sx={{ 
-        p: 3, 
-        height: '100%',
+    <Card
+      elevation={2}
+      onClick={onClick}
+      sx={{
+        height: "100%",
         borderRadius: 2,
-        position: 'relative',
-        overflow: 'hidden',
-        transition: 'all 0.3s ease',
-        '&:hover': {
-          transform: 'translateY(-2px)',
-          boxShadow: 4
-        },
-        '&:after': {
-          content: '""',
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 4,
-          backgroundColor: trendColors[trend] || 'transparent'
-        }
+        borderLeft: 4,
+        borderColor: `${color}.main`,
+        cursor: onClick ? "pointer" : "default",
+        transition: "all 0.3s ease",
+        "&:hover": onClick ? {
+          transform: "translateY(-4px)",
+          boxShadow: 6,
+        } : {},
       }}
     >
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-            {title}
-          </Typography>
-          <Typography variant="h4" fontWeight="bold" sx={{ minHeight: '2.5rem' }}>
-            {displayValue}
-          </Typography>
-          {subtitle && (
-            <Typography variant="caption" color="text.secondary">
-              {subtitle}
+      <CardContent sx={{ p: isMobile ? 2 : 3 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="caption" color="text.secondary" gutterBottom sx={{ textTransform: "uppercase", fontWeight: 500 }}>
+              {title}
             </Typography>
-          )}
-        </Box>
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center',
-          color: theme.palette.primary.main,
-          ml: 1
-        }}>
-          {React.cloneElement(icon, { 
-            sx: { fontSize: '2rem', opacity: 0.8 } 
-          })}
-        </Box>
-      </Box>
-    </Paper>
+            <Typography variant="h4" fontWeight="bold" sx={{ mb: 1 }}>
+              {loading ? (
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <CircularProgress size={20} />
+                  <Typography variant="h5">Loading...</Typography>
+                </Box>
+              ) : (
+                <>
+                  {value}
+                  {trendInfo.icon && (
+                    <Box component="span" sx={{ ml: 1, verticalAlign: "middle" }}>
+                      {trendInfo.icon}
+                    </Box>
+                  )}
+                </>
+              )}
+            </Typography>
+            {subtitle && (
+              <Typography variant="caption" color="text.secondary">
+                {subtitle}
+              </Typography>
+            )}
+          </Box>
+          <Avatar
+            sx={{
+              bgcolor: `${color}.light`,
+              color: `${color}.main`,
+              width: 48,
+              height: 48,
+            }}
+          >
+            {icon}
+          </Avatar>
+        </Stack>
+      </CardContent>
+    </Card>
   );
 });
 
-// Permission Denied Component
-const PermissionDenied = React.memo(() => (
-  <Box sx={{ p: 3, textAlign: 'center' }}>
-    <WarningIcon sx={{ fontSize: 64, color: 'warning.main', mb: 2 }} />
-    <Typography variant="h5" color="warning.main" gutterBottom>
-      Access Denied
-    </Typography>
-    <Typography variant="body1" color="text.secondary" paragraph>
-      You don't have permission to access the admin dashboard.
-    </Typography>
-    <Button 
-      variant="contained" 
-      onClick={() => window.location.href = '/'}
-      startIcon={<DashboardIcon />}
+// Quick Actions Component
+const QuickActions = ({ onAction }) => {
+  const [open, setOpen] = useState(false);
+
+  const actions = [
+    { icon: <Add />, name: "Create Assessment", action: "create_assessment", color: "primary" },
+    { icon: <People />, name: "Add User", action: "add_user", color: "secondary" },
+    { icon: <Business />, name: "Create Organization", action: "create_organization", color: "warning" },
+    { icon: <BarChart />, name: "Generate Report", action: "generate_report", color: "info" },
+    { icon: <Settings />, name: "System Settings", action: "system_settings", color: "default" },
+  ];
+
+  return (
+    <SpeedDial
+      ariaLabel="Quick Actions"
+      sx={{ position: "fixed", bottom: 32, right: 32 }}
+      icon={<SpeedDialIcon />}
+      open={open}
+      onOpen={() => setOpen(true)}
+      onClose={() => setOpen(false)}
     >
-      Return to Home
-    </Button>
-  </Box>
-));
-
-// API Configuration based on documentation
-const API_CONFIG = {
-  baseURL: 'https://assesslyplatform-t49h.onrender.com/api/v1',
-  endpoints: {
-    // Health endpoints
-    health: '/health',
-    
-    // Admin statistics endpoints
-    adminStats: '/admin/stats',
-    adminAssessments: '/admin/assessments',
-    
-    // User endpoints
-    userProfile: '/users/profile',
-    
-    // Assessment endpoints
-    assessments: '/assessments',
-    
-    // Organization endpoints
-    organizations: '/organizations'
-  },
-  timeout: 10000,
-  rateLimit: {
-    auth: 10,    // 10 requests per minute for auth
-    other: 100   // 100 requests per minute for other endpoints
-  }
-};
-
-// Mock data for development and fallback
-const MOCK_DATA = {
-  stats: {
-    totalAssessments: 47,
-    activeUsers: 156,
-    totalOrganizations: 12,
-    completedAssessments: 324,
-    pendingAssessments: 23,
-    totalRevenue: 12500
-  },
-  assessments: [
-    { 
-      id: 1, 
-      title: 'React Skills Assessment', 
-      completions: 45, 
-      createdAt: '2024-01-15T00:00:00.000Z',
-      status: 'active',
-      organization: 'Tech Corp'
-    },
-    { 
-      id: 2, 
-      title: 'JavaScript Fundamentals', 
-      completions: 89, 
-      createdAt: '2024-01-14T00:00:00.000Z',
-      status: 'active',
-      organization: 'Dev Academy'
-    },
-    { 
-      id: 3, 
-      title: 'Node.js Backend Test', 
-      completions: 23, 
-      createdAt: '2024-01-13T00:00:00.000Z',
-      status: 'active',
-      organization: 'Startup Inc'
-    }
-  ]
-};
-
-// API Service functions
-const apiService = {
-  async request(endpoint, options = {}) {
-    const url = `${API_CONFIG.baseURL}${endpoint}`;
-    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-    
-    const config = {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        ...options.headers
-      },
-      ...options
-    };
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.timeout);
-      config.signal = controller.signal;
-
-      const response = await fetch(url, config);
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      // Handle API response format (success boolean field)
-      if (data.success === false) {
-        throw new Error(data.message || 'API request failed');
-      }
-
-      return data.data || data; // Return data field or entire response
-
-    } catch (error) {
-      console.error(`API request failed for ${endpoint}:`, error);
-      throw error;
-    }
-  },
-
-  async getHealth() {
-    return this.request(API_CONFIG.endpoints.health);
-  },
-
-  async getAdminStats() {
-    return this.request(API_CONFIG.endpoints.adminStats);
-  },
-
-  async getAdminAssessments() {
-    return this.request(API_CONFIG.endpoints.adminAssessments);
-  },
-
-  async getUserProfile() {
-    return this.request(API_CONFIG.endpoints.userProfile);
-  }
+      {actions.map((action) => (
+        <SpeedDialAction
+          key={action.action}
+          icon={action.icon}
+          tooltipTitle={action.name}
+          onClick={() => {
+            onAction(action.action);
+            setOpen(false);
+          }}
+          FabProps={{ sx: { bgcolor: `${action.color}.main`, color: "white" } }}
+        />
+      ))}
+    </SpeedDial>
+  );
 };
 
 export default function AdminDashboard() {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { claims, isAuthenticated, user } = useAuth();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const isTablet = useMediaQuery(theme.breakpoints.between("sm", "lg"));
+  const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
-  
+  const { currentUser, claims, isAuthenticated, isSuperAdmin } = useAuth();
+
+  // State management
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
   const [stats, setStats] = useState({
     totalAssessments: 0,
     activeUsers: 0,
     totalOrganizations: 0,
     completedAssessments: 0,
     pendingAssessments: 0,
-    totalRevenue: 0
+    totalRevenue: 0,
+    activeAssessments: 0,
+    totalCandidates: 0,
+    averageScore: 0,
+    systemHealth: 100,
   });
-  const [assessments, setAssessments] = useState([]);
-  const [apiStatus, setApiStatus] = useState('checking');
-  const [retryCount, setRetryCount] = useState(0);
+  const [timeRange, setTimeRange] = useState("7d");
+  const [viewMode, setViewMode] = useState("grid");
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedOrganization, setSelectedOrganization] = useState("all");
+  const [organizations, setOrganizations] = useState([]);
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [recentActivities, setRecentActivities] = useState([]);
+  const [showHealthDialog, setShowHealthDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
-  // Enhanced admin check based on API user role
-  const isAdmin = useMemo(() => {
-    const userRole = user?.role || claims?.role || localStorage.getItem('userRole');
-    const userEmail = user?.email || localStorage.getItem('userEmail');
-    
-    const adminCheck = (
-      userRole === 'admin' || 
-      userRole === 'administrator' ||
-      userEmail === 'admin@assessly.com'
-    );
+  // Loading hook
+  const { startLoading, stopLoading, isLoading: isDataLoading } = useLoading(false, {
+    timeout: 15000,
+    onError: (error) => {
+      enqueueSnackbar(`Dashboard error: ${error.message}`, { variant: "error" });
+    },
+  });
 
-    console.log('🔐 Admin Verification:', {
-      userRole,
-      userEmail,
-      isAuthenticated,
-      isAdmin: adminCheck,
-      userData: user
-    });
+  // Permission check
+  const hasAdminAccess = useMemo(() => {
+    return isSuperAdmin || claims?.role === "super_admin" || claims?.role === "organization_owner";
+  }, [isSuperAdmin, claims]);
 
-    return adminCheck && isAuthenticated;
-  }, [claims, user, isAuthenticated]);
-
-  // Check API health
-  const checkApiHealth = useCallback(async () => {
-    try {
-      await apiService.getHealth();
-      setApiStatus('online');
-      return true;
-    } catch (error) {
-      console.warn('API health check failed:', error);
-      setApiStatus('offline');
-      return false;
-    }
-  }, []);
-
-  // Enhanced data fetching compliant with API documentation
+  // Fetch dashboard data
   const fetchDashboardData = useCallback(async (isRefresh = false) => {
-    if (!isAdmin) {
-      setLoading(false);
-      return;
-    }
+    if (!hasAdminAccess) return;
 
     if (isRefresh) {
       setRefreshing(true);
     } else {
-      setLoading(true);
+      startLoading("Loading admin dashboard...");
     }
 
-    const useMockData = process.env.NODE_ENV === 'development' || apiStatus === 'offline';
-    
     try {
-      // Use mock data in development or if API is offline after retries
-      if (useMockData && retryCount > 1) {
-        console.log('🛠️ Using mock data (development/fallback mode)');
-        setStats(MOCK_DATA.stats);
-        setAssessments(MOCK_DATA.assessments);
-        setApiStatus('mock');
-        return;
-      }
-
-      // Fetch actual data from API
-      const [statsData, assessmentsData] = await Promise.all([
-        apiService.getAdminStats(),
-        apiService.getAdminAssessments()
+      // Fetch all data in parallel
+      const [statsData, healthData, activitiesData] = await Promise.all([
+        fetchAdminStats({ timeRange, organizationId: selectedOrganization !== "all" ? selectedOrganization : null }),
+        fetchSystemHealth(),
+        fetchRecentActivities({ limit: 10 }),
       ]);
 
-      // Transform API data to match our component expectations
+      // Update stats
       setStats({
-        totalAssessments: statsData.totalAssessments || statsData.assessments || 0,
-        activeUsers: statsData.activeUsers || statsData.users || 0,
-        totalOrganizations: statsData.totalOrganizations || statsData.organizations || 0,
-        completedAssessments: statsData.completedAssessments || statsData.completions || 0,
+        totalAssessments: statsData.totalAssessments || 0,
+        activeUsers: statsData.activeUsers || 0,
+        totalOrganizations: statsData.totalOrganizations || 0,
+        completedAssessments: statsData.completedAssessments || 0,
         pendingAssessments: statsData.pendingAssessments || 0,
-        totalRevenue: statsData.totalRevenue || 0
+        totalRevenue: statsData.totalRevenue || 0,
+        activeAssessments: statsData.activeAssessments || 0,
+        totalCandidates: statsData.totalCandidates || 0,
+        averageScore: statsData.averageScore || 0,
+        systemHealth: healthData.healthScore || 100,
       });
 
-      setAssessments(assessmentsData || []);
-      setApiStatus('online');
-      setRetryCount(0);
+      // Update organizations if super admin
+      if (isSuperAdmin && statsData.organizations) {
+        setOrganizations(statsData.organizations);
+      }
+
+      // Update system health
+      setSystemHealth(healthData);
+
+      // Update recent activities
+      setRecentActivities(activitiesData);
 
       if (isRefresh) {
-        enqueueSnackbar('Dashboard updated successfully', { 
-          variant: 'success',
-          autoHideDuration: 2000,
-        });
+        enqueueSnackbar("Dashboard refreshed", { variant: "success" });
       }
-
     } catch (error) {
-      console.error('❌ Dashboard data fetch failed:', error);
-      setRetryCount(prev => prev + 1);
-
-      // Enhanced error handling with specific API error messages
-      let userMessage = 'Failed to load dashboard data';
-      
-      if (error.name === 'AbortError') {
-        userMessage = 'Request timeout - API server is not responding';
-      } else if (error.message.includes('401')) {
-        userMessage = 'Authentication failed - please login again';
-        setTimeout(() => window.location.href = '/auth?tab=login', 2000);
-      } else if (error.message.includes('403')) {
-        userMessage = 'Access denied - admin privileges required';
-      } else if (error.message.includes('404')) {
-        userMessage = 'Admin endpoints not found - check API version';
-      } else if (error.message.includes('429')) {
-        userMessage = 'Rate limit exceeded - please wait a moment';
-      } else if (error.message.includes('500')) {
-        userMessage = 'Server error - please try again later';
-      } else {
-        userMessage = error.message || userMessage;
-      }
-
-      enqueueSnackbar(userMessage, { 
-        variant: 'error',
+      console.error("Failed to fetch dashboard data:", error);
+      enqueueSnackbar(`Failed to load dashboard: ${error.message}`, {
+        variant: "error",
         autoHideDuration: 5000,
       });
 
-      // Fallback to mock data in development
-      if (process.env.NODE_ENV === 'development') {
-        setStats(MOCK_DATA.stats);
-        setAssessments(MOCK_DATA.assessments);
-        setApiStatus('mock');
-      } else {
-        setApiStatus('offline');
+      // Fallback data for development
+      if (process.env.NODE_ENV === "development") {
+        setStats({
+          totalAssessments: 47,
+          activeUsers: 156,
+          totalOrganizations: 12,
+          completedAssessments: 324,
+          pendingAssessments: 23,
+          totalRevenue: 12500,
+          activeAssessments: 15,
+          totalCandidates: 450,
+          averageScore: 78.5,
+          systemHealth: 100,
+        });
+        setSystemHealth({ status: "healthy", healthScore: 100 });
+        setRecentActivities([]);
       }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (isRefresh) {
+        setRefreshing(false);
+      } else {
+        stopLoading();
+        setLoading(false);
+      }
     }
-  }, [isAdmin, enqueueSnackbar, apiStatus, retryCount]);
+  }, [hasAdminAccess, timeRange, selectedOrganization, isSuperAdmin, startLoading, stopLoading, enqueueSnackbar]);
 
+  // Initial data fetch
+  useEffect(() => {
+    if (hasAdminAccess) {
+      fetchDashboardData();
+    } else {
+      setLoading(false);
+    }
+  }, [hasAdminAccess, fetchDashboardData]);
+
+  // Auto-refresh every 5 minutes
+  useEffect(() => {
+    if (!hasAdminAccess) return;
+
+    const interval = setInterval(() => {
+      if (!loading && !refreshing) {
+        fetchDashboardData(true);
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => clearInterval(interval);
+  }, [hasAdminAccess, loading, refreshing, fetchDashboardData]);
+
+  // Event handlers
   const handleRefresh = useCallback(() => {
-    if (!loading) {
+    if (!loading && !refreshing) {
       fetchDashboardData(true);
     }
-  }, [fetchDashboardData, loading]);
+  }, [loading, refreshing, fetchDashboardData]);
 
-  const handleRetry = useCallback(() => {
-    setRetryCount(0);
-    fetchDashboardData();
-  }, [fetchDashboardData]);
-
-  // Initialize dashboard with API compliance
-  useEffect(() => {
-    let mounted = true;
-
-    const initializeDashboard = async () => {
-      if (!mounted) return;
-
-      if (!isAdmin) {
-        setLoading(false);
-        return;
-      }
-
-      console.log('🚀 Initializing Admin Dashboard with API:', API_CONFIG.baseURL);
-
-      // Check API health first
-      const apiHealthy = await checkApiHealth();
-      
-      if (mounted) {
-        if (apiHealthy) {
-          await fetchDashboardData();
-        } else {
-          // If API is down, use mock data in development
-          if (process.env.NODE_ENV === 'development') {
-            setStats(MOCK_DATA.stats);
-            setAssessments(MOCK_DATA.assessments);
-            setApiStatus('mock');
-            enqueueSnackbar('Development mode: Using demo data', { 
-              variant: 'info',
-            });
-          } else {
-            enqueueSnackbar('Cannot connect to API server', { 
-              variant: 'warning',
-            });
-          }
-          setLoading(false);
-        }
-      }
-    };
-
-    initializeDashboard();
-
-    return () => {
-      mounted = false;
-    };
-  }, [isAdmin, fetchDashboardData, checkApiHealth, enqueueSnackbar]);
-
-  // Debug info
-  useEffect(() => {
-    console.log('📊 Dashboard State:', {
-      isAdmin,
-      isAuthenticated,
-      loading,
-      refreshing,
-      apiStatus,
-      retryCount,
-      stats,
-      assessmentsCount: assessments.length,
-      apiBase: API_CONFIG.baseURL
-    });
-  }, [isAdmin, isAuthenticated, loading, refreshing, apiStatus, retryCount, stats, assessments]);
-
-  // Memoized stat cards data compliant with API response structure
-  const statCards = useMemo(() => [
-    {
-      title: "Total Assessments",
-      value: stats.totalAssessments,
-      icon: <AssessmentIcon />,
-      trend: "up",
-      subtitle: apiStatus === 'mock' ? 'Demo Data' : 'Active assessments'
-    },
-    {
-      title: "Active Users",
-      value: stats.activeUsers,
-      icon: <PeopleIcon />,
-      trend: "up",
-      subtitle: apiStatus === 'mock' ? 'Demo Data' : 'Currently active'
-    },
-    {
-      title: "Organizations",
-      value: stats.totalOrganizations,
-      icon: <BusinessIcon />,
-      trend: "neutral",
-      subtitle: apiStatus === 'mock' ? 'Demo Data' : 'Registered orgs'
-    },
-    {
-      title: "Completions",
-      value: stats.completedAssessments,
-      icon: <AssessmentIcon />,
-      trend: "up",
-      subtitle: apiStatus === 'mock' ? 'Demo Data' : 'Total completed'
+  const handleQuickAction = useCallback((action) => {
+    switch (action) {
+      case "create_assessment":
+        navigate("/assessments/create");
+        break;
+      case "add_user":
+        navigate("/admin/users/create");
+        break;
+      case "create_organization":
+        navigate("/admin/organizations/create");
+        break;
+      case "generate_report":
+        setShowExportDialog(true);
+        break;
+      case "system_settings":
+        navigate("/admin/settings");
+        break;
+      default:
+        enqueueSnackbar(`Action: ${action}`, { variant: "info" });
     }
-  ], [stats, apiStatus]);
+  }, [navigate, enqueueSnackbar]);
 
-  // Show loading state
+  const handleExport = useCallback((format) => {
+    // Export logic here
+    enqueueSnackbar(`Exporting dashboard data as ${format}`, { variant: "info" });
+    setShowExportDialog(false);
+  }, [enqueueSnackbar]);
+
+  // Stat cards configuration
+  const statCards = useMemo(
+    () => [
+      {
+        title: "Total Assessments",
+        value: stats.totalAssessments,
+        icon: <AssessmentIcon />,
+        trend: stats.totalAssessments > 0 ? "up" : "neutral",
+        subtitle: `${stats.activeAssessments} active`,
+        color: "primary",
+        onClick: () => navigate("/admin/assessments"),
+      },
+      {
+        title: "Active Users",
+        value: stats.activeUsers,
+        icon: <PeopleIcon />,
+        trend: stats.activeUsers > 0 ? "up" : "neutral",
+        subtitle: `${stats.totalCandidates} candidates`,
+        color: "secondary",
+        onClick: () => navigate("/admin/users"),
+      },
+      {
+        title: "Organizations",
+        value: stats.totalOrganizations,
+        icon: <BusinessIcon />,
+        trend: "neutral",
+        subtitle: "Registered",
+        color: "warning",
+        onClick: () => navigate("/admin/organizations"),
+      },
+      {
+        title: "Completed",
+        value: stats.completedAssessments,
+        icon: <CheckCircle />,
+        trend: stats.completedAssessments > 0 ? "up" : "neutral",
+        subtitle: `${stats.averageScore}% avg score`,
+        color: "success",
+        onClick: () => navigate("/admin/results"),
+      },
+      {
+        title: "Pending",
+        value: stats.pendingAssessments,
+        icon: <Timer />,
+        trend: stats.pendingAssessments > 0 ? "down" : "neutral",
+        subtitle: "Awaiting review",
+        color: "info",
+        onClick: () => navigate("/admin/pending"),
+      },
+      {
+        title: "Revenue",
+        value: `$${stats.totalRevenue.toLocaleString()}`,
+        icon: <TrendingUp />,
+        trend: stats.totalRevenue > 0 ? "up" : "neutral",
+        subtitle: "Total",
+        color: "success",
+        onClick: () => navigate("/admin/billing"),
+      },
+    ],
+    [stats, navigate]
+  );
+
+  // Tabs configuration
+  const tabs = [
+    { label: "Overview", icon: <DashboardIcon /> },
+    { label: "Analytics", icon: <BarChart /> },
+    { label: "Organizations", icon: <Business /> },
+    { label: "Users", icon: <People /> },
+    { label: "System", icon: <Settings /> },
+  ];
+
   if (loading && !refreshing) {
+    return <LoadingScreen message="Loading Admin Dashboard..." type="admin" />;
+  }
+
+  if (!hasAdminAccess) {
     return (
-      <Box sx={{ 
-        display: 'flex', 
-        flexDirection: 'column',
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '50vh',
-        gap: 2
-      }}>
-        <CircularProgress size={60} />
-        <Typography variant="body1" color="text.secondary">
-          Loading admin dashboard...
-        </Typography>
-        <Chip 
-          icon={<OnlineIcon />} 
-          label="Connecting to API..." 
-          color="primary" 
-          variant="outlined" 
-        />
-      </Box>
+      <RoleGuard requiredRole="super_admin" showAccessDenied={true}>
+        <></>
+      </RoleGuard>
     );
   }
 
-  // Permission check
-  if (!isAdmin) {
-    return <PermissionDenied />;
-  }
-
   return (
-    <Box sx={{ p: isMobile ? 1 : 3 }}>
-      {/* Header with API status */}
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        mb: 3,
-        flexDirection: isMobile ? 'column' : 'row',
-        gap: isMobile ? 2 : 0
-      }}>
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-            <Typography variant="h4" component="h1" fontWeight="bold">
-              Admin Dashboard
-            </Typography>
-            <Chip 
-              icon={apiStatus === 'online' ? <OnlineIcon /> : <OfflineIcon />} 
-              label={apiStatus === 'online' ? 'API Online' : 'API Offline'} 
-              color={apiStatus === 'online' ? 'success' : 'warning'} 
-              size="small" 
-            />
-          </Box>
-          <Typography variant="body1" color="text.secondary">
-            Welcome back, {user?.name || 'Admin'} • {user?.email || 'admin@assessly.com'}
-          </Typography>
-        </Box>
-        
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {apiStatus === 'offline' && (
-            <Button 
-              variant="outlined" 
-              color="warning" 
-              onClick={handleRetry}
-              size="small"
-              startIcon={<RefreshIcon />}
-            >
-              Retry Connection
-            </Button>
-          )}
-          <IconButton 
-            onClick={handleRefresh}
-            aria-label="refresh dashboard data"
-            disabled={loading || refreshing}
-            color="primary"
-            size="large"
-          >
-            <RefreshIcon />
-          </IconButton>
-        </Box>
-      </Box>
+    <Box sx={{ flexGrow: 1, p: isMobile ? 1 : 3, bgcolor: "background.default" }}>
+      {/* Header */}
+      <Slide direction="down" in={true}>
+        <Box sx={{ mb: 4 }}>
+          <Stack direction={isMobile ? "column" : "row"} justifyContent="space-between" alignItems={isMobile ? "flex-start" : "center"} spacing={2}>
+            <Box>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <Avatar sx={{ bgcolor: "primary.main", width: 56, height: 56 }}>
+                  <AdminPanelSettings fontSize="large" />
+                </Avatar>
+                <Box>
+                  <Typography variant="h4" fontWeight="bold" gutterBottom={isMobile}>
+                    Admin Dashboard
+                  </Typography>
+                  <Stack direction="row" alignItems="center" spacing={2}>
+                    <Chip
+                      icon={<VerifiedUser />}
+                      label={isSuperAdmin ? "Super Admin" : "Admin"}
+                      color="primary"
+                      size="small"
+                    />
+                    <Typography variant="body2" color="text.secondary">
+                      Welcome, {currentUser?.name || "Admin"}
+                    </Typography>
+                  </Stack>
+                </Box>
+              </Stack>
+            </Box>
 
-      {/* Status Alerts */}
-      {apiStatus === 'mock' && (
-        <Alert severity="info" sx={{ mb: 3 }}>
-          <strong>Development Mode:</strong> Using demonstration data. API server is unavailable or endpoints are not implemented.
-        </Alert>
-      )}
-      
-      {apiStatus === 'offline' && retryCount > 0 && (
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          Cannot connect to Assessly Platform API. Please check your connection and ensure the API server is running.
-        </Alert>
-      )}
+            <Stack direction="row" spacing={1}>
+              <Tooltip title="Refresh dashboard">
+                <IconButton onClick={handleRefresh} disabled={refreshing} color="primary">
+                  <RefreshIcon />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="System health">
+                <IconButton onClick={() => setShowHealthDialog(true)} color="info">
+                  <Speed />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Export data">
+                <IconButton onClick={() => setShowExportDialog(true)} color="secondary">
+                  <Download />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Settings">
+                <IconButton onClick={() => navigate("/admin/settings")} color="default">
+                  <Settings />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+          </Stack>
+
+          {/* Filters and Controls */}
+          <Paper sx={{ mt: 3, p: 2, borderRadius: 2 }}>
+            <Stack direction={isMobile ? "column" : "row"} spacing={2} alignItems="center" justifyContent="space-between">
+              <Tabs
+                value={activeTab}
+                onChange={(e, newValue) => setActiveTab(newValue)}
+                variant="scrollable"
+                scrollButtons="auto"
+              >
+                {tabs.map((tab, index) => (
+                  <Tab key={index} label={tab.label} icon={tab.icon} iconPosition="start" />
+                ))}
+              </Tabs>
+
+              <Stack direction="row" spacing={1} alignItems="center">
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel>Time Range</InputLabel>
+                  <Select
+                    value={timeRange}
+                    label="Time Range"
+                    onChange={(e) => setTimeRange(e.target.value)}
+                  >
+                    <MenuItem value="1d">Last 24 Hours</MenuItem>
+                    <MenuItem value="7d">Last 7 Days</MenuItem>
+                    <MenuItem value="30d">Last 30 Days</MenuItem>
+                    <MenuItem value="90d">Last 90 Days</MenuItem>
+                    <MenuItem value="1y">Last Year</MenuItem>
+                  </Select>
+                </FormControl>
+
+                {isSuperAdmin && organizations.length > 0 && (
+                  <FormControl size="small" sx={{ minWidth: 150 }}>
+                    <InputLabel>Organization</InputLabel>
+                    <Select
+                      value={selectedOrganization}
+                      label="Organization"
+                      onChange={(e) => setSelectedOrganization(e.target.value)}
+                    >
+                      <MenuItem value="all">All Organizations</MenuItem>
+                      {organizations.map((org) => (
+                        <MenuItem key={org.id} value={org.id}>
+                          {org.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+
+                <IconButton onClick={() => setShowFilters(!showFilters)}>
+                  <FilterList />
+                </IconButton>
+              </Stack>
+            </Stack>
+          </Paper>
+        </Box>
+      </Slide>
 
       {/* Loading Indicator */}
-      {(loading || refreshing) && <LinearProgress sx={{ mb: 3 }} />}
+      {refreshing && <LinearProgress sx={{ mb: 3 }} />}
 
-      {/* Stat Cards Grid */}
-      <Grid container spacing={isMobile ? 1 : 3} sx={{ mb: 3 }}>
-        {statCards.map((card) => (
-          <Grid item xs={12} sm={6} md={3} key={card.title}>
-            <StatCard 
-              title={card.title}
-              value={card.value}
-              icon={card.icon}
-              loading={loading || refreshing}
-              trend={card.trend}
-              subtitle={card.subtitle}
-            />
-          </Grid>
-        ))}
-      </Grid>
+      {/* Stats Grid */}
+      <Fade in={!loading}>
+        <Grid container spacing={isMobile ? 1 : 3} sx={{ mb: 4 }}>
+          {statCards.map((card, index) => (
+            <Grid item xs={12} sm={6} lg={4} xl={2} key={index}>
+              <StatCard {...card} loading={refreshing} />
+            </Grid>
+          ))}
+        </Grid>
+      </Fade>
 
-      {/* Charts Grid */}
+      {/* Main Content Area */}
       <Grid container spacing={isMobile ? 1 : 3}>
-        <Grid item xs={12} md={8}>
-          <Paper elevation={2} sx={{ 
-            p: 2, 
-            height: '100%',
-            borderRadius: 2,
-            minHeight: 400
-          }}>
-            <Typography variant="h6" gutterBottom>
-              Assessment Activity
-            </Typography>
-            <ChartErrorBoundary componentName="Assessment Chart">
-              <React.Suspense fallback={<ChartLoader />}>
-                <AssessmentChart 
-                  data={assessments} 
-                  loading={loading || refreshing} 
-                />
-              </React.Suspense>
-            </ChartErrorBoundary>
-          </Paper>
+        {/* Left Column */}
+        <Grid item xs={12} lg={8}>
+          <Stack spacing={isMobile ? 2 : 3}>
+            {/* Charts Section */}
+            <Paper sx={{ p: 3, borderRadius: 2 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+                <Typography variant="h6" fontWeight="bold">
+                  Assessment Analytics
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <IconButton size="small" onClick={() => setViewMode("grid")}>
+                    <GridView color={viewMode === "grid" ? "primary" : "inherit"} />
+                  </IconButton>
+                  <IconButton size="small" onClick={() => setViewMode("list")}>
+                    <ViewList color={viewMode === "list" ? "primary" : "inherit"} />
+                  </IconButton>
+                </Stack>
+              </Stack>
+
+              <ErrorBoundary componentName="Assessment Chart">
+                <Suspense fallback={<LoadingFallback message="Loading charts..." />}>
+                  <AssessmentChart timeRange={timeRange} organizationId={selectedOrganization} />
+                </Suspense>
+              </ErrorBoundary>
+            </Paper>
+
+            {/* Revenue Chart */}
+            <Paper sx={{ p: 3, borderRadius: 2 }}>
+              <Typography variant="h6" fontWeight="bold" gutterBottom>
+                Revenue Overview
+              </Typography>
+              <ErrorBoundary componentName="Revenue Chart">
+                <Suspense fallback={<LoadingFallback message="Loading revenue data..." />}>
+                  <RevenueChart timeRange={timeRange} />
+                </Suspense>
+              </ErrorBoundary>
+            </Paper>
+          </Stack>
         </Grid>
-        
-        <Grid item xs={12} md={4}>
-          <Paper elevation={2} sx={{ 
-            p: 2, 
-            height: '100%',
-            borderRadius: 2,
-            minHeight: 400
-          }}>
-            <Typography variant="h6" gutterBottom>
-              Recent Activity
-            </Typography>
-            <ChartErrorBoundary componentName="Activity Widget">
-              <React.Suspense fallback={<ChartLoader />}>
-                <UserActivityWidget />
-              </React.Suspense>
-            </ChartErrorBoundary>
-          </Paper>
+
+        {/* Right Column */}
+        <Grid item xs={12} lg={4}>
+          <Stack spacing={isMobile ? 2 : 3}>
+            {/* System Health */}
+            <Paper sx={{ p: 3, borderRadius: 2 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+                <Typography variant="h6" fontWeight="bold">
+                  System Health
+                </Typography>
+                <Chip
+                  label={`${stats.systemHealth}%`}
+                  color={stats.systemHealth > 90 ? "success" : stats.systemHealth > 70 ? "warning" : "error"}
+                  variant="outlined"
+                />
+              </Stack>
+              <ErrorBoundary componentName="System Health Monitor">
+                <Suspense fallback={<LoadingFallback message="Loading system health..." />}>
+                  <SystemHealthMonitor />
+                </Suspense>
+              </ErrorBoundary>
+            </Paper>
+
+            {/* Recent Activities */}
+            <Paper sx={{ p: 3, borderRadius: 2 }}>
+              <Typography variant="h6" fontWeight="bold" gutterBottom>
+                Recent Activities
+              </Typography>
+              <ErrorBoundary componentName="Recent Activities">
+                <Suspense fallback={<LoadingFallback message="Loading activities..." />}>
+                  <RecentActivities activities={recentActivities} />
+                </Suspense>
+              </ErrorBoundary>
+            </Paper>
+
+            {/* Organization Stats */}
+            {isSuperAdmin && (
+              <Paper sx={{ p: 3, borderRadius: 2 }}>
+                <Typography variant="h6" fontWeight="bold" gutterBottom>
+                  Organization Overview
+                </Typography>
+                <ErrorBoundary componentName="Organization Stats">
+                  <Suspense fallback={<LoadingFallback message="Loading organization data..." />}>
+                    <OrganizationStats />
+                  </Suspense>
+                </ErrorBoundary>
+              </Paper>
+            )}
+          </Stack>
         </Grid>
       </Grid>
 
-      {/* API Info Footer */}
-      <Box sx={{ mt: 4, pt: 2, borderTop: 1, borderColor: 'divider' }}>
-        <Typography variant="caption" color="text.secondary">
-          API: {API_CONFIG.baseURL} • Status: {apiStatus} • Rate Limit: {API_CONFIG.rateLimit.other} req/min
-        </Typography>
-      </Box>
+      {/* Quick Actions */}
+      <QuickActions onAction={handleQuickAction} />
+
+      {/* Dialogs */}
+      {/* System Health Dialog */}
+      <Dialog open={showHealthDialog} onClose={() => setShowHealthDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Speed />
+            <Typography>System Health Details</Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <ErrorBoundary componentName="System Health Details">
+            <Suspense fallback={<LoadingFallback />}>
+              <SystemHealthMonitor detailed />
+            </Suspense>
+          </ErrorBoundary>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowHealthDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Export Dialog */}
+      <Dialog open={showExportDialog} onClose={() => setShowExportDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Export Dashboard Data</DialogTitle>
+        <DialogContent>
+          <Stack spacing={3} sx={{ mt: 2 }}>
+            <FormControl fullWidth>
+              <InputLabel>Export Format</InputLabel>
+              <Select label="Export Format" defaultValue="pdf">
+                <MenuItem value="pdf">PDF Report</MenuItem>
+                <MenuItem value="excel">Excel Spreadsheet</MenuItem>
+                <MenuItem value="csv">CSV Data</MenuItem>
+                <MenuItem value="json">JSON Data</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth>
+              <InputLabel>Time Range</InputLabel>
+              <Select label="Time Range" defaultValue={timeRange}>
+                <MenuItem value="1d">Last 24 Hours</MenuItem>
+                <MenuItem value="7d">Last 7 Days</MenuItem>
+                <MenuItem value="30d">Last 30 Days</MenuItem>
+                <MenuItem value="90d">Last 90 Days</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControlLabel
+              control={<Switch defaultChecked />}
+              label="Include charts and graphs"
+            />
+
+            <FormControlLabel
+              control={<Switch defaultChecked />}
+              label="Include raw data"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowExportDialog(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => handleExport("pdf")} startIcon={<Download />}>
+            Export Data
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
-  }
+}
+
+AdminDashboard.propTypes = {
+  // Component uses hooks and context, no external props needed
+};
