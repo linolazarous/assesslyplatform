@@ -12,27 +12,27 @@ import {
   CircularProgress,
   InputAdornment,
   IconButton,
-  Paper,
   FormControl,
   InputLabel,
   Container,
   Card,
   CardContent,
   Alert,
-  alpha,
+  Checkbox,
+  FormControlLabel,
+  Link,
   useTheme,
 } from '@mui/material';
 import {
   Visibility,
   VisibilityOff,
   Google,
-  AccountCircle,
-  Lock,
   Email,
-  PersonAdd,
-  Login as LoginIcon,
+  Lock,
+  Person,
+  Business,
   VpnKey,
-  Link as LinkIcon,
+  ArrowBack,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,38 +40,36 @@ import { useSnackbar } from '../contexts/SnackbarContext';
 import { authApi } from '../api/authApi';
 
 /**
- * Authentication Page
- * Supports: Login, Signup, Forgot Password, Reset Password, Magic Link
- * Multi-tenant aware with organization support
+ * Authentication Page - Google OAuth & Email/Password
+ * Multi-tenant B2B SaaS authentication with organization support
  */
 export default function AuthPage({ 
   defaultMode = 'login',
   disableSignup = false,
   organizationId = null,
   inviteToken = null,
-  showTitle = true,
   compact = false,
 }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, register, currentUser, isLoading: authLoading } = useAuth();
+  const { currentUser, isLoading: authLoading } = useAuth();
   const { showSnackbar, showSuccess, showError } = useSnackbar();
 
   // Parse URL parameters
   const queryParams = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return {
-      token: params.get('token') || params.get('reset_token'),
-      magicToken: params.get('magic_token'),
-      oauthToken: params.get('oauth_token'),
+      token: params.get('token'),
+      error: params.get('error'),
+      message: params.get('message'),
       mode: params.get('mode') || params.get('tab') || defaultMode,
       invite: params.get('invite') || inviteToken,
-      redirect: params.get('redirect') || '/dashboard',
       organization: params.get('organization') || organizationId,
-      email: params.get('email'),
+      email: params.get('email') || '',
+      redirect: params.get('redirect') || location.state?.from?.pathname || '/dashboard',
     };
-  }, [location.search, defaultMode, inviteToken, organizationId]);
+  }, [location.search, location.state, defaultMode, inviteToken, organizationId]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -80,24 +78,31 @@ export default function AuthPage({
     confirmPassword: '',
     firstName: '',
     lastName: '',
-    role: 'assessor',
     organizationName: '',
     acceptTerms: false,
+    rememberMe: false,
   });
 
   const [mode, setMode] = useState(queryParams.mode);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
+  const [oauthLoading, setOauthLoading] = useState(false);
 
-  // Handle URL tokens and mode changes
+  // Handle URL parameters and OAuth callbacks
   useEffect(() => {
-    const handleUrlTokens = async () => {
-      if (queryParams.token) {
-        // Handle password reset token
+    const handleUrlParameters = async () => {
+      // Handle OAuth errors
+      if (queryParams.error) {
+        showError(queryParams.message || `OAuth authentication failed: ${queryParams.error}`);
+        setMode('login');
+        return;
+      }
+
+      // Handle password reset token
+      if (queryParams.token && queryParams.token.startsWith('reset_')) {
         setMode('reset');
         try {
-          // Verify reset token
           const response = await authApi.verifyResetToken(queryParams.token);
           if (response.success) {
             setFormData(prev => ({ ...prev, email: response.data.email }));
@@ -110,37 +115,10 @@ export default function AuthPage({
           showError('Invalid reset token');
           setMode('login');
         }
-      } else if (queryParams.magicToken) {
-        // Handle magic link token
-        try {
-          setLoading(true);
-          const response = await authApi.verifyMagicLink(queryParams.magicToken);
-          if (response.success) {
-            await login({ token: queryParams.magicToken, type: 'magic' });
-            showSuccess('Magic link login successful!');
-            navigate(queryParams.redirect, { replace: true });
-          }
-        } catch (error) {
-          showError('Invalid or expired magic link');
-          setMode('login');
-        } finally {
-          setLoading(false);
-        }
-      } else if (queryParams.oauthToken) {
-        // Handle OAuth callback
-        try {
-          setLoading(true);
-          await login({ token: queryParams.oauthToken, type: 'oauth' });
-          showSuccess('OAuth login successful!');
-          navigate(queryParams.redirect, { replace: true });
-        } catch (error) {
-          showError('OAuth login failed');
-          setMode('login');
-        } finally {
-          setLoading(false);
-        }
-      } else if (queryParams.invite) {
-        // Handle organization invitation
+      }
+
+      // Handle invite tokens
+      if (queryParams.invite) {
         setMode('signup');
         try {
           const response = await authApi.verifyInvite(queryParams.invite);
@@ -149,7 +127,7 @@ export default function AuthPage({
               ...prev, 
               email: response.data.email,
               organizationId: response.data.organizationId,
-              role: response.data.role,
+              organizationName: response.data.organizationName,
             }));
           }
         } catch (error) {
@@ -158,16 +136,15 @@ export default function AuthPage({
       }
     };
 
-    handleUrlTokens();
-  }, [queryParams, login, navigate, showSuccess, showError, showSnackbar]);
+    handleUrlParameters();
+  }, [queryParams, showError, showSnackbar]);
 
   // Redirect if already authenticated
   useEffect(() => {
     if (currentUser && !authLoading) {
-      const redirectTo = location.state?.from || queryParams.redirect;
-      navigate(redirectTo, { replace: true });
+      navigate(queryParams.redirect, { replace: true });
     }
-  }, [currentUser, authLoading, navigate, location.state, queryParams.redirect]);
+  }, [currentUser, authLoading, navigate, queryParams.redirect]);
 
   const validateForm = () => {
     const errors = {};
@@ -177,22 +154,20 @@ export default function AuthPage({
       errors.email = 'Please enter a valid email address';
     }
 
-    // Password validation (for login, signup, reset)
-    if (['login', 'signup', 'reset'].includes(mode)) {
-      if (!formData.password) {
-        errors.password = 'Password is required';
-      } else if (formData.password.length < 8) {
+    // Password validation
+    if (['login', 'signup', 'reset'].includes(mode) && formData.password) {
+      if (formData.password.length < 8) {
         errors.password = 'Password must be at least 8 characters';
       } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(formData.password)) {
-        errors.password = 'Password must contain uppercase, lowercase, and numbers';
+        errors.password = 'Must contain uppercase, lowercase, and numbers';
       }
+    } else if (['login', 'signup'].includes(mode) && !formData.password) {
+      errors.password = 'Password is required';
     }
 
     // Confirm password validation
-    if (mode === 'reset' || mode === 'signup') {
-      if (formData.password !== formData.confirmPassword) {
-        errors.confirmPassword = 'Passwords do not match';
-      }
+    if (['reset', 'signup'].includes(mode) && formData.password !== formData.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match';
     }
 
     // Name validation for signup
@@ -203,11 +178,12 @@ export default function AuthPage({
       if (!formData.lastName?.trim()) {
         errors.lastName = 'Last name is required';
       }
-    }
-
-    // Organization name for new organization signup
-    if (mode === 'signup' && !queryParams.organization && !formData.organizationName) {
-      errors.organizationName = 'Organization name is required';
+      if (!queryParams.organization && !formData.organizationName?.trim()) {
+        errors.organizationName = 'Organization name is required';
+      }
+      if (!formData.acceptTerms) {
+        errors.acceptTerms = 'You must accept the terms and conditions';
+      }
     }
 
     setValidationErrors(errors);
@@ -215,14 +191,14 @@ export default function AuthPage({
   };
 
   const handleInputChange = (field) => (event) => {
-    setFormData(prev => ({ ...prev, [field]: event.target.value }));
-    // Clear validation error for this field
+    const value = field === 'acceptTerms' ? event.target.checked : event.target.value;
+    setFormData(prev => ({ ...prev, [field]: value }));
     if (validationErrors[field]) {
       setValidationErrors(prev => ({ ...prev, [field]: undefined }));
     }
   };
 
-  const handleSubmit = async (event) => {
+  const handleEmailAuth = async (event) => {
     event.preventDefault();
     
     if (!validateForm()) {
@@ -232,126 +208,114 @@ export default function AuthPage({
     setLoading(true);
 
     try {
+      let response;
+
       switch (mode) {
         case 'login':
-          await handleLogin();
+          response = await authApi.login({
+            email: formData.email,
+            password: formData.password,
+            organizationId: queryParams.organization,
+            rememberMe: formData.rememberMe,
+          });
           break;
+
         case 'signup':
-          await handleSignup();
+          response = await authApi.register({
+            email: formData.email,
+            password: formData.password,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            organizationId: queryParams.organization,
+            organizationName: formData.organizationName,
+            inviteToken: queryParams.invite,
+            acceptTerms: formData.acceptTerms,
+          });
           break;
+
         case 'forgot':
-          await handleForgotPassword();
+          response = await authApi.forgotPassword({
+            email: formData.email,
+            redirectUrl: `${window.location.origin}/auth?token=reset_`,
+          });
           break;
+
         case 'reset':
-          await handleResetPassword();
+          response = await authApi.resetPassword({
+            token: queryParams.token,
+            password: formData.password,
+          });
           break;
-        case 'magic':
-          await handleMagicLink();
-          break;
+
         default:
-          throw new Error('Invalid auth mode');
+          throw new Error('Invalid authentication mode');
+      }
+
+      if (response.success) {
+        if (mode === 'login') {
+          // Store token and redirect
+          localStorage.setItem('accessToken', response.data.token);
+          localStorage.setItem('user', JSON.stringify(response.data.user));
+          if (formData.rememberMe) {
+            localStorage.setItem('refreshToken', response.data.refreshToken);
+          }
+          showSuccess('Login successful!');
+          navigate(queryParams.redirect, { replace: true });
+        } else if (mode === 'signup') {
+          if (response.data.requiresVerification) {
+            showSuccess('Account created! Please check your email to verify your account.');
+            setMode('login');
+          } else {
+            // Auto-login after signup
+            localStorage.setItem('accessToken', response.data.token);
+            localStorage.setItem('user', JSON.stringify(response.data.user));
+            showSuccess('Account created successfully!');
+            navigate(queryParams.redirect, { replace: true });
+          }
+        } else if (mode === 'forgot') {
+          showSuccess('Password reset link sent to your email');
+          setMode('login');
+        } else if (mode === 'reset') {
+          showSuccess('Password reset successful!');
+          setMode('login');
+        }
+      } else {
+        throw new Error(response.message || 'Authentication failed');
       }
     } catch (error) {
       console.error('Auth error:', error);
-      showError(error.message || 'Authentication failed');
+      showError(error.response?.data?.message || error.message || 'Authentication failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogin = async () => {
-    const result = await login({
-      email: formData.email,
-      password: formData.password,
-      organizationId: queryParams.organization,
-    });
+  const handleGoogleAuth = async () => {
+    try {
+      setOauthLoading(true);
+      
+      // Generate OAuth state
+      const state = JSON.stringify({
+        mode,
+        redirect: queryParams.redirect,
+        organization: queryParams.organization,
+        invite: queryParams.invite,
+        timestamp: Date.now(),
+      });
 
-    if (result.success) {
-      showSuccess('Login successful!');
-      navigate(queryParams.redirect, { replace: true });
-    } else {
-      throw new Error(result.message || 'Invalid credentials');
+      // Encode state for URL
+      const encodedState = encodeURIComponent(state);
+      
+      // Google OAuth URL
+      const googleAuthUrl = `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/v1/auth/google?state=${encodedState}`;
+      
+      // Redirect to Google OAuth
+      window.location.href = googleAuthUrl;
+    } catch (error) {
+      console.error('Google OAuth error:', error);
+      showError('Failed to initiate Google authentication');
+      setOauthLoading(false);
     }
-  };
-
-  const handleSignup = async () => {
-    const signupData = {
-      email: formData.email,
-      password: formData.password,
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      role: formData.role,
-      organizationId: queryParams.organization,
-      organizationName: formData.organizationName,
-      inviteToken: queryParams.invite,
-    };
-
-    const result = await register(signupData);
-    
-    if (result.success) {
-      if (result.data?.requiresVerification) {
-        showSuccess('Account created! Please check your email to verify your account.');
-        setMode('login');
-      } else {
-        showSuccess('Account created successfully!');
-        navigate('/auth?mode=login', { replace: true });
-      }
-    } else {
-      throw new Error(result.message || 'Registration failed');
-    }
-  };
-
-  const handleForgotPassword = async () => {
-    const response = await authApi.forgotPassword({
-      email: formData.email,
-      redirectUrl: `${window.location.origin}/auth?mode=reset&reset_token=`,
-    });
-
-    if (response.success) {
-      showSuccess('Password reset link sent to your email');
-      setMode('login');
-    } else {
-      throw new Error(response.message || 'Failed to send reset link');
-    }
-  };
-
-  const handleResetPassword = async () => {
-    const response = await authApi.resetPassword({
-      token: queryParams.token,
-      password: formData.password,
-    });
-
-    if (response.success) {
-      showSuccess('Password reset successful!');
-      setMode('login');
-    } else {
-      throw new Error(response.message || 'Password reset failed');
-    }
-  };
-
-  const handleMagicLink = async () => {
-    const response = await authApi.requestMagicLink({
-      email: formData.email,
-      redirectUrl: `${window.location.origin}/auth?magic_token=`,
-    });
-
-    if (response.success) {
-      showSuccess('Magic link sent to your email');
-      setMode('login');
-    } else {
-      throw new Error(response.message || 'Failed to send magic link');
-    }
-  };
-
-  const handleSocialLogin = (provider) => {
-    const redirectUrl = `${window.location.origin}/auth?oauth_token=`;
-    const state = JSON.stringify({
-      redirect: queryParams.redirect,
-      organization: queryParams.organization,
-      invite: queryParams.invite,
-    });
-    
-    window.location.href = `/api/auth/${provider}?redirect_uri=${encodeURIComponent(redirectUrl)}&state=${encodeURIComponent(state)}`;
   };
 
   const switchMode = (newMode) => {
@@ -361,23 +325,19 @@ export default function AuthPage({
   };
 
   const renderHeader = () => (
-    <Box sx={{ textAlign: 'center', mb: compact ? 2 : 3 }}>
-      {showTitle && (
-        <Typography variant={compact ? "h5" : "h4"} color="primary" gutterBottom sx={{ fontWeight: 600 }}>
-          Assessly Platform
-        </Typography>
-      )}
-      <Typography variant={compact ? "h6" : "h5"} sx={{ fontWeight: 500 }}>
+    <Box sx={{ textAlign: 'center', mb: compact ? 3 : 4 }}>
+      <Typography variant="h4" color="primary" gutterBottom sx={{ fontWeight: 700 }}>
+        Assessly
+      </Typography>
+      <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
         {mode === 'reset' ? 'Reset Password' :
          mode === 'forgot' ? 'Forgot Password' :
-         mode === 'magic' ? 'Magic Link Login' :
          mode === 'signup' ? 'Create Account' : 'Welcome Back'}
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-        {mode === 'reset' ? 'Enter your new password' :
+      <Typography variant="body1" color="text.secondary">
+        {mode === 'reset' ? 'Enter your new password below' :
          mode === 'forgot' ? "We'll send a reset link to your email" :
-         mode === 'magic' ? 'Receive a secure login link in your email' :
-         mode === 'signup' ? 'Join thousands of organizations using Assessly' :
+         mode === 'signup' ? 'Join our platform to start creating assessments' :
          'Sign in to your account to continue'}
       </Typography>
     </Box>
@@ -385,14 +345,13 @@ export default function AuthPage({
 
   const renderEmailField = () => (
     <TextField
+      fullWidth
       label="Email Address"
       type="email"
-      fullWidth
       value={formData.email}
       onChange={handleInputChange('email')}
       error={!!validationErrors.email}
       helperText={validationErrors.email}
-      required
       disabled={mode === 'reset' || !!queryParams.invite}
       InputProps={{
         startAdornment: (
@@ -405,16 +364,15 @@ export default function AuthPage({
     />
   );
 
-  const renderPasswordField = (label = 'Password', field = 'password') => (
+  const renderPasswordField = () => (
     <TextField
-      label={label}
-      type={showPassword ? 'text' : 'password'}
       fullWidth
-      value={formData[field]}
-      onChange={handleInputChange(field)}
-      error={!!validationErrors[field]}
-      helperText={validationErrors[field]}
-      required
+      label="Password"
+      type={showPassword ? 'text' : 'password'}
+      value={formData.password}
+      onChange={handleInputChange('password')}
+      error={!!validationErrors.password}
+      helperText={validationErrors.password}
       InputProps={{
         startAdornment: (
           <InputAdornment position="start">
@@ -437,63 +395,116 @@ export default function AuthPage({
     />
   );
 
+  const renderConfirmPasswordField = () => (
+    <TextField
+      fullWidth
+      label="Confirm Password"
+      type={showPassword ? 'text' : 'password'}
+      value={formData.confirmPassword}
+      onChange={handleInputChange('confirmPassword')}
+      error={!!validationErrors.confirmPassword}
+      helperText={validationErrors.confirmPassword}
+      InputProps={{
+        startAdornment: (
+          <InputAdornment position="start">
+            <VpnKey color="action" />
+          </InputAdornment>
+        ),
+      }}
+      sx={{ mb: 2 }}
+    />
+  );
+
   const renderNameFields = () => (
     <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
       <TextField
-        label="First Name"
         fullWidth
+        label="First Name"
         value={formData.firstName}
         onChange={handleInputChange('firstName')}
         error={!!validationErrors.firstName}
         helperText={validationErrors.firstName}
-        required
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
-              <AccountCircle color="action" />
+              <Person color="action" />
             </InputAdornment>
           ),
         }}
       />
       <TextField
-        label="Last Name"
         fullWidth
+        label="Last Name"
         value={formData.lastName}
         onChange={handleInputChange('lastName')}
         error={!!validationErrors.lastName}
         helperText={validationErrors.lastName}
-        required
       />
     </Box>
   );
 
   const renderOrganizationField = () => (
     <TextField
-      label="Organization Name"
       fullWidth
+      label="Organization Name"
       value={formData.organizationName}
       onChange={handleInputChange('organizationName')}
       error={!!validationErrors.organizationName}
-      helperText={validationErrors.organizationName || 'Leave empty if joining existing organization'}
+      helperText={validationErrors.organizationName || 'For new organizations only'}
       disabled={!!queryParams.organization}
+      InputProps={{
+        startAdornment: (
+          <InputAdornment position="start">
+            <Business color="action" />
+          </InputAdornment>
+        ),
+      }}
       sx={{ mb: 2 }}
     />
   );
 
-  const renderRoleField = () => (
-    <FormControl fullWidth sx={{ mb: 2 }}>
-      <InputLabel>Role</InputLabel>
-      <Select
-        value={formData.role}
-        label="Role"
-        onChange={handleInputChange('role')}
-        disabled={!!queryParams.invite}
-      >
-        <MenuItem value="admin">Administrator</MenuItem>
-        <MenuItem value="assessor">Assessor</MenuItem>
-        <MenuItem value="candidate">Candidate</MenuItem>
-      </Select>
-    </FormControl>
+  const renderTermsCheckbox = () => (
+    <FormControlLabel
+      control={
+        <Checkbox
+          checked={formData.acceptTerms}
+          onChange={handleInputChange('acceptTerms')}
+          color="primary"
+        />
+      }
+      label={
+        <Typography variant="body2">
+          I agree to the{' '}
+          <Link component={RouterLink} to="/terms" color="primary">
+            Terms of Service
+          </Link>{' '}
+          and{' '}
+          <Link component={RouterLink} to="/privacy" color="primary">
+            Privacy Policy
+          </Link>
+        </Typography>
+      }
+      sx={{ 
+        mb: 2,
+        '& .MuiFormControlLabel-label': {
+          color: validationErrors.acceptTerms ? theme.palette.error.main : 'inherit'
+        }
+      }}
+    />
+  );
+
+  const renderRememberMe = () => (
+    <FormControlLabel
+      control={
+        <Checkbox
+          checked={formData.rememberMe}
+          onChange={handleInputChange('rememberMe')}
+          color="primary"
+        />
+      }
+      label="Remember me"
+      sx={{ mb: 2 }}
+    />
   );
 
   const renderSubmitButton = () => {
@@ -502,7 +513,6 @@ export default function AuthPage({
       signup: 'Create Account',
       forgot: 'Send Reset Link',
       reset: 'Reset Password',
-      magic: 'Send Magic Link',
     }[mode];
 
     return (
@@ -511,129 +521,162 @@ export default function AuthPage({
         variant="contained"
         color="primary"
         fullWidth
-        size={compact ? 'medium' : 'large'}
+        size="large"
         disabled={loading}
-        startIcon={
-          loading ? (
-            <CircularProgress size={20} color="inherit" />
-          ) : mode === 'login' ? (
-            <LoginIcon />
-          ) : mode === 'signup' ? (
-            <PersonAdd />
-          ) : (
-            <VpnKey />
-          )
-        }
-        sx={{ py: compact ? 1.2 : 1.5, mt: 2 }}
+        sx={{ 
+          py: 1.5, 
+          mb: 3,
+          fontWeight: 600,
+          fontSize: '1rem',
+        }}
       >
-        {loading ? 'Processing...' : buttonText}
+        {loading ? <CircularProgress size={24} color="inherit" /> : buttonText}
       </Button>
     );
   };
 
-  const renderSocialLogin = () => {
-    if (mode !== 'login' && mode !== 'signup') return null;
+  const renderGoogleAuthButton = () => (
+    <Button
+      variant="outlined"
+      fullWidth
+      size="large"
+      startIcon={oauthLoading ? <CircularProgress size={20} /> : <Google />}
+      onClick={handleGoogleAuth}
+      disabled={oauthLoading}
+      sx={{ 
+        py: 1.5,
+        mb: 3,
+        borderColor: theme.palette.divider,
+        '&:hover': {
+          borderColor: theme.palette.text.primary,
+          backgroundColor: alpha(theme.palette.grey[100], 0.5),
+        },
+      }}
+    >
+      Continue with Google
+    </Button>
+  );
 
-    return (
-      <>
-        <Divider sx={{ my: 3 }}>
-          <Typography variant="caption" color="text.secondary">
-            OR CONTINUE WITH
-          </Typography>
-        </Divider>
-        <Button
-          variant="outlined"
-          fullWidth
-          startIcon={<Google />}
-          onClick={() => handleSocialLogin('google')}
-          sx={{ mb: 1 }}
-        >
-          Google
-        </Button>
-      </>
-    );
-  };
+  const renderDivider = () => (
+    <Box sx={{ display: 'flex', alignItems: 'center', my: 3 }}>
+      <Divider sx={{ flex: 1 }} />
+      <Typography variant="body2" color="text.secondary" sx={{ px: 2 }}>
+        OR
+      </Typography>
+      <Divider sx={{ flex: 1 }} />
+    </Box>
+  );
 
-  const renderModeSwitcher = () => {
-    const modeSwitches = {
-      login: [
-        { text: "Don't have an account?", action: () => switchMode('signup'), disabled: disableSignup },
-        { text: 'Forgot password?', action: () => switchMode('forgot') },
-        { text: 'Use magic link', action: () => switchMode('magic') },
-      ],
-      signup: [
-        { text: 'Already have an account?', action: () => switchMode('login') },
-      ],
-      forgot: [
-        { text: 'Back to login', action: () => switchMode('login') },
-      ],
-      reset: [
-        { text: 'Back to login', action: () => switchMode('login') },
-      ],
-      magic: [
-        { text: 'Back to login', action: () => switchMode('login') },
-      ],
-    };
-
-    const switches = modeSwitches[mode] || [];
-
-    return (
-      <Box sx={{ textAlign: 'center', mt: 3 }}>
-        {switches.map((switchItem, index) => (
-          <Typography key={index} variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            {switchItem.text}
+  const renderModeLinks = () => {
+    if (mode === 'login') {
+      return (
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Don't have an account?{' '}
             <Button
               color="primary"
-              onClick={switchItem.action}
-              disabled={switchItem.disabled || loading}
+              onClick={() => switchMode('signup')}
+              disabled={disableSignup}
               size="small"
-              sx={{ ml: 1 }}
+              sx={{ textTransform: 'none' }}
             >
-              {switchItem.action.toString().includes('signup') ? 'Sign up' :
-               switchItem.action.toString().includes('login') ? 'Sign in' : 'Click here'}
+              Sign up
             </Button>
           </Typography>
-        ))}
-      </Box>
-    );
+          <Button
+            color="secondary"
+            onClick={() => switchMode('forgot')}
+            size="small"
+            sx={{ textTransform: 'none' }}
+          >
+            Forgot your password?
+          </Button>
+        </Box>
+      );
+    }
+
+    if (mode === 'signup') {
+      return (
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary">
+            Already have an account?{' '}
+            <Button
+              color="primary"
+              onClick={() => switchMode('login')}
+              size="small"
+              sx={{ textTransform: 'none' }}
+            >
+              Sign in
+            </Button>
+          </Typography>
+        </Box>
+      );
+    }
+
+    if (mode === 'forgot' || mode === 'reset') {
+      return (
+        <Box sx={{ textAlign: 'center' }}>
+          <Button
+            color="primary"
+            onClick={() => switchMode('login')}
+            startIcon={<ArrowBack />}
+            size="small"
+            sx={{ textTransform: 'none' }}
+          >
+            Back to Sign In
+          </Button>
+        </Box>
+      );
+    }
+
+    return null;
   };
 
-  const renderTerms = () => {
-    if (mode !== 'signup') return null;
+  const renderForm = () => {
+    if (authLoading) {
+      return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      );
+    }
 
     return (
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 2 }}>
-        By creating an account, you agree to our{' '}
-        <RouterLink to="/terms" style={{ color: theme.palette.primary.main }}>
-          Terms of Service
-        </RouterLink>{' '}
-        and{' '}
-        <RouterLink to="/privacy" style={{ color: theme.palette.primary.main }}>
-          Privacy Policy
-        </RouterLink>
-      </Typography>
+      <form onSubmit={handleEmailAuth}>
+        {renderHeader()}
+        
+        {queryParams.invite && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <Typography variant="body2">
+              You've been invited to join an organization. Complete your registration below.
+            </Typography>
+          </Alert>
+        )}
+
+        {renderEmailField()}
+
+        {mode === 'signup' && renderNameFields()}
+        {mode === 'signup' && !queryParams.organization && renderOrganizationField()}
+
+        {['login', 'signup', 'reset'].includes(mode) && renderPasswordField()}
+        {['reset', 'signup'].includes(mode) && renderConfirmPasswordField()}
+
+        {mode === 'login' && renderRememberMe()}
+        {mode === 'signup' && renderTermsCheckbox()}
+
+        {renderSubmitButton()}
+
+        {mode !== 'forgot' && mode !== 'reset' && (
+          <>
+            {renderDivider()}
+            {renderGoogleAuthButton()}
+          </>
+        )}
+
+        {renderModeLinks()}
+      </form>
     );
   };
-
-  const renderInviteNotice = () => {
-    if (!queryParams.invite) return null;
-
-    return (
-      <Alert severity="info" sx={{ mb: 2 }}>
-        <Typography variant="body2">
-          You've been invited to join an organization. Complete your registration below.
-        </Typography>
-      </Alert>
-    );
-  };
-
-  if (authLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
 
   return (
     <Container maxWidth="sm">
@@ -644,35 +687,46 @@ export default function AuthPage({
           alignItems: 'center',
           justifyContent: 'center',
           py: 4,
+          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.1)} 0%, ${alpha(theme.palette.secondary.light, 0.1)} 100%)`,
         }}
       >
         <Card
-          elevation={compact ? 1 : 3}
+          elevation={3}
           sx={{
             width: '100%',
             maxWidth: compact ? 400 : 480,
-            borderRadius: compact ? 2 : 3,
-            overflow: 'hidden',
+            borderRadius: 3,
+            overflow: 'visible',
+            position: 'relative',
+            '&:before': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 4,
+              background: `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+              borderTopLeftRadius: 12,
+              borderTopRightRadius: 12,
+            },
           }}
         >
-          <CardContent sx={{ p: compact ? 3 : 4 }}>
-            <form onSubmit={handleSubmit}>
-              {renderHeader()}
-              {renderInviteNotice()}
-              {renderEmailField()}
-
-              {mode === 'signup' && renderNameFields()}
-              {mode === 'signup' && !queryParams.organization && renderOrganizationField()}
-              {mode === 'signup' && renderRoleField()}
-
-              {['login', 'signup', 'reset'].includes(mode) && renderPasswordField()}
-              {['reset', 'signup'].includes(mode) && renderPasswordField('Confirm Password', 'confirmPassword')}
-
-              {renderSubmitButton()}
-              {renderSocialLogin()}
-              {renderModeSwitcher()}
-              {renderTerms()}
-            </form>
+          <CardContent sx={{ p: compact ? 3 : 4, pt: compact ? 4 : 5 }}>
+            {renderForm()}
+            
+            <Typography variant="caption" color="text.secondary" sx={{ 
+              display: 'block', 
+              textAlign: 'center', 
+              mt: 4,
+              pt: 2,
+              borderTop: `1px solid ${theme.palette.divider}`,
+            }}>
+              By continuing, you agree to our Terms of Service and Privacy Policy.
+              Need help?{' '}
+              <Link component={RouterLink} to="/support" color="primary">
+                Contact Support
+              </Link>
+            </Typography>
           </CardContent>
         </Card>
       </Box>
@@ -681,17 +735,10 @@ export default function AuthPage({
 }
 
 AuthPage.propTypes = {
-  /** Default authentication mode */
-  defaultMode: PropTypes.oneOf(['login', 'signup', 'forgot', 'reset', 'magic']),
-  /** Disable signup mode (for invite-only systems) */
+  defaultMode: PropTypes.oneOf(['login', 'signup', 'forgot', 'reset']),
   disableSignup: PropTypes.bool,
-  /** Organization ID for multi-tenant signup/login */
   organizationId: PropTypes.string,
-  /** Invite token for organization invitations */
   inviteToken: PropTypes.string,
-  /** Show platform title */
-  showTitle: PropTypes.bool,
-  /** Compact mode for embedded/auth modal use */
   compact: PropTypes.bool,
 };
 
@@ -700,6 +747,5 @@ AuthPage.defaultProps = {
   disableSignup: false,
   organizationId: null,
   inviteToken: null,
-  showTitle: true,
   compact: false,
 };
