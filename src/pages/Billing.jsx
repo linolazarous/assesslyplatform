@@ -1,6 +1,6 @@
 // src/pages/Billing.jsx
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import PropTypes from "prop-types";
+import React, { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import PropTypes from 'prop-types';
 import {
   Box,
   Card,
@@ -12,206 +12,89 @@ import {
   Divider,
   Chip,
   Grid,
-} from "@mui/material";
-import { useSnackbar } from "notistack";
+  Container,
+  IconButton,
+  Tooltip,
+  alpha,
+  useTheme,
+  Breadcrumbs,
+  Link as MuiLink,
+} from '@mui/material';
+import {
+  ArrowBack,
+  Receipt,
+  CreditCard,
+  Refresh,
+  Upgrade,
+  Business,
+  CheckCircle,
+  Warning,
+  Error as ErrorIcon,
+  Download,
+} from '@mui/icons-material';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { useSnackbar } from '../contexts/SnackbarContext';
+import { billingApi } from '../api/billingApi';
+import { organizationApi } from '../api/organizationApi';
 
-// Lazy-loaded billing subcomponents
-const BillingHistory = React.lazy(() => import("../components/billing/BillingHistory.jsx"));
-const PaymentMethods = React.lazy(() => import("../components/billing/PaymentMethods.jsx"));
+// Lazy-loaded billing components
+const BillingHistory = React.lazy(() => import('../components/billing/BillingHistory'));
+const PaymentMethods = React.lazy(() => import('../components/billing/PaymentMethods'));
+const PlanComparison = React.lazy(() => import('../components/billing/PlanComparison'));
 
 // Small loader for suspense
 const ComponentLoader = () => (
-  <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
-    <CircularProgress size={32} />
+  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
+    <CircularProgress />
   </Box>
 );
 
-// PlanCard component
-const PlanCard = React.memo(({ plan, subscriptionStatus, subscriptionEndDate, onUpgrade, loading }) => {
-  const isActive = subscriptionStatus === "active";
+// PlanCard Component
+const PlanCard = ({ plan, subscription, onUpgrade, loading, organizationId }) => {
+  const theme = useTheme();
+  const { showSnackbar, showError } = useSnackbar();
+  const navigate = useNavigate();
 
-  return (
-    <Card elevation={2} sx={{ borderRadius: 2 }}>
-      <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Current Plan
-        </Typography>
+  const isActive = subscription?.status === 'active';
+  const isCanceled = subscription?.status === 'canceled';
+  const isPastDue = subscription?.status === 'past_due';
+  const isTrialing = subscription?.status === 'trialing';
 
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-          <Typography variant="body1" component="span">
-            {plan || "Free Tier"}
-          </Typography>
-          <Chip label={subscriptionStatus} color={isActive ? "success" : "default"} variant="outlined" size="small" sx={{ textTransform: "capitalize" }} />
-        </Box>
-
-        {subscriptionEndDate && (
-          <Typography variant="body2" color="text.secondary">
-            {isActive ? "Renews" : "Expires"} on: {subscriptionEndDate.toLocaleDateString()}
-          </Typography>
-        )}
-
-        {!plan && (
-          <Typography variant="body2" color="text.secondary">
-            No active subscription found.
-          </Typography>
-        )}
-
-        <Divider sx={{ my: 3 }} />
-
-        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-          <Button variant="contained" color="primary" onClick={() => onUpgrade("price_premium_monthly")} disabled={loading || isActive} sx={{ minWidth: 180 }}>
-            {isActive ? "Current Plan" : "Upgrade to Premium"}
-          </Button>
-
-          <Button variant="outlined" color="primary" onClick={() => onUpgrade("price_enterprise")} disabled={loading} sx={{ minWidth: 180 }}>
-            Contact Sales
-          </Button>
-        </Box>
-      </CardContent>
-    </Card>
-  );
-});
-
-PlanCard.displayName = "PlanCard";
-
-export default function Billing({ orgId }) {
-  const [orgData, setOrgData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [upgradeLoading, setUpgradeLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const { enqueueSnackbar } = useSnackbar();
-
-  const handleUpgrade = useCallback(
-    async (priceId) => {
-      setUpgradeLoading(true);
-      try {
-        const token = localStorage.getItem("token");
-        if (!token) throw new Error("Authentication token not found");
-
-        const response = await fetch("/api/billing/checkout-session", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            orgId,
-            priceId,
-            successUrl: `${window.location.origin}/organization/${orgId}/billing?success=true`,
-            cancelUrl: `${window.location.origin}/organization/${orgId}/billing?canceled=true`,
-          }),
-        });
-
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.message || "Failed to create checkout session");
-        }
-
-        // redirect to Stripe Checkout
-        window.location.href = data.url;
-      } catch (err) {
-        console.error("Checkout error:", err);
-        enqueueSnackbar(err.message || "Failed to start checkout process.", {
-          variant: "error",
-          autoHideDuration: 5000,
-        });
-      } finally {
-        setUpgradeLoading(false);
-      }
-    },
-    [orgId, enqueueSnackbar]
-  );
-
-  const fetchOrgData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) throw new Error("Authentication token not found");
-
-      const response = await fetch(`/api/organizations/${orgId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to fetch organization data");
-      }
-
-      const data = await response.json();
-      setOrgData(data);
-    } catch (err) {
-      console.error("Fetch organization data error:", err);
-      setError(err.message || "Unknown error");
-      enqueueSnackbar("Failed to load billing information", {
-        variant: "error",
-        autoHideDuration: 3000,
-      });
-    } finally {
-      setLoading(false);
+  const getStatusColor = () => {
+    switch (subscription?.status) {
+      case 'active': return 'success';
+      case 'trialing': return 'info';
+      case 'past_due': return 'warning';
+      case 'canceled': return 'error';
+      case 'incomplete': return 'warning';
+      case 'incomplete_expired': return 'error';
+      default: return 'default';
     }
-  }, [orgId, enqueueSnackbar]);
+  };
 
-  useEffect(() => {
-    fetchOrgData();
-  }, [fetchOrgData]);
+  const getStatusIcon = () => {
+    switch (subscription?.status) {
+      case 'active': return <CheckCircle fontSize="small" />;
+      case 'trialing': return <Warning fontSize="small" />;
+      case 'past_due': return <Warning fontSize="small" />;
+      case 'canceled': return <ErrorIcon fontSize="small" />;
+      default: return null;
+    }
+  };
 
-  const { subscriptionStatus, subscriptionEndDate, plan } = useMemo(
-    () => ({
-      subscriptionStatus: orgData?.subscription?.status || "inactive",
-      subscriptionEndDate: orgData?.subscription?.currentPeriodEnd ? new Date(orgData.subscription.currentPeriodEnd) : null,
-      plan: orgData?.subscription?.plan || null,
-    }),
-    [orgData]
-  );
+  const handleUpgrade = async (priceId) => {
+    try {
+      const response = await billingApi.createCheckoutSession({
+        organizationId,
+        priceId,
+        successUrl: `${window.location.origin}/organizations/${organizationId}/billing?success=true`,
+        cancelUrl: `${window.location.origin}/organizations/${organizationId}/billing?canceled=true`,
+      });
 
-  if (error) {
-    return (
-      <Alert severity="error" sx={{ m: 2 }}>
-        Error loading organization data: {error}
-      </Alert>
-    );
-  }
-
-  if (loading || !orgData) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  return (
-    <Box sx={{ p: 3, maxWidth: "100%", overflowX: "hidden" }}>
-      <Typography variant="h4" gutterBottom fontWeight="bold">
-        Billing & Subscription
-      </Typography>
-
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={8}>
-          <PlanCard plan={plan} subscriptionStatus={subscriptionStatus} subscriptionEndDate={subscriptionEndDate} onUpgrade={handleUpgrade} loading={upgradeLoading} />
-
-          <Box sx={{ mt: 3 }}>
-            <React.Suspense fallback={<ComponentLoader />}>
-              <BillingHistory orgId={orgId} />
-            </React.Suspense>
-          </Box>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <React.Suspense fallback={<ComponentLoader />}>
-            <PaymentMethods orgId={orgId} />
-          </React.Suspense>
-        </Grid>
-      </Grid>
-    </Box>
-  );
-}
-
-Billing.propTypes = {
-  orgId: PropTypes.string.isRequired,
-};
+      if (response.success) {
+        window.location.href = response.data.url;
+      } else {
+        throw new Error(response.message || 'Failed to create checkout session');
+      }
+    } catch (error) {
+      showError(error.message || 'Failed
