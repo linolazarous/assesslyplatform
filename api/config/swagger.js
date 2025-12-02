@@ -843,9 +843,9 @@ const swaggerUiOptions = {
       \`;
       document.querySelector('.swagger-ui').insertBefore(infoBar, document.querySelector('.swagger-ui .scheme-container'));
       
-      console.log('📚 ${PLATFORM_NAME} API Documentation loaded');
-      console.log('🏷️  Version: v${API_VERSION}');
-      console.log('🔗 Base URL: ${BACKEND_URL}/api/v1');
+      console.log(\`📚 ${PLATFORM_NAME} API Documentation loaded\`);
+      console.log(\`🏷️  Version: v${API_VERSION}\`);
+      console.log(\`🔗 Base URL: ${BACKEND_URL}/api/v1\`);
     }
   `,
   swaggerOptions: {
@@ -886,10 +886,10 @@ export function setupSwagger(app) {
   });
 
   console.log('📚 Swagger Documentation:');
-  console.log('   📄 Interactive Docs:', `${BACKEND_URL}/api/docs`);
-  console.log('   🔗 JSON Spec:', `${BACKEND_URL}/api/docs.json`);
-  console.log('   🌐 OpenAPI Spec:', `${BACKEND_URL}/api/openapi.json`);
-  console.log('   🏷️  API Version: v${API_VERSION}`);
+  console.log(`   📄 Interactive Docs: ${BACKEND_URL}/api/docs`);
+  console.log(`   🔗 JSON Spec: ${BACKEND_URL}/api/docs.json`);
+  console.log(`   🌐 OpenAPI Spec: ${BACKEND_URL}/api/openapi.json`);
+  console.log(`   🏷️  API Version: v${API_VERSION}`);
   console.log('   🔐 Auth: JWT Bearer + Google OAuth');
 }
 
