@@ -19,7 +19,7 @@ dotenv.config();
 const CONFIG = {
   // SUPER ADMINISTRATOR (Platform Owner/Developer)
   SUPER_ADMIN: {
-    email: process.env.SUPER_ADMIN_EMAIL || "superadmin@assessly.com",
+    email: process.env.SUPER_ADMIN_EMAIL || "assesslyinc@gmail.com",
     password: process.env.SUPER_ADMIN_PASSWORD || "SuperAdmin@123",
     name: "Assessly Platform Admin",
     role: "super_admin"
@@ -32,7 +32,7 @@ const CONFIG = {
     slug: "assessly-system",
     type: "system",
     plan: "enterprise",
-    ownerEmail: "system@assessly.com"
+    ownerEmail: "assesslyinc@gmail.com"
   },
 
   // DEFAULT SUBSCRIPTION PLANS for B2B SaaS
@@ -497,7 +497,7 @@ class MultiTenantSaaSSeeder {
         contact: {
           email: CONFIG.SYSTEM_ORGANIZATION.ownerEmail,
           phone: null,
-          website: "https://assesslyplatform.com"
+          website: "https://assessly-gedp.onrender.com"
         },
         settings: {
           isPublic: false,
