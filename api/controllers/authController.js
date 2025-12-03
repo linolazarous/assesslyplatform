@@ -275,7 +275,7 @@ export async function register(req, res) {
       const welcomeEmail = EmailTemplates.welcome({
         name: user.name,
         dashboardUrl: `${FRONTEND_URL}/dashboard`,
-        supportEmail: 'support@assessly.com'
+        supportEmail: 'assesslyinc@gmail.com'
       });
 
       await mailer.sendMail({
