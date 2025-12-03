@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react-swc";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
-  // Render static hosting requires root base
+  // Required for Render static site hosting
   base: "/",
 
   plugins: [
@@ -13,6 +13,7 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
 
+      // Files in /public
       includeAssets: ["favicon.ico", "logo.png"],
 
       manifest: {
@@ -25,11 +26,14 @@ export default defineConfig({
         theme_color: "#3f51b5",
         background_color: "#ffffff",
         display: "standalone",
+
+        // These MUST match your hosting base path
         scope: "/",
         start_url: "/",
+
         orientation: "portrait-primary",
 
-        // Realistic PWA icon sizes
+        // Recommended icon set (min 192 & 512)
         icons: [
           {
             src: "/logo.png",
@@ -48,7 +52,15 @@ export default defineConfig({
         globPatterns: [
           "**/*.{js,css,html,ico,png,svg,jpg,jpeg,woff2,webp}"
         ],
-        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024 // 6 MB
+
+        // Allow caching large bundles
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6MB
+
+        // PREVENT excessive re-caching on every deploy
+        cleanupOutdatedCaches: true,
+
+        // Make sure PWA doesn't break navigation
+        navigateFallback: "/index.html"
       }
     })
   ],
@@ -78,8 +90,6 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true,
-
-    // Only for dev mode
     headers: {
       "Cache-Control": "no-store"
     }
