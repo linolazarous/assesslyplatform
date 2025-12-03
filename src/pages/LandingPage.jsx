@@ -375,8 +375,8 @@ const LandingPage = () => {
           <Box sx={{ position: 'relative' }}>
             <Suspense fallback={<Box sx={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress /></Box>}>
               <HeroSection 
-                videoUrl="/videos/assessly-hero.mp4"
-                fallbackImage="/images/hero-fallback.jpg"
+                videoUrl="/Assessly.mp4"
+                fallbackImage="/hero-fallback.jpg"
                 enableAudio={false}
                 title="Measure Smarter, Not Harder"
                 subtitle="From Questions to Insights, Anywhere"
