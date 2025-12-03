@@ -316,7 +316,7 @@ const LandingPage = () => {
     description: 'B2B SaaS platform for creating, managing, and analyzing assessments with AI-powered insights. Trusted by organizations worldwide.',
     keywords: 'assessment platform, B2B SaaS, online testing, employee evaluation, skills assessment, learning analytics',
     ogImage: '/og-assessly-platform.jpg',
-    canonical: 'https://assessly.com',
+    canonical: 'https://assessly-gedp.onrender.com',
   }), []);
 
   return (
