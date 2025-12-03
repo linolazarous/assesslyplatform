@@ -451,7 +451,7 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
         >
           Assessly is a registered trademark. All other trademarks are property of their respective owners.
           The platform is provided "as is" without warranty of any kind. Use of this platform is subject to our Terms of Service.
-          For enterprise inquiries, contact enterprise@assesslyplatform.com.
+          For enterprise inquiries, contact assesslyinc@gmail.com.
         </Typography>
       </Container>
       
