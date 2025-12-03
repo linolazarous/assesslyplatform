@@ -223,8 +223,8 @@ class EmailService {
       const emailContext = {
         ...context,
         currentYear: new Date().getFullYear(),
-        supportEmail: process.env.SUPPORT_EMAIL || 'support@assessly.com',
-        platformUrl: process.env.FRONTEND_URL || 'https://assessly.com'
+        supportEmail: process.env.SUPPORT_EMAIL || 'assesslyinc@gmail.com',
+        platformUrl: process.env.FRONTEND_URL || 'https://assessly-gedp.onrender.com'
       };
 
       // Generate HTML content
@@ -312,7 +312,7 @@ class EmailService {
         priority: contactMessage.priority,
         estimatedResponseTime: this.getEstimatedResponseTime(contactMessage.priority),
         organization: organization.name,
-        supportEmail: organization.supportEmail || 'support@assessly.com'
+        supportEmail: organization.supportEmail || 'assesslyinc@gmail.com'
       }
     });
   }
