@@ -615,8 +615,8 @@ export default function Billing({ organizationId, compact = false }) {
       <Alert severity="info" sx={{ mt: 3 }}>
         <Typography variant="body2">
           Need help with billing? Contact our support team at{' '}
-          <MuiLink href="mailto:support@assessly.com" color="primary">
-            support@assessly.com
+          <MuiLink href="mailto:assesslyinc@gmail.com" color="primary">
+            assesslyinc@gmail.com
           </MuiLink>
           {' '}or visit our{' '}
           <MuiLink component={RouterLink} to="/help/billing" color="primary">
@@ -638,4 +638,5 @@ Billing.propTypes = {
 Billing.defaultProps = {
   compact: false,
 };
+
 
