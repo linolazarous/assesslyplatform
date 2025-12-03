@@ -30,7 +30,7 @@ import {
   ErrorOutline,
 } from "@mui/icons-material";
 import PropTypes from "prop-types";
-import { trackError } from "../utils/analytics.jsx";
+import { trackError } from "../utils/analytics";
 
 /**
  * 🚀 Enterprise-Grade ErrorBoundary Component
@@ -797,5 +797,6 @@ export const ErrorBoundaryContext = React.createContext({
 });
 
 export default ErrorBoundary;
+
 
 
