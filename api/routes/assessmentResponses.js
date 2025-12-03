@@ -11,7 +11,16 @@ import {
   authorize, 
   requireOrganizationAccess 
 } from '../middleware/auth.js';
-import { validateRequest } from '../middleware/validateRequest.js';
+// UPDATE THIS LINE - change validateRequest.js to validation.js
+import { 
+  handleValidationErrors,
+  registerValidators,
+  userUpdateValidators,
+  organizationValidators,
+  assessmentValidators,
+  paginationValidators,
+  searchValidators
+} from '../middleware/validation.js'; // Changed from validateRequest.js to validation.js
 
 const router = express.Router();
 
@@ -261,7 +270,7 @@ router.use(requireOrganizationAccess);
  */
 router.get('/', 
   authorize('org_admin', 'manager', 'assessor', 'viewer'),
-  validateRequest,
+  [...paginationValidators, ...searchValidators, handleValidationErrors],
   asyncHandler(async (req, res) => {
     const {
       page = 1,
@@ -412,7 +421,7 @@ router.get('/',
  *         $ref: '#/components/responses/Forbidden'
  */
 router.get('/:id',
-  validateRequest,
+  [commonValidators.objectId('id'), handleValidationErrors],
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const organizationId = req.user.organization;
@@ -502,7 +511,11 @@ router.get('/:id',
  */
 router.post('/',
   authorize('candidate'),
-  validateRequest,
+  [
+    body('assessment').isMongoId().withMessage('Invalid assessment ID'),
+    body('attemptNumber').optional().isInt({ min: 1 }).withMessage('Attempt number must be at least 1'),
+    handleValidationErrors
+  ],
   asyncHandler(async (req, res) => {
     const { assessment: assessmentId, attemptNumber = 1 } = req.body;
     const organizationId = req.user.organization;
@@ -658,7 +671,14 @@ router.post('/',
  */
 router.post('/:id/submit-answer',
   authorize('candidate'),
-  validateRequest,
+  [
+    commonValidators.objectId('id'),
+    body('questionId').isMongoId().withMessage('Invalid question ID'),
+    body('questionIndex').isInt({ min: 0 }).withMessage('Question index must be at least 0'),
+    body('questionType').isIn(['multiple-choice', 'single-choice', 'true-false', 'short-answer', 'essay', 'code', 'file-upload']).withMessage('Invalid question type'),
+    body('timeSpent').optional().isFloat({ min: 0 }).withMessage('Time spent must be a positive number'),
+    handleValidationErrors
+  ],
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const organizationId = req.user.organization;
@@ -768,7 +788,7 @@ router.post('/:id/submit-answer',
  */
 router.post('/:id/submit',
   authorize('candidate'),
-  validateRequest,
+  [commonValidators.objectId('id'), handleValidationErrors],
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const organizationId = req.user.organization;
@@ -844,7 +864,7 @@ router.post('/:id/submit',
  */
 router.post('/:id/review',
   authorize('org_admin', 'manager', 'assessor'),
-  validateRequest,
+  [commonValidators.objectId('id'), handleValidationErrors],
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const organizationId = req.user.organization;
@@ -928,7 +948,12 @@ router.post('/:id/review',
  */
 router.put('/:id/evaluate',
   authorize('org_admin', 'manager', 'assessor'),
-  validateRequest,
+  [
+    commonValidators.objectId('id'),
+    body('status').optional().isIn(['completed', 'needs-clarification']).withMessage('Invalid status'),
+    body('finalScore').optional().isFloat({ min: 0 }).withMessage('Final score must be a positive number'),
+    handleValidationErrors
+  ],
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const organizationId = req.user.organization;
@@ -1031,7 +1056,7 @@ router.put('/:id/evaluate',
  */
 router.delete('/:id',
   authorize('org_admin'),
-  validateRequest,
+  [commonValidators.objectId('id'), handleValidationErrors],
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const organizationId = req.user.organization;
