@@ -1,4 +1,6 @@
+// api/middleware/auth.js
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import User from "../models/User.js";
 import Organization from "../models/Organization.js";
 import RefreshToken from "../models/RefreshToken.js";
@@ -284,6 +286,11 @@ export const protect = asyncHandler(async (req, res, next) => {
     expiresAt: new Date(decoded.exp * 1000)
   };
   
+  // Generate request ID if not present
+  if (!req.id) {
+    req.id = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+  
   // Log authentication success
   console.log(`🔐 [${req.id}] Authenticated: ${user.email} (${user.role})`, {
     userId: user._id,
@@ -305,6 +312,11 @@ export const authorizeRoles = (...roles) => {
         message: "Authentication required for role-based access.",
         code: "UNAUTHENTICATED"
       });
+    }
+
+    // Generate request ID if not present
+    if (!req.id) {
+      req.id = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
     // Super admin bypasses all role checks
@@ -343,6 +355,14 @@ export const authorizeRoles = (...roles) => {
 };
 
 /**
+ * Alias for authorizeRoles - maintains backward compatibility
+ * Use authorizeRoles for new code, authorize for existing code
+ */
+export const authorize = (...roles) => {
+  return authorizeRoles(...roles);
+};
+
+/**
  * Enhanced organization-based authorization with multitenant isolation
  */
 export const authorizeOrganization = asyncHandler(async (req, res, next) => {
@@ -358,12 +378,17 @@ export const authorizeOrganization = asyncHandler(async (req, res, next) => {
   }
 
   // Validate organization ID format
-  if (!require('mongoose').Types.ObjectId.isValid(organizationId)) {
+  if (!mongoose.Types.ObjectId.isValid(organizationId)) {
     return res.status(400).json({
       success: false,
       message: "Invalid organization ID format.",
       code: "INVALID_ORG_ID"
     });
+  }
+
+  // Generate request ID if not present
+  if (!req.id) {
+    req.id = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
   // Super admin has access to all organizations
@@ -432,6 +457,56 @@ export const authorizeOrganization = asyncHandler(async (req, res, next) => {
 });
 
 /**
+ * Middleware to ensure user has organization context
+ * Used by routes that require organization-level operations
+ */
+export const requireOrganizationAccess = asyncHandler(async (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required',
+      code: 'UNAUTHENTICATED'
+    });
+  }
+
+  // Generate request ID if not present
+  if (!req.id) {
+    req.id = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  // If user has multiple organizations, check they have at least one active
+  const hasActiveOrg = req.user.organizations && req.user.organizations.length > 0;
+  
+  if (!hasActiveOrg) {
+    console.warn(`🚫 [${req.id}] No active organization:`, {
+      user: req.user.email,
+      userId: req.user._id
+    });
+
+    return res.status(403).json({
+      success: false,
+      message: 'No active organization found for this user',
+      code: 'NO_ACTIVE_ORGANIZATION',
+      supportEmail: 'assesslyinc@gmail.com'
+    });
+  }
+
+  // Attach the first organization as default if not already set
+  if (!req.organization && req.user.organizations.length > 0) {
+    req.organization = req.user.organizations[0].organization;
+    req.userOrganization = req.user.organizations[0];
+  }
+
+  console.log(`🏢 [${req.id}] Organization access granted:`, {
+    user: req.user.email,
+    organization: req.organization?.name || 'default',
+    organizationId: req.organization?._id
+  });
+
+  next();
+});
+
+/**
  * Enhanced team-based authorization within organizations
  */
 export const authorizeTeam = asyncHandler(async (req, res, next) => {
@@ -453,6 +528,11 @@ export const authorizeTeam = asyncHandler(async (req, res, next) => {
     });
   }
 
+  // Generate request ID if not present
+  if (!req.id) {
+    req.id = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
   // Check if team exists in organization
   const organization = await Organization.findById(req.organization._id)
     .populate('teams');
@@ -460,6 +540,12 @@ export const authorizeTeam = asyncHandler(async (req, res, next) => {
   const team = organization.teams.find(t => t._id.toString() === teamId.toString());
   
   if (!team) {
+    console.warn(`🚫 [${req.id}] Team not found:`, {
+      teamId,
+      organization: organization.name,
+      organizationId: organization._id
+    });
+
     return res.status(404).json({
       success: false,
       message: "Team not found in this organization.",
@@ -485,6 +571,13 @@ export const authorizeTeam = asyncHandler(async (req, res, next) => {
   // Regular users need to be members of the team
   const userTeams = req.userOrganization.teams || [];
   if (!userTeams.includes(teamId.toString())) {
+    console.warn(`🚫 [${req.id}] Team access denied:`, {
+      user: req.user.email,
+      teamId,
+      userTeams,
+      organization: organization.name
+    });
+
     return res.status(403).json({
       success: false,
       message: "Access denied to this team.",
@@ -519,6 +612,11 @@ export const authorizeOwner = (model, idParam = 'id', ownerField = 'user') => {
       });
     }
 
+    // Generate request ID if not present
+    if (!req.id) {
+      req.id = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+
     // Super admin can access any resource
     if (req.user.role === 'superadmin') {
       return next();
@@ -527,6 +625,12 @@ export const authorizeOwner = (model, idParam = 'id', ownerField = 'user') => {
     const resource = await model.findById(resourceId);
     
     if (!resource) {
+      console.warn(`🚫 [${req.id}] Resource not found:`, {
+        resourceId,
+        model: model.modelName,
+        user: req.user.email
+      });
+
       return res.status(404).json({
         success: false,
         message: "Resource not found.",
@@ -537,6 +641,13 @@ export const authorizeOwner = (model, idParam = 'id', ownerField = 'user') => {
     // Check organization context if resource has organization field
     if (resource.organization && req.organization) {
       if (resource.organization.toString() !== req.organization._id.toString()) {
+        console.warn(`🚫 [${req.id}] Resource organization mismatch:`, {
+          resourceOrg: resource.organization,
+          requestOrg: req.organization._id,
+          resourceId,
+          user: req.user.email
+        });
+
         return res.status(403).json({
           success: false,
           message: "Resource does not belong to this organization.",
@@ -552,8 +663,22 @@ export const authorizeOwner = (model, idParam = 'id', ownerField = 'user') => {
     if (ownerId !== userId) {
       // Check if user has admin role in organization
       if (req.userOrganization && ['admin', 'team_lead'].includes(req.userOrganization.role)) {
+        console.log(`👑 [${req.id}] Admin override for resource access:`, {
+          user: req.user.email,
+          userRole: req.userOrganization.role,
+          resourceId,
+          actualOwner: ownerId
+        });
         return next();
       }
+
+      console.warn(`🚫 [${req.id}] Ownership check failed:`, {
+        user: req.user.email,
+        userId,
+        ownerId,
+        resourceId,
+        model: model.modelName
+      });
 
       return res.status(403).json({
         success: false,
@@ -561,6 +686,12 @@ export const authorizeOwner = (model, idParam = 'id', ownerField = 'user') => {
         code: "NOT_OWNER"
       });
     }
+
+    console.log(`✅ [${req.id}] Ownership verified:`, {
+      user: req.user.email,
+      resourceId,
+      model: model.modelName
+    });
 
     next();
   });
@@ -663,10 +794,17 @@ export const optionalAuth = asyncHandler(async (req, res, next) => {
 
       if (user && user.isActive) {
         req.user = user;
+        // Generate request ID if not present
+        if (!req.id) {
+          req.id = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        }
         console.log(`🔓 [${req.id}] Optional auth - user attached:`, user.email);
       }
     } catch (error) {
       // Silently fail for optional auth
+      if (!req.id) {
+        req.id = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      }
       console.log(`🔓 [${req.id}] Optional auth - invalid token:`, error.message);
     }
   }
@@ -681,7 +819,9 @@ export default {
   securityHeaders,
   protect,
   authorizeRoles,
+  authorize,
   authorizeOrganization,
+  requireOrganizationAccess,
   authorizeTeam,
   authorizeOwner,
   verifyToken,
