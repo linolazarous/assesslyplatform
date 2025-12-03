@@ -103,7 +103,7 @@ const PlanCard = ({ plan, subscription, onUpgrade, loading, organizationId }) =>
   };
 
   const handleContactSales = () => {
-    window.open('mailto:sales@assessly.com?subject=Enterprise+Plan+Inquiry', '_blank');
+    window.open('mailto:assesslyinc@gmail.com?subject=Enterprise+Plan+Inquiry', '_blank');
   };
 
   const handleManageSubscription = () => {
@@ -638,3 +638,4 @@ Billing.propTypes = {
 Billing.defaultProps = {
   compact: false,
 };
+
