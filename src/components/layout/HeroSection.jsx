@@ -38,7 +38,7 @@ import PropTypes from "prop-types";
 import { BrandMark, Logo } from "../brand";
 
 const HeroSection = ({
-  videoUrl = "/hero-bg.mp4",
+  videoUrl = "/Assessly.mp4",
   fallbackImage = "/hero-fallback.jpg",
   enableAudio = false,
   showStats = true,
