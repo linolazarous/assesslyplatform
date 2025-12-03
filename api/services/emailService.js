@@ -202,7 +202,7 @@ class EmailService {
         subject,
         template,
         context = {},
-        from = process.env.EMAIL_FROM || 'Assessly <noreply@assessly.com>',
+        from = process.env.EMAIL_FROM || 'Assessly <assesslyinc@gmail.com>',
         cc,
         bcc,
         attachments = []
