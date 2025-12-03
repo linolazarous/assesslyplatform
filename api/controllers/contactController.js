@@ -298,8 +298,8 @@ export async function submitContactForm(req, res) {
  * Send notification emails for contact form submission
  */
 async function sendNotificationEmails(contactMessage, organization) {
-  const supportEmail = process.env.SUPPORT_EMAIL || 'support@assessly.com';
-  const adminEmail = process.env.ADMIN_EMAIL || 'system@assessly.com';
+  const supportEmail = process.env.SUPPORT_EMAIL || 'assesslyinc@gmail.com';
+  const adminEmail = process.env.ADMIN_EMAIL || 'assesslyinc@gmail.com';
 
   // Email to support team
   const supportEmailTemplate = EmailTemplates.contactNotification({
