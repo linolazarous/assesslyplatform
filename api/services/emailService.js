@@ -1,3 +1,4 @@
+// api/services/emailService.js
 import nodemailer from 'nodemailer';
 import fs from 'fs/promises';
 import path from 'path';
@@ -381,5 +382,11 @@ class EmailService {
 // Create singleton instance
 const emailService = new EmailService();
 
+// Export the sendEmail method as a named export
+export const sendEmail = emailService.sendEmail.bind(emailService);
+
+// Also export the full service
 export { emailService };
+
+// Default export
 export default emailService;
