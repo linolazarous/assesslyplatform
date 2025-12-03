@@ -262,7 +262,7 @@ export const protect = asyncHandler(async (req, res, next) => {
       success: false,
       message: "Account has been deactivated. Please contact support.",
       code: "ACCOUNT_DEACTIVATED",
-      supportEmail: "support@assessly.com"
+      supportEmail: "assesslyinc@gmail.com"
     });
   }
 
