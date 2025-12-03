@@ -693,13 +693,13 @@ For OAuth authentication, use the Google OAuth flow:
 
 ## 📝 Support
 
-For API support, contact: **support@assessly.com**
+For API support, contact: **assesslyinc@gmail.com**
       `,
       termsOfService: `${FRONTEND_URL}/terms`,
       contact: {
         name: `${PLATFORM_NAME} Support`,
         url: FRONTEND_URL,
-        email: 'support@assessly.com'
+        email: 'assesslyinc@gmail.com'
       },
       license: {
         name: 'MIT',
@@ -839,7 +839,7 @@ const swaggerUiOptions = {
         <a href="${FRONTEND_URL}" target="_blank">🌐 Frontend App</a> |
         <a href="${BACKEND_URL}/api/v1/health" target="_blank">💚 Health Check</a> |
         <a href="${FRONTEND_URL}/docs" target="_blank">📚 Documentation</a> |
-        <a href="mailto:support@assessly.com">📧 Support</a>
+        <a href="mailto:assesslyinc@gmail.com">📧 Support</a>
       \`;
       document.querySelector('.swagger-ui').insertBefore(infoBar, document.querySelector('.swagger-ui .scheme-container'));
       
