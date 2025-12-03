@@ -260,26 +260,8 @@ const ContactInfoCard = () => {
     {
       icon: <Email color="primary" />,
       title: 'Email Support',
-      details: 'support@assessly.com',
+      details: 'assesslyinc@gmail.com',
       subtitle: 'For technical issues and account support',
-    },
-    {
-      icon: <Phone color="primary" />,
-      title: 'Phone Support',
-      details: '+1 (555) 123-4567',
-      subtitle: 'Mon-Fri, 9am-6pm EST',
-    },
-    {
-      icon: <Business color="primary" />,
-      title: 'Sales Inquiries',
-      details: 'sales@assessly.com',
-      subtitle: 'For enterprise plans and pricing',
-    },
-    {
-      icon: <LocationOn color="primary" />,
-      title: 'Office Location',
-      details: 'San Francisco, CA',
-      subtitle: 'Remote team across 12 countries',
     },
     {
       icon: <Schedule color="primary" />,
