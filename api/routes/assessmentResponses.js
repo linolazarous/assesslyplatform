@@ -1,6 +1,7 @@
 // api/routes/assessmentResponses.js
 import express from 'express';
 import mongoose from 'mongoose';
+import { body, param } from 'express-validator'; // ← ADD THIS LINE
 
 import AssessmentResponse from '../models/AssessmentResponse.js';
 import Assessment from '../models/Assessment.js';
@@ -19,8 +20,9 @@ import {
   organizationValidators,
   assessmentValidators,
   paginationValidators,
-  searchValidators
-} from '../middleware/validation.js'; // Changed from validateRequest.js to validation.js
+  searchValidators,
+  commonValidators 
+} from '../middleware/validation.js';
 
 const router = express.Router();
 
