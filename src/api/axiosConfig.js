@@ -3,7 +3,7 @@ import axios from 'axios';
 
 // Create axios instance with default configuration
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000',
+  baseURL: process.env.REACT_APP_API_URL || 'https://assesslyplatform-t49h.onrender.com/api',
   timeout: 30000, // 30 seconds timeout
   headers: {
     'Content-Type': 'application/json',
@@ -15,7 +15,7 @@ const api = axios.create({
 // Request interceptor for adding authentication token
 api.interceptors.request.use(
   (config) => {
-    // Get token from localStorage (or your auth context)
+    // Get token from localStorage
     const token = localStorage.getItem('accessToken') || 
                   localStorage.getItem('token') || 
                   sessionStorage.getItem('accessToken');
@@ -183,7 +183,7 @@ api.interceptors.response.use(
 );
 
 // Helper functions for common API operations
-export const apiHelpers = {
+const apiHelpers = {
   /**
    * Upload file with progress tracking
    * @param {string} url - API endpoint
@@ -338,5 +338,5 @@ Object.assign(api, apiHelpers);
 // Export the configured axios instance
 export default api;
 
-// Also export as named export for flexibility
-export { api as axiosInstance, apiHelpers };
+// Export helpers as named export
+export { apiHelpers };
