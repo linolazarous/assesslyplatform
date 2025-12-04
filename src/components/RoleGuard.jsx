@@ -50,6 +50,7 @@ import {
   Refresh,
   Settings,
   HelpOutline,
+  Visibility, // Added missing import
 } from "@mui/icons-material";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
@@ -113,7 +114,7 @@ const ROLE_CONFIG = {
   },
   viewer: {
     label: "Viewer",
-    icon: <Visibility />,
+    icon: <Visibility />, // Fixed: Changed from undefined to imported Visibility icon
     color: "default",
     description: "View-only access to assessments and reports",
     permissions: ["assessment:view", "report:view"],
@@ -640,4 +641,4 @@ export function RequirePermissions({ permissions, children, ...props }) {
       {children}
     </RoleGuard>
   );
-  }
+}
