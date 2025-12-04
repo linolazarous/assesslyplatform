@@ -21,17 +21,14 @@ import {
   Checkbox,
   TextField,
   Stack,
-  Chip,
   LinearProgress,
   Card,
   CardContent,
   Divider,
   Grid,
-  Avatar,
-  Badge,
   Paper,
-  ToggleButton,
-  ToggleButtonGroup,
+  ListItemIcon,
+  ListItemText,
 } from "@mui/material";
 import {
   PictureAsPdf,
@@ -62,12 +59,11 @@ import {
   Archive,
   Star,
   StarBorder,
+  Code, // Added missing icon
 } from "@mui/icons-material";
 import { useSnackbar } from "notistack";
 import PropTypes from "prop-types";
 import { useAuth } from "../contexts/AuthContext";
-import LoadingScreen from "./ui/LoadingScreen";
-import AnimatedCounter from "./ui/AnimatedCounter";
 
 const REPORT_TYPES = {
   detailed: { label: "Detailed Report", icon: <Description /> },
@@ -228,167 +224,177 @@ export default function PdfReport({
   }, [assessment, reportType, exportFormat, answers, responses, enqueueSnackbar, onExportComplete]);
 
   const generatePdfReport = async () => {
-    const { jsPDF } = await import("jspdf");
-    const autoTable = await import("jspdf-autotable");
-    const html2canvas = await import("html2canvas");
-    
-    const doc = new jsPDF({
-      orientation,
-      unit: "mm",
-      format: pageSize,
-      compress: quality === "high",
-    });
-
-    // Add organization logo if enabled
-    let startY = 20;
-    if (includeOrganizationLogo && currentOrganization?.logo) {
-      try {
-        // In a real app, you would fetch and add the logo
-        // For now, we'll add a placeholder
-        doc.setFillColor(40, 53, 147);
-        doc.rect(15, 15, 30, 10, "F");
-        doc.setTextColor(255);
-        doc.setFontSize(8);
-        doc.text("LOGO", 30, 21, { align: "center" });
-        startY = 30;
-      } catch (error) {
-        console.warn("Could not add organization logo:", error);
-      }
-    }
-
-    // Title
-    doc.setFontSize(20);
-    doc.setTextColor(40, 53, 147);
-    doc.text(assessment.title, doc.internal.pageSize.width / 2, startY, { align: "center" });
-    
-    // Subtitle
-    doc.setFontSize(12);
-    doc.setTextColor(100);
-    doc.text(`${REPORT_TYPES[reportType]?.label}`, doc.internal.pageSize.width / 2, startY + 8, { align: "center" });
-
-    // Metadata
-    doc.setFontSize(9);
-    doc.setTextColor(150);
-    let metadataY = startY + 16;
-    
-    doc.text(`Organization: ${currentOrganization?.name || "N/A"}`, 15, metadataY);
-    doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, doc.internal.pageSize.width - 15, metadataY, { align: "right" });
-    metadataY += 6;
-    
-    if (reportStats) {
-      doc.text(`Questions: ${reportStats.answeredQuestions}/${reportStats.totalQuestions}`, 15, metadataY);
-      doc.text(`Score: ${reportStats.averageScore.toFixed(1)}%`, doc.internal.pageSize.width - 15, metadataY, { align: "right" });
-    }
-
-    // Generate content based on report type
-    let currentY = metadataY + 10;
-    
-    switch (reportType) {
-      case "summary":
-        currentY = await generateSummaryReport(doc, autoTable, currentY);
-        break;
-      case "questions":
-        currentY = await generateQuestionsReport(doc, autoTable, currentY);
-        break;
-      case "answers":
-        currentY = await generateAnswersReport(doc, autoTable, currentY);
-        break;
-      case "comparative":
-        currentY = await generateComparativeReport(doc, autoTable, currentY);
-        break;
-      default: // detailed
-        currentY = await generateDetailedReport(doc, autoTable, currentY);
-    }
-
-    // Add charts if enabled
-    if (includeCharts && reportStats) {
-      currentY = await addCharts(doc, html2canvas, currentY);
-    }
-
-    // Add comments if enabled and available
-    if (includeComments && assessment.comments) {
-      currentY = addCommentsSection(doc, currentY);
-    }
-
-    // Add footer
-    doc.setFontSize(8);
-    doc.setTextColor(150);
-    const totalPages = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) {
-      doc.setPage(i);
-      doc.text(
-        `Page ${i} of ${totalPages} • ${currentOrganization?.name || "Assessly"} • Confidential`,
-        doc.internal.pageSize.width / 2,
-        doc.internal.pageSize.height - 10,
-        { align: "center" }
-      );
-    }
-
-    // Apply password protection if enabled
-    if (passwordProtected && password) {
-      doc.setPermissions({
-        annotations: false,
-        fillForms: false,
-        copy: false,
-        printLowQuality: false,
-        print: false,
-        modify: false,
+    try {
+      const { jsPDF } = await import("jspdf");
+      const autoTable = await import("jspdf-autotable");
+      
+      const doc = new jsPDF({
+        orientation,
+        unit: "mm",
+        format: pageSize,
+        compress: quality === "high",
       });
-    }
 
-    const fileName = `${assessment.title.replace(/[^a-z0-9]/gi, "_")}_${reportType}_${new Date().toISOString().split("T")[0]}.pdf`;
-    
-    return { doc, fileName };
+      // Add organization logo if enabled
+      let startY = 20;
+      if (includeOrganizationLogo && currentOrganization?.logo) {
+        try {
+          // In a real app, you would fetch and add the logo
+          // For now, we'll add a placeholder
+          doc.setFillColor(40, 53, 147);
+          doc.rect(15, 15, 30, 10, "F");
+          doc.setTextColor(255);
+          doc.setFontSize(8);
+          doc.text("LOGO", 30, 21, { align: "center" });
+          startY = 30;
+        } catch (error) {
+          console.warn("Could not add organization logo:", error);
+        }
+      }
+
+      // Title
+      doc.setFontSize(20);
+      doc.setTextColor(40, 53, 147);
+      doc.text(assessment.title, doc.internal.pageSize.width / 2, startY, { align: "center" });
+      
+      // Subtitle
+      doc.setFontSize(12);
+      doc.setTextColor(100);
+      doc.text(`${REPORT_TYPES[reportType]?.label}`, doc.internal.pageSize.width / 2, startY + 8, { align: "center" });
+
+      // Metadata
+      doc.setFontSize(9);
+      doc.setTextColor(150);
+      let metadataY = startY + 16;
+      
+      doc.text(`Organization: ${currentOrganization?.name || "N/A"}`, 15, metadataY);
+      doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, doc.internal.pageSize.width - 15, metadataY, { align: "right" });
+      metadataY += 6;
+      
+      if (reportStats) {
+        doc.text(`Questions: ${reportStats.answeredQuestions}/${reportStats.totalQuestions}`, 15, metadataY);
+        doc.text(`Score: ${reportStats.averageScore.toFixed(1)}%`, doc.internal.pageSize.width - 15, metadataY, { align: "right" });
+      }
+
+      // Generate content based on report type
+      let currentY = metadataY + 10;
+      
+      switch (reportType) {
+        case "summary":
+          currentY = await generateSummaryReport(doc, autoTable, currentY);
+          break;
+        case "questions":
+          currentY = await generateQuestionsReport(doc, autoTable, currentY);
+          break;
+        case "answers":
+          currentY = await generateAnswersReport(doc, autoTable, currentY);
+          break;
+        case "comparative":
+          currentY = await generateComparativeReport(doc, autoTable, currentY);
+          break;
+        default: // detailed
+          currentY = await generateDetailedReport(doc, autoTable, currentY);
+      }
+
+      // Add comments if enabled and available
+      if (includeComments && assessment.comments) {
+        currentY = addCommentsSection(doc, currentY);
+      }
+
+      // Add footer
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      const totalPages = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.text(
+          `Page ${i} of ${totalPages} • ${currentOrganization?.name || "Assessly"} • Confidential`,
+          doc.internal.pageSize.width / 2,
+          doc.internal.pageSize.height - 10,
+          { align: "center" }
+        );
+      }
+
+      // Apply password protection if enabled
+      if (passwordProtected && password) {
+        doc.setPermissions({
+          annotations: false,
+          fillForms: false,
+          copy: false,
+          printLowQuality: false,
+          print: false,
+          modify: false,
+        });
+      }
+
+      const fileName = `${assessment.title.replace(/[^a-z0-9]/gi, "_")}_${reportType}_${new Date().toISOString().split("T")[0]}.pdf`;
+      
+      return { doc, fileName };
+    } catch (error) {
+      console.error("PDF generation error:", error);
+      throw new Error(`Failed to generate PDF: ${error.message}`);
+    }
   };
 
   const generateExcelReport = async () => {
-    // Implementation for Excel export
-    const XLSX = await import("xlsx");
-    const workbook = XLSX.utils.book_new();
-    
-    // Create worksheets
-    const summaryData = generateExcelSummaryData();
-    const questionsData = generateExcelQuestionsData();
-    
-    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-    const questionsSheet = XLSX.utils.aoa_to_sheet(questionsData);
-    
-    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
-    XLSX.utils.book_append_sheet(workbook, questionsSheet, "Questions");
-    
-    const fileName = `${assessment.title.replace(/[^a-z0-9]/gi, "_")}_${reportType}_${new Date().toISOString().split("T")[0]}.xlsx`;
-    const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-    
-    return { data: excelBuffer, fileName, type: "excel" };
+    try {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.utils.book_new();
+      
+      // Create worksheets
+      const summaryData = generateExcelSummaryData();
+      const questionsData = generateExcelQuestionsData();
+      
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+      const questionsSheet = XLSX.utils.aoa_to_sheet(questionsData);
+      
+      XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+      XLSX.utils.book_append_sheet(workbook, questionsSheet, "Questions");
+      
+      const fileName = `${assessment.title.replace(/[^a-z0-9]/gi, "_")}_${reportType}_${new Date().toISOString().split("T")[0]}.xlsx`;
+      const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      
+      return { data: excelBuffer, fileName, type: "excel" };
+    } catch (error) {
+      console.error("Excel generation error:", error);
+      throw new Error(`Failed to generate Excel: ${error.message}`);
+    }
   };
 
   const generateCsvReport = async () => {
-    // Implementation for CSV export
-    const csvContent = generateCsvContent();
-    const fileName = `${assessment.title.replace(/[^a-z0-9]/gi, "_")}_${reportType}_${new Date().toISOString().split("T")[0]}.csv`;
-    
-    return { data: csvContent, fileName, type: "csv" };
+    try {
+      const csvContent = generateCsvContent();
+      const fileName = `${assessment.title.replace(/[^a-z0-9]/gi, "_")}_${reportType}_${new Date().toISOString().split("T")[0]}.csv`;
+      
+      return { data: csvContent, fileName, type: "csv" };
+    } catch (error) {
+      console.error("CSV generation error:", error);
+      throw new Error(`Failed to generate CSV: ${error.message}`);
+    }
   };
 
   const generateJsonReport = async () => {
-    // Implementation for JSON export
-    const jsonData = {
-      assessment,
-      answers,
-      responses,
-      stats: reportStats,
-      generatedAt: new Date().toISOString(),
-      generatedBy: currentOrganization?.name,
-    };
-    
-    const fileName = `${assessment.title.replace(/[^a-z0-9]/gi, "_")}_${reportType}_${new Date().toISOString().split("T")[0]}.json`;
-    
-    return { data: JSON.stringify(jsonData, null, 2), fileName, type: "json" };
+    try {
+      const jsonData = {
+        assessment,
+        answers,
+        responses,
+        stats: reportStats,
+        generatedAt: new Date().toISOString(),
+        generatedBy: currentOrganization?.name,
+      };
+      
+      const fileName = `${assessment.title.replace(/[^a-z0-9]/gi, "_")}_${reportType}_${new Date().toISOString().split("T")[0]}.json`;
+      
+      return { data: JSON.stringify(jsonData, null, 2), fileName, type: "json" };
+    } catch (error) {
+      console.error("JSON generation error:", error);
+      throw new Error(`Failed to generate JSON: ${error.message}`);
+    }
   };
 
   // Helper functions for PDF generation
   const generateDetailedReport = async (doc, autoTable, startY) => {
-    // Detailed report implementation
     const tableData = assessment.questions.map((q, i) => {
       const answer = getAnswerForQuestion(i);
       const correctAnswer = q.type === "multiple_choice" 
@@ -426,7 +432,6 @@ export default function PdfReport({
   };
 
   const generateSummaryReport = async (doc, autoTable, startY) => {
-    // Summary report implementation
     doc.setFontSize(14);
     doc.setTextColor(60);
     doc.text("Assessment Summary", 15, startY);
@@ -456,7 +461,6 @@ export default function PdfReport({
   };
 
   const generateQuestionsReport = async (doc, autoTable, startY) => {
-    // Questions-only report
     const questionsData = assessment.questions.map((q, i) => [
       `Q${i+1}`,
       q.text,
@@ -481,7 +485,6 @@ export default function PdfReport({
   };
 
   const generateAnswersReport = async (doc, autoTable, startY) => {
-    // Answers-only report
     const answersData = assessment.questions.map((q, i) => {
       const answer = getAnswerForQuestion(i);
       return [
@@ -506,7 +509,6 @@ export default function PdfReport({
   };
 
   const generateComparativeReport = async (doc, autoTable, startY) => {
-    // Comparative report for multiple candidates
     if (!candidates || candidates.length === 0) {
       doc.setFontSize(12);
       doc.setTextColor(150);
@@ -514,16 +516,30 @@ export default function PdfReport({
       return startY + 10;
     }
 
-    // Implementation for comparative report
-    // This would show multiple candidates' scores side by side
-    
-    return startY + 50; // Placeholder
-  };
+    // Create table for comparative analysis
+    const candidateData = candidates.map(candidate => {
+      const candidateResponses = responses.filter(r => r.candidateId === candidate.id);
+      const totalScore = candidateResponses.reduce((sum, r) => sum + (r.score || 0), 0);
+      const avgScore = candidateResponses.length > 0 ? totalScore / candidateResponses.length : 0;
+      
+      return [
+        candidate.name || `Candidate ${candidate.id}`,
+        candidateResponses.length,
+        `${avgScore.toFixed(1)}%`,
+        new Date(candidate.completedAt || Date.now()).toLocaleDateString(),
+      ];
+    });
 
-  const addCharts = async (doc, html2canvas, startY) => {
-    // Add charts to PDF
-    // This would use html2canvas to convert charts to images
-    return startY + 20; // Placeholder
+    autoTable.default(doc, {
+      startY,
+      head: [["Candidate", "Responses", "Avg Score", "Completed"]],
+      body: candidateData,
+      theme: "striped",
+      headStyles: { fillColor: [60, 60, 60], textColor: 255 },
+      styles: { fontSize: 9, cellPadding: 2 },
+    });
+
+    return doc.lastAutoTable.finalY + 10;
   };
 
   const addCommentsSection = (doc, startY) => {
@@ -1043,9 +1059,16 @@ PdfReport.propTypes = {
     PropTypes.shape({
       answer: PropTypes.any,
       score: PropTypes.number,
+      candidateId: PropTypes.string,
+      completedAt: PropTypes.string,
     })
   ),
-  candidates: PropTypes.array,
+  candidates: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.string,
+      name: PropTypes.string,
+    })
+  ),
   showAdvancedOptions: PropTypes.bool,
   showPreview: PropTypes.bool,
   autoGenerate: PropTypes.bool,
