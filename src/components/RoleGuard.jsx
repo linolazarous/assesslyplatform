@@ -484,7 +484,7 @@ export default function RoleGuard({
               />
             </Box>
             
-            <Box sx={{ display: "flex", justifyContent="space-between", alignItems: "center" }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Typography variant="body2">Required Role:</Typography>
               <Chip
                 icon={requiredRoleInfo.config.icon}
@@ -642,3 +642,4 @@ export function RequirePermissions({ permissions, children, ...props }) {
     </RoleGuard>
   );
 }
+
