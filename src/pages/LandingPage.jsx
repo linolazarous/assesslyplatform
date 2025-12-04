@@ -28,8 +28,8 @@ const FeaturesSection = lazy(() =>
     .then(module => ({ default: module.default }))
 );
 
-const TestimonialsSection = lazy(() => 
-  import('../components/layout/TestimonialsSection.jsx')
+const Testimonials= lazy(() => 
+  import('../components/layout/Testimonials.jsx')
     .then(module => ({ default: module.default }))
 );
 
