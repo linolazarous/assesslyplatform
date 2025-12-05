@@ -1,107 +1,416 @@
 // src/api/organizationApi.js
-// =============================================
-// Assessly Platform - Organization Management API
-// =============================================
+import api from './axiosConfig';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://assesslyplatform-t49h.onrender.com/api/v1";
+/**
+ * Organization API Service
+ * Handles organization management, membership, and multi-tenant operations
+ */
+const organizationApi = {
+  // ===================== ORGANIZATION CRUD =====================
 
-async function handleResponse(res, defaultMsg) {
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({ message: defaultMsg }));
-    throw new Error(errorData.message || defaultMsg);
-  }
-  return res.json();
-}
-
-function getAuthToken() {
-  return localStorage.getItem('accessToken') || sessionStorage.getItem('accessToken');
-}
-
-function buildHeaders(includeAuth = true) {
-  const headers = {
-    'Content-Type': 'application/json',
-  };
-  
-  if (includeAuth) {
-    const token = getAuthToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+  /**
+   * Get organization by ID
+   * @param {string} organizationId - Organization ID
+   * @returns {Promise} Organization data
+   */
+  getOrganization: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/organizations/${organizationId}`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error fetching organization:', error);
+      throw error;
     }
-  }
-  
-  return headers;
-}
+  },
 
-/**
- * Verify user access to a specific organization
- * GET /api/v1/organizations/:id/access
- */
-export async function verifyOrganizationAccess(organizationId) {
-  const res = await fetch(`${API_BASE}/organizations/${organizationId}/access`, {
-    method: "GET",
-    headers: buildHeaders(),
-  });
-  return handleResponse(res, "Failed to verify organization access");
-}
+  /**
+   * Get current organization details
+   * @param {string} organizationId - Organization ID
+   * @returns {Promise} Current organization
+   */
+  getCurrentOrganization: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/organizations/${organizationId}/current`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error fetching current organization:', error);
+      throw error;
+    }
+  },
 
-/**
- * Get current organization details
- * GET /api/v1/organizations/:id
- */
-export async function getCurrentOrganization(organizationId) {
-  const res = await fetch(`${API_BASE}/organizations/${organizationId}`, {
-    method: "GET",
-    headers: buildHeaders(),
-  });
-  return handleResponse(res, "Failed to fetch organization details");
-}
+  /**
+   * Verify user access to organization
+   * @param {string} organizationId - Organization ID
+   * @returns {Promise} Access verification result
+   */
+  verifyOrganizationAccess: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/organizations/${organizationId}/access`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error verifying organization access:', error);
+      throw error;
+    }
+  },
 
-/**
- * Check subscription status for an organization
- * GET /api/v1/organizations/:id/subscription
- */
-export async function checkSubscriptionStatus(organizationId) {
-  const res = await fetch(`${API_BASE}/organizations/${organizationId}/subscription`, {
-    method: "GET",
-    headers: buildHeaders(),
-  });
-  return handleResponse(res, "Failed to check subscription status");
-}
+  /**
+   * Create new organization
+   * @param {Object} organizationData - Organization creation data
+   * @returns {Promise} Created organization
+   */
+  createOrganization: async (organizationData) => {
+    try {
+      const response = await api.post('/api/v1/organizations', organizationData);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error creating organization:', error);
+      throw error;
+    }
+  },
 
-/**
- * Get user's organizations
- * GET /api/v1/organizations/my
- */
-export async function getUserOrganizations() {
-  const res = await fetch(`${API_BASE}/organizations/my`, {
-    method: "GET",
-    headers: buildHeaders(),
-  });
-  return handleResponse(res, "Failed to fetch user organizations");
-}
+  /**
+   * Update organization
+   * @param {string} organizationId - Organization ID
+   * @param {Object} updateData - Organization update data
+   * @returns {Promise} Updated organization
+   */
+  updateOrganization: async (organizationId, updateData) => {
+    try {
+      const response = await api.put(`/api/v1/organizations/${organizationId}`, updateData);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error updating organization:', error);
+      throw error;
+    }
+  },
 
-/**
- * Create a new organization (Super Admin only)
- * POST /api/v1/organizations
- */
-export async function createOrganization(organizationData) {
-  const res = await fetch(`${API_BASE}/organizations`, {
-    method: "POST",
-    headers: buildHeaders(),
-    body: JSON.stringify(organizationData),
-  });
-  return handleResponse(res, "Failed to create organization");
-}
+  /**
+   * Delete organization
+   * @param {string} organizationId - Organization ID
+   * @returns {Promise} Deletion result
+   */
+  deleteOrganization: async (organizationId) => {
+    try {
+      const response = await api.delete(`/api/v1/organizations/${organizationId}`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error deleting organization:', error);
+      throw error;
+    }
+  },
 
-/**
- * Update organization
- * PATCH /api/v1/organizations/:id
- */
-export async function updateOrganization(organizationId, updateData) {
-  const res = await fetch(`${API_BASE}/organizations/${organizationId}`, {
-    method: "PATCH",
-    headers: buildHeaders(),
-    body: JSON.stringify(updateData),
-  });
-  return handleResponse(res, "Failed to update organization");
-}
+  // ===================== ORGANIZATION SUBSCRIPTION =====================
+
+  /**
+   * Check subscription status
+   * @param {string} organizationId - Organization ID
+   * @returns {Promise} Subscription status
+   */
+  checkSubscriptionStatus: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/organizations/${organizationId}/subscription`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error checking subscription status:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get subscription details
+   * @param {string} organizationId - Organization ID
+   * @returns {Promise} Subscription details
+   */
+  getSubscriptionDetails: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/organizations/${organizationId}/subscription/details`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error fetching subscription details:', error);
+      throw error;
+    }
+  },
+
+  // ===================== ORGANIZATION MEMBERSHIP =====================
+
+  /**
+   * Get user's organizations
+   * @param {Object} params - Query parameters
+   * @returns {Promise} User organizations
+   */
+  getUserOrganizations: async (params = {}) => {
+    try {
+      const response = await api.get('/api/v1/organizations/my', { params });
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error fetching user organizations:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get organization members
+   * @param {string} organizationId - Organization ID
+   * @param {Object} params - Query parameters
+   * @returns {Promise} Organization members
+   */
+  getOrganizationMembers: async (organizationId, params = {}) => {
+    try {
+      const response = await api.get(`/api/v1/organizations/${organizationId}/members`, { params });
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error fetching organization members:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Add member to organization
+   * @param {string} organizationId - Organization ID
+   * @param {Object} memberData - Member data
+   * @returns {Promise} Added member
+   */
+  addMember: async (organizationId, memberData) => {
+    try {
+      const response = await api.post(`/api/v1/organizations/${organizationId}/members`, memberData);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error adding member:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update member role
+   * @param {string} organizationId - Organization ID
+   * @param {string} userId - User ID
+   * @param {Object} roleData - Role update data
+   * @returns {Promise} Updated member
+   */
+  updateMemberRole: async (organizationId, userId, roleData) => {
+    try {
+      const response = await api.put(`/api/v1/organizations/${organizationId}/members/${userId}`, roleData);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error updating member role:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Remove member from organization
+   * @param {string} organizationId - Organization ID
+   * @param {string} userId - User ID
+   * @returns {Promise} Removal result
+   */
+  removeMember: async (organizationId, userId) => {
+    try {
+      const response = await api.delete(`/api/v1/organizations/${organizationId}/members/${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error removing member:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Invite member to organization
+   * @param {string} organizationId - Organization ID
+   * @param {Object} inviteData - Invitation data
+   * @returns {Promise} Invitation result
+   */
+  inviteMember: async (organizationId, inviteData) => {
+    try {
+      const response = await api.post(`/api/v1/organizations/${organizationId}/invite`, inviteData);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error inviting member:', error);
+      throw error;
+    }
+  },
+
+  // ===================== ORGANIZATION SETTINGS =====================
+
+  /**
+   * Get organization settings
+   * @param {string} organizationId - Organization ID
+   * @returns {Promise} Organization settings
+   */
+  getOrganizationSettings: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/organizations/${organizationId}/settings`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error fetching organization settings:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update organization settings
+   * @param {string} organizationId - Organization ID
+   * @param {Object} settingsData - Settings data
+   * @returns {Promise} Updated settings
+   */
+  updateOrganizationSettings: async (organizationId, settingsData) => {
+    try {
+      const response = await api.put(`/api/v1/organizations/${organizationId}/settings`, settingsData);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error updating organization settings:', error);
+      throw error;
+    }
+  },
+
+  // ===================== ORGANIZATION ANALYTICS =====================
+
+  /**
+   * Get organization analytics
+   * @param {string} organizationId - Organization ID
+   * @param {Object} params - Query parameters
+   * @returns {Promise} Organization analytics
+   */
+  getOrganizationAnalytics: async (organizationId, params = {}) => {
+    try {
+      const response = await api.get(`/api/v1/organizations/${organizationId}/analytics`, { params });
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error fetching organization analytics:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get organization usage statistics
+   * @param {string} organizationId - Organization ID
+   * @returns {Promise} Usage statistics
+   */
+  getUsageStatistics: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/organizations/${organizationId}/usage`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error fetching usage statistics:', error);
+      throw error;
+    }
+  },
+
+  // ===================== ORGANIZATION DOMAINS =====================
+
+  /**
+   * Get organization domains
+   * @param {string} organizationId - Organization ID
+   * @returns {Promise} Organization domains
+   */
+  getDomains: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/organizations/${organizationId}/domains`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error fetching domains:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Add domain to organization
+   * @param {string} organizationId - Organization ID
+   * @param {Object} domainData - Domain data
+   * @returns {Promise} Added domain
+   */
+  addDomain: async (organizationId, domainData) => {
+    try {
+      const response = await api.post(`/api/v1/organizations/${organizationId}/domains`, domainData);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error adding domain:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Verify domain
+   * @param {string} organizationId - Organization ID
+   * @param {string} domainId - Domain ID
+   * @returns {Promise} Verification result
+   */
+  verifyDomain: async (organizationId, domainId) => {
+    try {
+      const response = await api.post(`/api/v1/organizations/${organizationId}/domains/${domainId}/verify`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error verifying domain:', error);
+      throw error;
+    }
+  },
+
+  // ===================== ORGANIZATION BILLING =====================
+
+  /**
+   * Get billing information
+   * @param {string} organizationId - Organization ID
+   * @returns {Promise} Billing information
+   */
+  getBillingInfo: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/organizations/${organizationId}/billing`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error fetching billing info:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update billing information
+   * @param {string} organizationId - Organization ID
+   * @param {Object} billingData - Billing data
+   * @returns {Promise} Updated billing info
+   */
+  updateBillingInfo: async (organizationId, billingData) => {
+    try {
+      const response = await api.put(`/api/v1/organizations/${organizationId}/billing`, billingData);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error updating billing info:', error);
+      throw error;
+    }
+  },
+
+  // ===================== ORGANIZATION EXPORT =====================
+
+  /**
+   * Export organization data
+   * @param {string} organizationId - Organization ID
+   * @param {Object} params - Export parameters
+   * @returns {Promise} Export data
+   */
+  exportOrganizationData: async (organizationId, params = {}) => {
+    try {
+      const response = await api.download(`/api/v1/organizations/${organizationId}/export`, params, `organization_${organizationId}_data.zip`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error exporting organization data:', error);
+      throw error;
+    }
+  },
+
+  // ===================== ORGANIZATION HEALTH =====================
+
+  /**
+   * Check organization health
+   * @param {string} organizationId - Organization ID
+   * @returns {Promise} Health status
+   */
+  checkOrganizationHealth: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/organizations/${organizationId}/health`);
+      return response.data;
+    } catch (error) {
+      console.error('[OrganizationAPI] Error checking organization health:', error);
+      throw error;
+    }
+  },
+};
+
+export default organizationApi;
