@@ -1,3 +1,4 @@
+
 // src/components/common/Sidebar.jsx
 import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
@@ -51,7 +52,9 @@ import {
 } from "@mui/icons-material";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Logo, Wordmark } from "../brand";
+// FIX: Import directly instead of from barrel file
+import Logo from "../brand/Logo";
+import Wordmark from "../brand/Wordmark";
 import { fetchOrganizations, switchOrganization } from "../../api/userApi";
 import { fetchNotifications } from "../../api/notificationApi";
 import { useSnackbar } from "notistack";
