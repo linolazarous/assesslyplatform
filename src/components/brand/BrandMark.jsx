@@ -7,7 +7,9 @@ import { Box, useTheme, alpha } from "@mui/material";
  * BrandMark Component
  * Combines logo and wordmark with advanced layout options
  */
-import { Logo, Wordmark } from "./index";
+// FIX: Import directly instead of from index
+import Logo from "./Logo";
+import Wordmark from "./Wordmark";
 
 function BrandMark({ 
   size = 40, 
