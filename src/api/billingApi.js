@@ -1,5 +1,5 @@
 // src/api/billingApi.js
-import api from './api';
+import api from './axiosConfig';
 
 /**
  * Billing API Service
@@ -13,10 +13,10 @@ const billingApi = {
    */
   getSubscription: async (organizationId) => {
     try {
-      const response = await api.get(`/billing/subscriptions/${organizationId}`);
+      const response = await api.get(`/api/v1/billing/subscriptions/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Get subscription error:', error);
+      console.error('[BillingAPI] Get subscription error:', error);
       throw error;
     }
   },
@@ -26,10 +26,10 @@ const billingApi = {
    */
   updateSubscription: async (organizationId, data) => {
     try {
-      const response = await api.put(`/billing/subscriptions/${organizationId}`, data);
+      const response = await api.put(`/api/v1/billing/subscriptions/${organizationId}`, data);
       return response.data;
     } catch (error) {
-      console.error('Update subscription error:', error);
+      console.error('[BillingAPI] Update subscription error:', error);
       throw error;
     }
   },
@@ -39,10 +39,10 @@ const billingApi = {
    */
   cancelSubscription: async (organizationId, data = {}) => {
     try {
-      const response = await api.delete(`/billing/subscriptions/${organizationId}`, { data });
+      const response = await api.delete(`/api/v1/billing/subscriptions/${organizationId}`, { data });
       return response.data;
     } catch (error) {
-      console.error('Cancel subscription error:', error);
+      console.error('[BillingAPI] Cancel subscription error:', error);
       throw error;
     }
   },
@@ -52,10 +52,10 @@ const billingApi = {
    */
   reactivateSubscription: async (organizationId) => {
     try {
-      const response = await api.post(`/billing/subscriptions/${organizationId}/reactivate`);
+      const response = await api.post(`/api/v1/billing/subscriptions/${organizationId}/reactivate`);
       return response.data;
     } catch (error) {
-      console.error('Reactivate subscription error:', error);
+      console.error('[BillingAPI] Reactivate subscription error:', error);
       throw error;
     }
   },
@@ -67,10 +67,10 @@ const billingApi = {
    */
   getBillingInfo: async (organizationId) => {
     try {
-      const response = await api.get(`/billing/info/${organizationId}`);
+      const response = await api.get(`/api/v1/billing/info/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Get billing info error:', error);
+      console.error('[BillingAPI] Get billing info error:', error);
       throw error;
     }
   },
@@ -80,10 +80,10 @@ const billingApi = {
    */
   getBillingHistory: async (organizationId, params = {}) => {
     try {
-      const response = await api.get(`/billing/history/${organizationId}`, { params });
+      const response = await api.get(`/api/v1/billing/history/${organizationId}`, { params });
       return response.data;
     } catch (error) {
-      console.error('Get billing history error:', error);
+      console.error('[BillingAPI] Get billing history error:', error);
       throw error;
     }
   },
@@ -93,10 +93,10 @@ const billingApi = {
    */
   getInvoice: async (invoiceId) => {
     try {
-      const response = await api.get(`/billing/invoices/${invoiceId}`);
+      const response = await api.get(`/api/v1/billing/invoices/${invoiceId}`);
       return response.data;
     } catch (error) {
-      console.error('Get invoice error:', error);
+      console.error('[BillingAPI] Get invoice error:', error);
       throw error;
     }
   },
@@ -106,12 +106,10 @@ const billingApi = {
    */
   downloadInvoice: async (invoiceId) => {
     try {
-      const response = await api.get(`/billing/invoices/${invoiceId}/download`, {
-        responseType: 'blob',
-      });
+      const response = await api.download(`/api/v1/billing/invoices/${invoiceId}/download`, {}, `invoice_${invoiceId}.pdf`);
       return response.data;
     } catch (error) {
-      console.error('Download invoice error:', error);
+      console.error('[BillingAPI] Download invoice error:', error);
       throw error;
     }
   },
@@ -121,12 +119,10 @@ const billingApi = {
    */
   downloadLatestInvoice: async (organizationId) => {
     try {
-      const response = await api.get(`/billing/invoices/latest/${organizationId}/download`, {
-        responseType: 'blob',
-      });
+      const response = await api.download(`/api/v1/billing/invoices/latest/${organizationId}/download`, {}, `latest_invoice_${organizationId}.pdf`);
       return response.data;
     } catch (error) {
-      console.error('Download latest invoice error:', error);
+      console.error('[BillingAPI] Download latest invoice error:', error);
       throw error;
     }
   },
@@ -136,10 +132,10 @@ const billingApi = {
    */
   sendInvoiceEmail: async (invoiceId, email) => {
     try {
-      const response = await api.post(`/billing/invoices/${invoiceId}/send`, { email });
+      const response = await api.post(`/api/v1/billing/invoices/${invoiceId}/send`, { email });
       return response.data;
     } catch (error) {
-      console.error('Send invoice email error:', error);
+      console.error('[BillingAPI] Send invoice email error:', error);
       throw error;
     }
   },
@@ -151,10 +147,10 @@ const billingApi = {
    */
   getPaymentMethods: async (organizationId) => {
     try {
-      const response = await api.get(`/billing/payment-methods/${organizationId}`);
+      const response = await api.get(`/api/v1/billing/payment-methods/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Get payment methods error:', error);
+      console.error('[BillingAPI] Get payment methods error:', error);
       throw error;
     }
   },
@@ -164,10 +160,10 @@ const billingApi = {
    */
   addPaymentMethod: async (organizationId, paymentMethod) => {
     try {
-      const response = await api.post(`/billing/payment-methods/${organizationId}`, paymentMethod);
+      const response = await api.post(`/api/v1/billing/payment-methods/${organizationId}`, paymentMethod);
       return response.data;
     } catch (error) {
-      console.error('Add payment method error:', error);
+      console.error('[BillingAPI] Add payment method error:', error);
       throw error;
     }
   },
@@ -177,10 +173,10 @@ const billingApi = {
    */
   updatePaymentMethod: async (organizationId, paymentMethodId, updates) => {
     try {
-      const response = await api.put(`/billing/payment-methods/${organizationId}/${paymentMethodId}`, updates);
+      const response = await api.put(`/api/v1/billing/payment-methods/${organizationId}/${paymentMethodId}`, updates);
       return response.data;
     } catch (error) {
-      console.error('Update payment method error:', error);
+      console.error('[BillingAPI] Update payment method error:', error);
       throw error;
     }
   },
@@ -190,10 +186,10 @@ const billingApi = {
    */
   removePaymentMethod: async (organizationId, paymentMethodId) => {
     try {
-      const response = await api.delete(`/billing/payment-methods/${organizationId}/${paymentMethodId}`);
+      const response = await api.delete(`/api/v1/billing/payment-methods/${organizationId}/${paymentMethodId}`);
       return response.data;
     } catch (error) {
-      console.error('Remove payment method error:', error);
+      console.error('[BillingAPI] Remove payment method error:', error);
       throw error;
     }
   },
@@ -203,10 +199,10 @@ const billingApi = {
    */
   setDefaultPaymentMethod: async (organizationId, paymentMethodId) => {
     try {
-      const response = await api.post(`/billing/payment-methods/${organizationId}/${paymentMethodId}/default`);
+      const response = await api.post(`/api/v1/billing/payment-methods/${organizationId}/${paymentMethodId}/default`);
       return response.data;
     } catch (error) {
-      console.error('Set default payment method error:', error);
+      console.error('[BillingAPI] Set default payment method error:', error);
       throw error;
     }
   },
@@ -218,10 +214,10 @@ const billingApi = {
    */
   createCheckoutSession: async (data) => {
     try {
-      const response = await api.post('/billing/checkout-session', data);
+      const response = await api.post('/api/v1/billing/checkout-session', data);
       return response.data;
     } catch (error) {
-      console.error('Create checkout session error:', error);
+      console.error('[BillingAPI] Create checkout session error:', error);
       throw error;
     }
   },
@@ -231,10 +227,10 @@ const billingApi = {
    */
   createPortalSession: async (organizationId) => {
     try {
-      const response = await api.post('/billing/portal-session', { organizationId });
+      const response = await api.post('/api/v1/billing/portal-session', { organizationId });
       return response.data;
     } catch (error) {
-      console.error('Create portal session error:', error);
+      console.error('[BillingAPI] Create portal session error:', error);
       throw error;
     }
   },
@@ -244,10 +240,10 @@ const billingApi = {
    */
   getUpgradeOptions: async (organizationId) => {
     try {
-      const response = await api.get(`/billing/upgrade-options/${organizationId}`);
+      const response = await api.get(`/api/v1/billing/upgrade-options/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Get upgrade options error:', error);
+      console.error('[BillingAPI] Get upgrade options error:', error);
       throw error;
     }
   },
@@ -259,10 +255,10 @@ const billingApi = {
    */
   validateCoupon: async (couponCode) => {
     try {
-      const response = await api.get(`/billing/coupons/validate/${couponCode}`);
+      const response = await api.get(`/api/v1/billing/coupons/validate/${couponCode}`);
       return response.data;
     } catch (error) {
-      console.error('Validate coupon error:', error);
+      console.error('[BillingAPI] Validate coupon error:', error);
       throw error;
     }
   },
@@ -272,10 +268,10 @@ const billingApi = {
    */
   applyCoupon: async (organizationId, couponCode) => {
     try {
-      const response = await api.post(`/billing/coupons/apply/${organizationId}`, { couponCode });
+      const response = await api.post(`/api/v1/billing/coupons/apply/${organizationId}`, { couponCode });
       return response.data;
     } catch (error) {
-      console.error('Apply coupon error:', error);
+      console.error('[BillingAPI] Apply coupon error:', error);
       throw error;
     }
   },
@@ -285,10 +281,10 @@ const billingApi = {
    */
   removeCoupon: async (organizationId) => {
     try {
-      const response = await api.delete(`/billing/coupons/remove/${organizationId}`);
+      const response = await api.delete(`/api/v1/billing/coupons/remove/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Remove coupon error:', error);
+      console.error('[BillingAPI] Remove coupon error:', error);
       throw error;
     }
   },
@@ -300,10 +296,10 @@ const billingApi = {
    */
   getUsageMetrics: async (organizationId, params = {}) => {
     try {
-      const response = await api.get(`/billing/usage/${organizationId}`, { params });
+      const response = await api.get(`/api/v1/billing/usage/${organizationId}`, { params });
       return response.data;
     } catch (error) {
-      console.error('Get usage metrics error:', error);
+      console.error('[BillingAPI] Get usage metrics error:', error);
       throw error;
     }
   },
@@ -313,10 +309,10 @@ const billingApi = {
    */
   getUsageAlerts: async (organizationId) => {
     try {
-      const response = await api.get(`/billing/usage-alerts/${organizationId}`);
+      const response = await api.get(`/api/v1/billing/usage-alerts/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Get usage alerts error:', error);
+      console.error('[BillingAPI] Get usage alerts error:', error);
       throw error;
     }
   },
@@ -326,10 +322,10 @@ const billingApi = {
    */
   setUsageAlertThresholds: async (organizationId, thresholds) => {
     try {
-      const response = await api.post(`/billing/usage-alerts/${organizationId}`, thresholds);
+      const response = await api.post(`/api/v1/billing/usage-alerts/${organizationId}`, thresholds);
       return response.data;
     } catch (error) {
-      console.error('Set usage alert thresholds error:', error);
+      console.error('[BillingAPI] Set usage alert thresholds error:', error);
       throw error;
     }
   },
@@ -341,10 +337,10 @@ const billingApi = {
    */
   getBillingPreferences: async (organizationId) => {
     try {
-      const response = await api.get(`/billing/preferences/${organizationId}`);
+      const response = await api.get(`/api/v1/billing/preferences/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Get billing preferences error:', error);
+      console.error('[BillingAPI] Get billing preferences error:', error);
       throw error;
     }
   },
@@ -354,10 +350,10 @@ const billingApi = {
    */
   updateBillingPreferences: async (organizationId, preferences) => {
     try {
-      const response = await api.put(`/billing/preferences/${organizationId}`, preferences);
+      const response = await api.put(`/api/v1/billing/preferences/${organizationId}`, preferences);
       return response.data;
     } catch (error) {
-      console.error('Update billing preferences error:', error);
+      console.error('[BillingAPI] Update billing preferences error:', error);
       throw error;
     }
   },
@@ -367,10 +363,10 @@ const billingApi = {
    */
   getBillingNotifications: async (organizationId) => {
     try {
-      const response = await api.get(`/billing/notifications/${organizationId}`);
+      const response = await api.get(`/api/v1/billing/notifications/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Get billing notifications error:', error);
+      console.error('[BillingAPI] Get billing notifications error:', error);
       throw error;
     }
   },
@@ -380,10 +376,10 @@ const billingApi = {
    */
   updateBillingNotifications: async (organizationId, notifications) => {
     try {
-      const response = await api.put(`/billing/notifications/${organizationId}`, notifications);
+      const response = await api.put(`/api/v1/billing/notifications/${organizationId}`, notifications);
       return response.data;
     } catch (error) {
-      console.error('Update billing notifications error:', error);
+      console.error('[BillingAPI] Update billing notifications error:', error);
       throw error;
     }
   },
@@ -395,10 +391,10 @@ const billingApi = {
    */
   getTaxInfo: async (organizationId) => {
     try {
-      const response = await api.get(`/billing/tax/${organizationId}`);
+      const response = await api.get(`/api/v1/billing/tax/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Get tax info error:', error);
+      console.error('[BillingAPI] Get tax info error:', error);
       throw error;
     }
   },
@@ -408,10 +404,10 @@ const billingApi = {
    */
   updateTaxInfo: async (organizationId, taxInfo) => {
     try {
-      const response = await api.put(`/billing/tax/${organizationId}`, taxInfo);
+      const response = await api.put(`/api/v1/billing/tax/${organizationId}`, taxInfo);
       return response.data;
     } catch (error) {
-      console.error('Update tax info error:', error);
+      console.error('[BillingAPI] Update tax info error:', error);
       throw error;
     }
   },
@@ -421,10 +417,10 @@ const billingApi = {
    */
   validateTaxId: async (taxId, country) => {
     try {
-      const response = await api.post('/billing/tax/validate', { taxId, country });
+      const response = await api.post('/api/v1/billing/tax/validate', { taxId, country });
       return response.data;
     } catch (error) {
-      console.error('Validate tax ID error:', error);
+      console.error('[BillingAPI] Validate tax ID error:', error);
       throw error;
     }
   },
@@ -436,13 +432,10 @@ const billingApi = {
    */
   exportBillingHistory: async (organizationId, params = {}) => {
     try {
-      const response = await api.get(`/billing/export/history/${organizationId}`, {
-        params,
-        responseType: 'blob',
-      });
+      const response = await api.download(`/api/v1/billing/export/history/${organizationId}`, params, `billing_history_${organizationId}.csv`);
       return response.data;
     } catch (error) {
-      console.error('Export billing history error:', error);
+      console.error('[BillingAPI] Export billing history error:', error);
       throw error;
     }
   },
@@ -452,10 +445,10 @@ const billingApi = {
    */
   generateBillingReport: async (organizationId, reportConfig) => {
     try {
-      const response = await api.post(`/billing/reports/${organizationId}`, reportConfig);
+      const response = await api.post(`/api/v1/billing/reports/${organizationId}`, reportConfig);
       return response.data;
     } catch (error) {
-      console.error('Generate billing report error:', error);
+      console.error('[BillingAPI] Generate billing report error:', error);
       throw error;
     }
   },
@@ -467,10 +460,10 @@ const billingApi = {
    */
   requestBillingSupport: async (organizationId, supportRequest) => {
     try {
-      const response = await api.post(`/billing/support/${organizationId}`, supportRequest);
+      const response = await api.post(`/api/v1/billing/support/${organizationId}`, supportRequest);
       return response.data;
     } catch (error) {
-      console.error('Request billing support error:', error);
+      console.error('[BillingAPI] Request billing support error:', error);
       throw error;
     }
   },
@@ -480,10 +473,10 @@ const billingApi = {
    */
   disputeCharge: async (organizationId, invoiceId, disputeData) => {
     try {
-      const response = await api.post(`/billing/disputes/${organizationId}/${invoiceId}`, disputeData);
+      const response = await api.post(`/api/v1/billing/disputes/${organizationId}/${invoiceId}`, disputeData);
       return response.data;
     } catch (error) {
-      console.error('Dispute charge error:', error);
+      console.error('[BillingAPI] Dispute charge error:', error);
       throw error;
     }
   },
@@ -493,10 +486,10 @@ const billingApi = {
    */
   getDisputeStatus: async (disputeId) => {
     try {
-      const response = await api.get(`/billing/disputes/${disputeId}/status`);
+      const response = await api.get(`/api/v1/billing/disputes/${disputeId}/status`);
       return response.data;
     } catch (error) {
-      console.error('Get dispute status error:', error);
+      console.error('[BillingAPI] Get dispute status error:', error);
       throw error;
     }
   },
@@ -508,10 +501,10 @@ const billingApi = {
    */
   checkBillingHealth: async () => {
     try {
-      const response = await api.get('/billing/health');
+      const response = await api.get('/api/v1/billing/health');
       return response.data;
     } catch (error) {
-      console.error('Check billing health error:', error);
+      console.error('[BillingAPI] Check billing health error:', error);
       throw error;
     }
   },
@@ -521,10 +514,38 @@ const billingApi = {
    */
   getBillingStats: async (organizationId) => {
     try {
-      const response = await api.get(`/billing/stats/${organizationId}`);
+      const response = await api.get(`/api/v1/billing/stats/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Get billing stats error:', error);
+      console.error('[BillingAPI] Get billing stats error:', error);
+      throw error;
+    }
+  },
+
+  // ===================== SUBSCRIPTION PLANS =====================
+
+  /**
+   * Get available subscription plans
+   */
+  getSubscriptionPlans: async () => {
+    try {
+      const response = await api.get('/api/v1/billing/plans');
+      return response.data;
+    } catch (error) {
+      console.error('[BillingAPI] Get subscription plans error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get plan features
+   */
+  getPlanFeatures: async (planId) => {
+    try {
+      const response = await api.get(`/api/v1/billing/plans/${planId}/features`);
+      return response.data;
+    } catch (error) {
+      console.error('[BillingAPI] Get plan features error:', error);
       throw error;
     }
   },
