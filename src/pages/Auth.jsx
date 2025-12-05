@@ -1,4 +1,5 @@
 // src/pages/Auth.jsx
+import { alpha } from '@mui/material/styles';
 import React, { useState, useEffect, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import {
