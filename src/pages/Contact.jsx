@@ -32,7 +32,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useSnackbar } from '../contexts/SnackbarContext';
-import { contactApi } from '../api/contactApi';
+import contactApi from '../api/contactApi';
 import Confetti from 'react-confetti';
 
 /**
