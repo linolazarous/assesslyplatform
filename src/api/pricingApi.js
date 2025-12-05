@@ -3,7 +3,8 @@ import api from './axiosConfig';
 
 /**
  * Pricing API Service
- * Handles pricing plans, comparisons, and plan-related operations
+ * Returns `response.data` when successful; throws on network/axios errors.
+ * Some methods return { success: boolean, data: ... } if the backend follows that shape.
  */
 const pricingApi = {
   // ===================== PLANS & PRICING =====================
@@ -30,6 +31,32 @@ const pricingApi = {
       return response.data;
     } catch (error) {
       console.error('[PricingAPI] Get plan error:', error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Get current plan for organization
+   */
+  getCurrentPlan: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/pricing/organizations/${organizationId}/current-plan`);
+      return response.data;
+    } catch (error) {
+      console.error('[PricingAPI] Get current plan error:', error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Get organization subscription
+   */
+  getOrganizationSubscription: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/pricing/organizations/${organizationId}/subscription`);
+      return response.data;
+    } catch (error) {
+      console.error('[PricingAPI] Get organization subscription error:', error);
       throw error;
     }
   },
@@ -69,6 +96,32 @@ const pricingApi = {
       return response.data;
     } catch (error) {
       console.error('[PricingAPI] Get usage recommendation error:', error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Get upgrade/downgrade options for organization
+   */
+  getUpgradeOptions: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/pricing/organizations/${organizationId}/upgrade-options`);
+      return response.data;
+    } catch (error) {
+      console.error('[PricingAPI] Get upgrade options error:', error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Get pricing FAQ
+   */
+  getPricingFAQ: async () => {
+    try {
+      const response = await api.get('/api/v1/pricing/faq');
+      return response.data;
+    } catch (error) {
+      console.error('[PricingAPI] Get pricing FAQ error:', error);
       throw error;
     }
   },
@@ -469,14 +522,32 @@ const pricingApi = {
   // ===================== EXPORT & SHARE =====================
   
   /**
-   * Export plan comparison
+   * Export plan comparison (returns blob for download)
    */
-  exportPlanComparison: async (exportConfig) => {
+  exportPlanComparison: async (exportConfig = {}) => {
     try {
-      const response = await api.download('/api/v1/pricing/export/comparison', exportConfig, 'plan_comparison.pdf');
-      return response.data;
+      const response = await api.get('/api/v1/pricing/export/comparison', {
+        responseType: 'blob',
+        params: exportConfig,
+      });
+      // Return a consistent wrapper so the UI can check `success` and `data.blob`
+      return { success: true, data: { blob: response.data } };
     } catch (error) {
       console.error('[PricingAPI] Export plan comparison error:', error);
+      // Return consistent failure shape
+      return { success: false, message: error.message || 'Export failed' };
+    }
+  },
+  
+  /**
+   * Alternative: Get export plan comparison URL
+   */
+  exportPlanComparisonUrl: async (exportConfig = {}) => {
+    try {
+      const response = await api.get('/api/v1/pricing/export/comparison/url', { params: exportConfig });
+      return response.data;
+    } catch (error) {
+      console.error('[PricingAPI] Export plan comparison URL error:', error);
       throw error;
     }
   },
@@ -572,47 +643,6 @@ const pricingApi = {
       return response.data;
     } catch (error) {
       console.error('[PricingAPI] Get pricing API version error:', error);
-      throw error;
-    }
-  },
-
-  // ===================== NEW FUNCTIONS =====================
-
-  /**
-   * Get current plan for organization
-   */
-  getCurrentPlan: async (organizationId) => {
-    try {
-      const response = await api.get(`/api/v1/pricing/organizations/${organizationId}/current-plan`);
-      return response.data;
-    } catch (error) {
-      console.error('[PricingAPI] Get current plan error:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Get upgrade/downgrade options for organization
-   */
-  getUpgradeOptions: async (organizationId) => {
-    try {
-      const response = await api.get(`/api/v1/pricing/organizations/${organizationId}/upgrade-options`);
-      return response.data;
-    } catch (error) {
-      console.error('[PricingAPI] Get upgrade options error:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Get pricing FAQ
-   */
-  getPricingFAQ: async () => {
-    try {
-      const response = await api.get('/api/v1/pricing/faq');
-      return response.data;
-    } catch (error) {
-      console.error('[PricingAPI] Get pricing FAQ error:', error);
       throw error;
     }
   },
