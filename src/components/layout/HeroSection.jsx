@@ -35,7 +35,9 @@ import {
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
-import { BrandMark, Logo } from "../brand";
+// FIX: Import directly instead of from barrel file
+import BrandMark from "../brand/BrandMark";
+import Logo from "../brand/Logo";
 
 const HeroSection = ({
   videoUrl = "/Assessly.mp4",
