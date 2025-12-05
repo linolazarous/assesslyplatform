@@ -2,23 +2,9 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
-import { ThemeProvider, CssBaseline, createTheme } from "@mui/material";
 import App from "./App.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import "./styles/global.css";
-import "./styles/theme.jsx";
-
-/**
- * 🎨 Material UI Theme
- * Can switch between light/dark modes dynamically if needed
- */
-const theme = createTheme({
-  palette: {
-    mode: "light",
-    primary: { main: "#1976d2" },
-    secondary: { main: "#9c27b0" },
-  },
-});
 
 /**
  * 🚀 Production Monitoring & Error Handling
@@ -71,23 +57,17 @@ const initializeApp = () => {
 
     root.render(
       <React.StrictMode>
-        <ThemeProvider theme={theme}>
-          <CssBaseline />
-          <HelmetProvider>
-            <ErrorBoundary>
-              <App />
-            </ErrorBoundary>
-          </HelmetProvider>
-        </ThemeProvider>
+        <HelmetProvider>
+          <ErrorBoundary>
+            <App />
+          </ErrorBoundary>
+        </HelmetProvider>
       </React.StrictMode>
     );
 
     console.log("✅ Assessly application mounted successfully");
-
-    // Register service worker
     registerServiceWorker();
 
-    // Initialize analytics if key exists
     const analyticsKey = import.meta.env.VITE_ANALYTICS_KEY;
     if (analyticsKey && window.initAnalytics) {
       window.initAnalytics({ key: analyticsKey });
@@ -106,7 +86,7 @@ const initializeApp = () => {
 };
 
 /**
- * 🚦 Application Startup Sequence
+ * 🚦 App Startup Sequence
  */
 const startApplication = () => {
   initMonitoring();
