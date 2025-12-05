@@ -7,14 +7,10 @@ import {
   Button,
   TextField,
   Typography,
-  Select,
-  MenuItem,
   Divider,
   CircularProgress,
   InputAdornment,
   IconButton,
-  FormControl,
-  InputLabel,
   Container,
   Card,
   CardContent,
@@ -151,7 +147,8 @@ export default function AuthPage({
     const errors = {};
 
     // Email validation
-    if (!formData.email || !/\S+@\S+\.\S+/.test(formData.email)) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!formData.email || !emailRegex.test(formData.email)) {
       errors.email = 'Please enter a valid email address';
     }
 
@@ -285,7 +282,10 @@ export default function AuthPage({
       }
     } catch (error) {
       console.error('Auth error:', error);
-      showError(error.response?.data?.message || error.message || 'Authentication failed');
+      const errorMessage = error.response?.data?.message || 
+                          error.message || 
+                          'Authentication failed';
+      showError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -307,8 +307,9 @@ export default function AuthPage({
       // Encode state for URL
       const encodedState = encodeURIComponent(state);
       
-      // Google OAuth URL
-      const googleAuthUrl = `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/v1/auth/google?state=${encodedState}`;
+      // Google OAuth URL - FIXED: Use Vite environment variable
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+      const googleAuthUrl = `${apiUrl}/api/v1/auth/google?state=${encodedState}`;
       
       // Redirect to Google OAuth
       window.location.href = googleAuthUrl;
