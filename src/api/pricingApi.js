@@ -1,5 +1,5 @@
 // src/api/pricingApi.js
-import api from './api';
+import api from './axiosConfig';
 
 /**
  * Pricing API Service
@@ -13,10 +13,10 @@ const pricingApi = {
    */
   getPlans: async (params = {}) => {
     try {
-      const response = await api.get('/pricing/plans', { params });
+      const response = await api.get('/api/v1/pricing/plans', { params });
       return response.data;
     } catch (error) {
-      console.error('Get plans error:', error);
+      console.error('[PricingAPI] Get plans error:', error);
       throw error;
     }
   },
@@ -26,10 +26,10 @@ const pricingApi = {
    */
   getPlan: async (planId) => {
     try {
-      const response = await api.get(`/pricing/plans/${planId}`);
+      const response = await api.get(`/api/v1/pricing/plans/${planId}`);
       return response.data;
     } catch (error) {
-      console.error('Get plan error:', error);
+      console.error('[PricingAPI] Get plan error:', error);
       throw error;
     }
   },
@@ -39,10 +39,10 @@ const pricingApi = {
    */
   getPlanComparison: async (params = {}) => {
     try {
-      const response = await api.get('/pricing/comparison', { params });
+      const response = await api.get('/api/v1/pricing/comparison', { params });
       return response.data;
     } catch (error) {
-      console.error('Get plan comparison error:', error);
+      console.error('[PricingAPI] Get plan comparison error:', error);
       throw error;
     }
   },
@@ -52,10 +52,10 @@ const pricingApi = {
    */
   getFeaturedPlans: async () => {
     try {
-      const response = await api.get('/pricing/featured');
+      const response = await api.get('/api/v1/pricing/featured');
       return response.data;
     } catch (error) {
-      console.error('Get featured plans error:', error);
+      console.error('[PricingAPI] Get featured plans error:', error);
       throw error;
     }
   },
@@ -65,10 +65,10 @@ const pricingApi = {
    */
   getUsageRecommendation: async (organizationId) => {
     try {
-      const response = await api.get(`/pricing/recommendations/${organizationId}`);
+      const response = await api.get(`/api/v1/pricing/recommendations/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Get usage recommendation error:', error);
+      console.error('[PricingAPI] Get usage recommendation error:', error);
       throw error;
     }
   },
@@ -80,10 +80,10 @@ const pricingApi = {
    */
   getPlanFeatures: async () => {
     try {
-      const response = await api.get('/pricing/features');
+      const response = await api.get('/api/v1/pricing/features');
       return response.data;
     } catch (error) {
-      console.error('Get plan features error:', error);
+      console.error('[PricingAPI] Get plan features error:', error);
       throw error;
     }
   },
@@ -93,10 +93,10 @@ const pricingApi = {
    */
   getFeature: async (featureId) => {
     try {
-      const response = await api.get(`/pricing/features/${featureId}`);
+      const response = await api.get(`/api/v1/pricing/features/${featureId}`);
       return response.data;
     } catch (error) {
-      console.error('Get feature error:', error);
+      console.error('[PricingAPI] Get feature error:', error);
       throw error;
     }
   },
@@ -106,10 +106,10 @@ const pricingApi = {
    */
   getFeatureCategories: async () => {
     try {
-      const response = await api.get('/pricing/feature-categories');
+      const response = await api.get('/api/v1/pricing/feature-categories');
       return response.data;
     } catch (error) {
-      console.error('Get feature categories error:', error);
+      console.error('[PricingAPI] Get feature categories error:', error);
       throw error;
     }
   },
@@ -121,10 +121,10 @@ const pricingApi = {
    */
   requestCustomQuote: async (quoteData) => {
     try {
-      const response = await api.post('/pricing/quotes/request', quoteData);
+      const response = await api.post('/api/v1/pricing/quotes/request', quoteData);
       return response.data;
     } catch (error) {
-      console.error('Request custom quote error:', error);
+      console.error('[PricingAPI] Request custom quote error:', error);
       throw error;
     }
   },
@@ -134,10 +134,10 @@ const pricingApi = {
    */
   getCustomQuote: async (quoteId) => {
     try {
-      const response = await api.get(`/pricing/quotes/${quoteId}`);
+      const response = await api.get(`/api/v1/pricing/quotes/${quoteId}`);
       return response.data;
     } catch (error) {
-      console.error('Get custom quote error:', error);
+      console.error('[PricingAPI] Get custom quote error:', error);
       throw error;
     }
   },
@@ -147,10 +147,10 @@ const pricingApi = {
    */
   acceptCustomQuote: async (quoteId) => {
     try {
-      const response = await api.post(`/pricing/quotes/${quoteId}/accept`);
+      const response = await api.post(`/api/v1/pricing/quotes/${quoteId}/accept`);
       return response.data;
     } catch (error) {
-      console.error('Accept custom quote error:', error);
+      console.error('[PricingAPI] Accept custom quote error:', error);
       throw error;
     }
   },
@@ -160,10 +160,10 @@ const pricingApi = {
    */
   declineCustomQuote: async (quoteId) => {
     try {
-      const response = await api.post(`/pricing/quotes/${quoteId}/decline`);
+      const response = await api.post(`/api/v1/pricing/quotes/${quoteId}/decline`);
       return response.data;
     } catch (error) {
-      console.error('Decline custom quote error:', error);
+      console.error('[PricingAPI] Decline custom quote error:', error);
       throw error;
     }
   },
@@ -175,10 +175,10 @@ const pricingApi = {
    */
   checkTrialEligibility: async (organizationId) => {
     try {
-      const response = await api.get(`/pricing/trials/eligibility/${organizationId}`);
+      const response = await api.get(`/api/v1/pricing/trials/eligibility/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Check trial eligibility error:', error);
+      console.error('[PricingAPI] Check trial eligibility error:', error);
       throw error;
     }
   },
@@ -188,10 +188,10 @@ const pricingApi = {
    */
   startFreeTrial: async (organizationId, trialData = {}) => {
     try {
-      const response = await api.post(`/pricing/trials/start/${organizationId}`, trialData);
+      const response = await api.post(`/api/v1/pricing/trials/start/${organizationId}`, trialData);
       return response.data;
     } catch (error) {
-      console.error('Start free trial error:', error);
+      console.error('[PricingAPI] Start free trial error:', error);
       throw error;
     }
   },
@@ -201,10 +201,10 @@ const pricingApi = {
    */
   getTrialStatus: async (organizationId) => {
     try {
-      const response = await api.get(`/pricing/trials/status/${organizationId}`);
+      const response = await api.get(`/api/v1/pricing/trials/status/${organizationId}`);
       return response.data;
     } catch (error) {
-      console.error('Get trial status error:', error);
+      console.error('[PricingAPI] Get trial status error:', error);
       throw error;
     }
   },
@@ -214,10 +214,10 @@ const pricingApi = {
    */
   extendTrial: async (organizationId, extensionData) => {
     try {
-      const response = await api.post(`/pricing/trials/extend/${organizationId}`, extensionData);
+      const response = await api.post(`/api/v1/pricing/trials/extend/${organizationId}`, extensionData);
       return response.data;
     } catch (error) {
-      console.error('Extend trial error:', error);
+      console.error('[PricingAPI] Extend trial error:', error);
       throw error;
     }
   },
@@ -227,10 +227,10 @@ const pricingApi = {
    */
   scheduleDemo: async (demoData) => {
     try {
-      const response = await api.post('/pricing/demos/schedule', demoData);
+      const response = await api.post('/api/v1/pricing/demos/schedule', demoData);
       return response.data;
     } catch (error) {
-      console.error('Schedule demo error:', error);
+      console.error('[PricingAPI] Schedule demo error:', error);
       throw error;
     }
   },
@@ -240,10 +240,10 @@ const pricingApi = {
    */
   getDemoAvailability: async (params = {}) => {
     try {
-      const response = await api.get('/pricing/demos/availability', { params });
+      const response = await api.get('/api/v1/pricing/demos/availability', { params });
       return response.data;
     } catch (error) {
-      console.error('Get demo availability error:', error);
+      console.error('[PricingAPI] Get demo availability error:', error);
       throw error;
     }
   },
@@ -255,10 +255,10 @@ const pricingApi = {
    */
   createCheckoutSession: async (checkoutData) => {
     try {
-      const response = await api.post('/pricing/checkout-session', checkoutData);
+      const response = await api.post('/api/v1/pricing/checkout-session', checkoutData);
       return response.data;
     } catch (error) {
-      console.error('Create checkout session error:', error);
+      console.error('[PricingAPI] Create checkout session error:', error);
       throw error;
     }
   },
@@ -268,10 +268,10 @@ const pricingApi = {
    */
   calculateSubscriptionCost: async (calculationData) => {
     try {
-      const response = await api.post('/pricing/calculate', calculationData);
+      const response = await api.post('/api/v1/pricing/calculate', calculationData);
       return response.data;
     } catch (error) {
-      console.error('Calculate subscription cost error:', error);
+      console.error('[PricingAPI] Calculate subscription cost error:', error);
       throw error;
     }
   },
@@ -281,10 +281,10 @@ const pricingApi = {
    */
   previewPlanChange: async (organizationId, newPlanId) => {
     try {
-      const response = await api.post(`/pricing/preview-change/${organizationId}`, { newPlanId });
+      const response = await api.post(`/api/v1/pricing/preview-change/${organizationId}`, { newPlanId });
       return response.data;
     } catch (error) {
-      console.error('Preview plan change error:', error);
+      console.error('[PricingAPI] Preview plan change error:', error);
       throw error;
     }
   },
@@ -296,10 +296,10 @@ const pricingApi = {
    */
   getActivePromotions: async () => {
     try {
-      const response = await api.get('/pricing/promotions/active');
+      const response = await api.get('/api/v1/pricing/promotions/active');
       return response.data;
     } catch (error) {
-      console.error('Get active promotions error:', error);
+      console.error('[PricingAPI] Get active promotions error:', error);
       throw error;
     }
   },
@@ -309,10 +309,10 @@ const pricingApi = {
    */
   validatePromotionCode: async (promoCode) => {
     try {
-      const response = await api.get(`/pricing/promotions/validate/${promoCode}`);
+      const response = await api.get(`/api/v1/pricing/promotions/validate/${promoCode}`);
       return response.data;
     } catch (error) {
-      console.error('Validate promotion code error:', error);
+      console.error('[PricingAPI] Validate promotion code error:', error);
       throw error;
     }
   },
@@ -322,10 +322,10 @@ const pricingApi = {
    */
   applyPromotionToQuote: async (quoteId, promoCode) => {
     try {
-      const response = await api.post(`/pricing/quotes/${quoteId}/apply-promotion`, { promoCode });
+      const response = await api.post(`/api/v1/pricing/quotes/${quoteId}/apply-promotion`, { promoCode });
       return response.data;
     } catch (error) {
-      console.error('Apply promotion to quote error:', error);
+      console.error('[PricingAPI] Apply promotion to quote error:', error);
       throw error;
     }
   },
@@ -335,10 +335,10 @@ const pricingApi = {
    */
   getSpecialDiscounts: async (params = {}) => {
     try {
-      const response = await api.get('/pricing/discounts/special', { params });
+      const response = await api.get('/api/v1/pricing/discounts/special', { params });
       return response.data;
     } catch (error) {
-      console.error('Get special discounts error:', error);
+      console.error('[PricingAPI] Get special discounts error:', error);
       throw error;
     }
   },
@@ -350,10 +350,10 @@ const pricingApi = {
    */
   getRegionalPricing: async (countryCode) => {
     try {
-      const response = await api.get(`/pricing/regional/${countryCode}`);
+      const response = await api.get(`/api/v1/pricing/regional/${countryCode}`);
       return response.data;
     } catch (error) {
-      console.error('Get regional pricing error:', error);
+      console.error('[PricingAPI] Get regional pricing error:', error);
       throw error;
     }
   },
@@ -363,10 +363,10 @@ const pricingApi = {
    */
   getExchangeRates: async () => {
     try {
-      const response = await api.get('/pricing/exchange-rates');
+      const response = await api.get('/api/v1/pricing/exchange-rates');
       return response.data;
     } catch (error) {
-      console.error('Get exchange rates error:', error);
+      console.error('[PricingAPI] Get exchange rates error:', error);
       throw error;
     }
   },
@@ -376,10 +376,10 @@ const pricingApi = {
    */
   convertToLocalCurrency: async (amount, currency, targetCurrency) => {
     try {
-      const response = await api.post('/pricing/convert-currency', { amount, currency, targetCurrency });
+      const response = await api.post('/api/v1/pricing/convert-currency', { amount, currency, targetCurrency });
       return response.data;
     } catch (error) {
-      console.error('Convert currency error:', error);
+      console.error('[PricingAPI] Convert currency error:', error);
       throw error;
     }
   },
@@ -391,10 +391,10 @@ const pricingApi = {
    */
   getEnterpriseFeatures: async () => {
     try {
-      const response = await api.get('/pricing/enterprise/features');
+      const response = await api.get('/api/v1/pricing/enterprise/features');
       return response.data;
     } catch (error) {
-      console.error('Get enterprise features error:', error);
+      console.error('[PricingAPI] Get enterprise features error:', error);
       throw error;
     }
   },
@@ -404,10 +404,10 @@ const pricingApi = {
    */
   requestEnterpriseConsultation: async (consultationData) => {
     try {
-      const response = await api.post('/pricing/enterprise/consultation', consultationData);
+      const response = await api.post('/api/v1/pricing/enterprise/consultation', consultationData);
       return response.data;
     } catch (error) {
-      console.error('Request enterprise consultation error:', error);
+      console.error('[PricingAPI] Request enterprise consultation error:', error);
       throw error;
     }
   },
@@ -417,10 +417,10 @@ const pricingApi = {
    */
   getEnterpriseTiers: async () => {
     try {
-      const response = await api.get('/pricing/enterprise/tiers');
+      const response = await api.get('/api/v1/pricing/enterprise/tiers');
       return response.data;
     } catch (error) {
-      console.error('Get enterprise tiers error:', error);
+      console.error('[PricingAPI] Get enterprise tiers error:', error);
       throw error;
     }
   },
@@ -432,10 +432,10 @@ const pricingApi = {
    */
   getPlanUsageMetrics: async (organizationId, planId) => {
     try {
-      const response = await api.get(`/pricing/usage/${organizationId}/${planId}`);
+      const response = await api.get(`/api/v1/pricing/usage/${organizationId}/${planId}`);
       return response.data;
     } catch (error) {
-      console.error('Get plan usage metrics error:', error);
+      console.error('[PricingAPI] Get plan usage metrics error:', error);
       throw error;
     }
   },
@@ -445,10 +445,10 @@ const pricingApi = {
    */
   getPlanLimits: async (planId) => {
     try {
-      const response = await api.get(`/pricing/limits/${planId}`);
+      const response = await api.get(`/api/v1/pricing/limits/${planId}`);
       return response.data;
     } catch (error) {
-      console.error('Get plan limits error:', error);
+      console.error('[PricingAPI] Get plan limits error:', error);
       throw error;
     }
   },
@@ -458,10 +458,10 @@ const pricingApi = {
    */
   checkPlanLimitUsage: async (organizationId, limitType) => {
     try {
-      const response = await api.get(`/pricing/limits/usage/${organizationId}/${limitType}`);
+      const response = await api.get(`/api/v1/pricing/limits/usage/${organizationId}/${limitType}`);
       return response.data;
     } catch (error) {
-      console.error('Check plan limit usage error:', error);
+      console.error('[PricingAPI] Check plan limit usage error:', error);
       throw error;
     }
   },
@@ -473,12 +473,10 @@ const pricingApi = {
    */
   exportPlanComparison: async (exportConfig) => {
     try {
-      const response = await api.post('/pricing/export/comparison', exportConfig, {
-        responseType: 'blob',
-      });
+      const response = await api.download('/api/v1/pricing/export/comparison', exportConfig, 'plan_comparison.pdf');
       return response.data;
     } catch (error) {
-      console.error('Export plan comparison error:', error);
+      console.error('[PricingAPI] Export plan comparison error:', error);
       throw error;
     }
   },
@@ -488,10 +486,10 @@ const pricingApi = {
    */
   sharePlanComparison: async (shareData) => {
     try {
-      const response = await api.post('/pricing/share/comparison', shareData);
+      const response = await api.post('/api/v1/pricing/share/comparison', shareData);
       return response.data;
     } catch (error) {
-      console.error('Share plan comparison error:', error);
+      console.error('[PricingAPI] Share plan comparison error:', error);
       throw error;
     }
   },
@@ -501,10 +499,10 @@ const pricingApi = {
    */
   generatePricingProposal: async (proposalData) => {
     try {
-      const response = await api.post('/pricing/proposals/generate', proposalData);
+      const response = await api.post('/api/v1/pricing/proposals/generate', proposalData);
       return response.data;
     } catch (error) {
-      console.error('Generate pricing proposal error:', error);
+      console.error('[PricingAPI] Generate pricing proposal error:', error);
       throw error;
     }
   },
@@ -516,10 +514,10 @@ const pricingApi = {
    */
   getPricingAnalytics: async (params = {}) => {
     try {
-      const response = await api.get('/pricing/analytics', { params });
+      const response = await api.get('/api/v1/pricing/analytics', { params });
       return response.data;
     } catch (error) {
-      console.error('Get pricing analytics error:', error);
+      console.error('[PricingAPI] Get pricing analytics error:', error);
       throw error;
     }
   },
@@ -529,10 +527,10 @@ const pricingApi = {
    */
   getConversionMetrics: async () => {
     try {
-      const response = await api.get('/pricing/conversions');
+      const response = await api.get('/api/v1/pricing/conversions');
       return response.data;
     } catch (error) {
-      console.error('Get conversion metrics error:', error);
+      console.error('[PricingAPI] Get conversion metrics error:', error);
       throw error;
     }
   },
@@ -542,10 +540,10 @@ const pricingApi = {
    */
   getPlanPopularity: async () => {
     try {
-      const response = await api.get('/pricing/popularity');
+      const response = await api.get('/api/v1/pricing/popularity');
       return response.data;
     } catch (error) {
-      console.error('Get plan popularity error:', error);
+      console.error('[PricingAPI] Get plan popularity error:', error);
       throw error;
     }
   },
@@ -557,10 +555,10 @@ const pricingApi = {
    */
   checkPricingHealth: async () => {
     try {
-      const response = await api.get('/pricing/health');
+      const response = await api.get('/api/v1/pricing/health');
       return response.data;
     } catch (error) {
-      console.error('Check pricing health error:', error);
+      console.error('[PricingAPI] Check pricing health error:', error);
       throw error;
     }
   },
@@ -570,10 +568,51 @@ const pricingApi = {
    */
   getPricingApiVersion: async () => {
     try {
-      const response = await api.get('/pricing/version');
+      const response = await api.get('/api/v1/pricing/version');
       return response.data;
     } catch (error) {
-      console.error('Get pricing API version error:', error);
+      console.error('[PricingAPI] Get pricing API version error:', error);
+      throw error;
+    }
+  },
+
+  // ===================== NEW FUNCTIONS =====================
+
+  /**
+   * Get current plan for organization
+   */
+  getCurrentPlan: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/pricing/organizations/${organizationId}/current-plan`);
+      return response.data;
+    } catch (error) {
+      console.error('[PricingAPI] Get current plan error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get upgrade/downgrade options for organization
+   */
+  getUpgradeOptions: async (organizationId) => {
+    try {
+      const response = await api.get(`/api/v1/pricing/organizations/${organizationId}/upgrade-options`);
+      return response.data;
+    } catch (error) {
+      console.error('[PricingAPI] Get upgrade options error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get pricing FAQ
+   */
+  getPricingFAQ: async () => {
+    try {
+      const response = await api.get('/api/v1/pricing/faq');
+      return response.data;
+    } catch (error) {
+      console.error('[PricingAPI] Get pricing FAQ error:', error);
       throw error;
     }
   },
