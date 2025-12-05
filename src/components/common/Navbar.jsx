@@ -40,7 +40,9 @@ import {
   Add as AddIcon,
 } from "@mui/icons-material";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Logo, Wordmark } from "../brand";
+// FIX: Import directly instead of from barrel file
+import Logo from "../brand/Logo";
+import Wordmark from "../brand/Wordmark";
 import { fetchUserProfile, fetchOrganizations, switchOrganization } from "../../api/userApi";
 import { fetchNotifications } from "../../api/notificationApi";
 import { useAuth } from "../../contexts/AuthContext";
@@ -690,3 +692,4 @@ Navbar.defaultProps = {
 };
 
 export default React.memo(Navbar);
+
