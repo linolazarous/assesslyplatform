@@ -41,7 +41,7 @@ import {
   Warning,
   TrendingUp,
 } from '@mui/icons-material';
-import { pricingApi } from '../../api/pricingApi';
+import pricingApi from '../../api/pricingApi';
 import { useSnackbar } from '../../contexts/SnackbarContext';
 import { formatCurrency } from '../../utils/formatters';
 
