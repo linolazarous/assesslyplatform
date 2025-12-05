@@ -37,6 +37,7 @@ import {
   StepLabel,
   StepContent,
   Collapse,
+  Radio, // Added missing import
 } from "@mui/material";
 import {
   Add,
@@ -77,7 +78,7 @@ import { useSnackbar } from "notistack";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { useAuth } from "../contexts/AuthContext";
-import { createAssessment, duplicateAssessment } from "../api/assessmentApi";
+import { createAssessment } from "../api/assessmentApi"; // Fixed: removed duplicateAssessment import
 import LoadingScreen from "./ui/LoadingScreen";
 
 const QUESTION_TYPES = [
