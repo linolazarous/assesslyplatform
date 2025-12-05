@@ -45,7 +45,7 @@ import {
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useSnackbar } from '../contexts/SnackbarContext';
 import pricingApi from '../api/pricingApi';
-import { authApi } from '../api/authApi';
+import authApi from '../api/authApi';
 
 /* ---------- PlanComparisonTable ---------- */
 const PlanComparisonTable = ({ plans, billingCycle }) => {
