@@ -37,8 +37,9 @@ import {
 } from "@mui/icons-material";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { Logo, Wordmark } from "../brand";
-
+// FIX: Import directly instead of from barrel file
+import Logo from "../brand/Logo";
+import Wordmark from "../brand/Wordmark";
 const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
   const theme = useTheme();
   const navigate = useNavigate();
