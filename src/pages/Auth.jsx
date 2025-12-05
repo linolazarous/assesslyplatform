@@ -37,7 +37,7 @@ import {
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSnackbar } from '../contexts/SnackbarContext';
-import { authApi } from '../api/authApi';
+import authApi from '../api/authApi';
 
 /**
  * Authentication Page - Google OAuth & Email/Password
