@@ -1,6 +1,6 @@
+// src/App.jsx
 import React, { Suspense, lazy, useState, useMemo, useEffect, useCallback } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { ThemeProvider } from "@mui/material/styles";
 import { CssBaseline, Box, CircularProgress, Snackbar, Alert } from "@mui/material";
 import { AuthProvider } from "./contexts/AuthContext";
 import MainLayout from "./layouts/MainLayout";
@@ -69,7 +69,7 @@ const useThemeMode = () => {
 };
 
 /* -------------------------
-   Minimal loading skeleton used in production branches
+   Minimal loading skeleton
    ------------------------- */
 const ProductionLoading = React.memo(function ProductionLoading() {
   return (
@@ -87,6 +87,19 @@ export default function App() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "info" });
 
+  /* -------------------------
+     Initialize analytics
+     ------------------------- */
+  useEffect(() => {
+    if (window.initAnalytics && import.meta.env.VITE_ANALYTICS_KEY) {
+      window.initAnalytics({ key: import.meta.env.VITE_ANALYTICS_KEY });
+      console.log("📈 Analytics initialized");
+    }
+  }, []);
+
+  /* -------------------------
+     Online/offline detection
+     ------------------------- */
   useEffect(() => {
     const onOnline = () => {
       setIsOnline(true);
@@ -110,78 +123,76 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <Router>
-          <AuthProvider>
-            <Suspense fallback={<LoadingScreen fullScreen />}>
-              <Routes>
-                {/* Public */}
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/pricing" element={<PricingPage />} />
-                <Route path="/contact" element={<ContactPage />} />
+      <CssBaseline />
+      <Router>
+        <AuthProvider>
+          <Suspense fallback={<LoadingScreen fullScreen />}>
+            <Routes>
+              {/* Public */}
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/pricing" element={<PricingPage />} />
+              <Route path="/contact" element={<ContactPage />} />
 
-                {/* Auth */}
+              {/* Auth */}
+              <Route
+                path="/auth/*"
+                element={
+                  <AuthLayout darkMode={darkMode}>
+                    <AuthPage />
+                  </AuthLayout>
+                }
+              />
+              <Route
+                path="/login"
+                element={
+                  <AuthLayout darkMode={darkMode}>
+                    <AuthPage />
+                  </AuthLayout>
+                }
+              />
+
+              {/* Protected app routes */}
+              {[
+                { path: "/dashboard", component: AssessmentDashboard },
+                { path: "/create", component: CreateAssessment },
+                { path: "/take/:id", component: TakeAssessment },
+                { path: "/report/:id", component: PdfReport },
+                { path: "/billing", component: BillingPage },
+                { path: "/admin", component: AdminDashboard, roles: ["admin"] },
+              ].map(({ path, component: Component, roles }) => (
                 <Route
-                  path="/auth/*"
+                  key={path}
+                  path={path}
                   element={
-                    <AuthLayout darkMode={darkMode}>
-                      <AuthPage />
-                    </AuthLayout>
+                    <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
+                      <ProtectedRoute roles={roles}>
+                        <Suspense fallback={<ProductionLoading />}>
+                          <Component />
+                        </Suspense>
+                      </ProtectedRoute>
+                    </MainLayout>
                   }
                 />
-                <Route
-                  path="/login"
-                  element={
-                    <AuthLayout darkMode={darkMode}>
-                      <AuthPage />
-                    </AuthLayout>
-                  }
-                />
+              ))}
 
-                {/* Protected app routes */}
-                {[
-                  { path: "/dashboard", component: AssessmentDashboard },
-                  { path: "/create", component: CreateAssessment },
-                  { path: "/take/:id", component: TakeAssessment },
-                  { path: "/report/:id", component: PdfReport },
-                  { path: "/billing", component: BillingPage },
-                  { path: "/admin", component: AdminDashboard, roles: ["admin"] },
-                ].map(({ path, component: Component, roles }) => (
-                  <Route
-                    key={path}
-                    path={path}
-                    element={
-                      <MainLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                        <ProtectedRoute roles={roles}>
-                          <Suspense fallback={<ProductionLoading />}>
-                            <Component />
-                          </Suspense>
-                        </ProtectedRoute>
-                      </MainLayout>
-                    }
-                  />
-                ))}
+              {/* Fallback */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
 
-                {/* Fallback */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </Suspense>
-
-            {/* Snackbar */}
-            <Snackbar
-              open={snackbar.open}
-              autoHideDuration={4000}
-              onClose={handleSnackbarClose}
-              anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-            >
-              <Alert severity={snackbar.severity} onClose={handleSnackbarClose}>
-                {snackbar.message}
-              </Alert>
-            </Snackbar>
-          </AuthProvider>
-        </Router>
-      </ThemeProvider>
+          {/* Snackbar */}
+          <Snackbar
+            open={snackbar.open}
+            autoHideDuration={4000}
+            onClose={handleSnackbarClose}
+            anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          >
+            <Alert severity={snackbar.severity} onClose={handleSnackbarClose}>
+              {snackbar.message}
+            </Alert>
+          </Snackbar>
+        </AuthProvider>
+      </Router>
     </ErrorBoundary>
   );
 }
