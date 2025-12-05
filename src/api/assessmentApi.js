@@ -181,6 +181,22 @@ export const unpublishAssessment = async (assessmentId) => {
   }
 };
 
+/**
+ * Duplicate an existing assessment
+ * @param {string} assessmentId - Original assessment ID
+ * @param {Object} options - Duplication options
+ * @returns {Promise} Duplicated assessment
+ */
+export const duplicateAssessment = async (assessmentId, options = {}) => {
+  try {
+    const response = await api.post(`/api/v1/assessments/${assessmentId}/duplicate`, options);
+    return response.data;
+  } catch (error) {
+    console.error('[AssessmentAPI] Error duplicating assessment:', error);
+    throw error;
+  }
+};
+
 // ==================== ASSESSMENT QUESTIONS ====================
 
 /**
@@ -508,31 +524,8 @@ export const getMockAssessmentData = async (endpoint) => {
   return mockData[endpoint] || {};
 };
 
-// Export all functions
-// In assessmentApi.js, add this function:
+// ==================== SINGLE DEFAULT EXPORT ====================
 
-/**
- * Duplicate an existing assessment
- * @param {string} assessmentId - Original assessment ID
- * @param {Object} options - Duplication options
- * @returns {Promise} Duplicated assessment
- */
-export const duplicateAssessment = async (assessmentId, options = {}) => {
-  try {
-    const response = await api.post(`/api/v1/assessments/${assessmentId}/duplicate`, options);
-    return response.data;
-  } catch (error) {
-    console.error('[AssessmentAPI] Error duplicating assessment:', error);
-    throw error;
-  }
-};
-
-// And add it to the exports at the bottom
-export default {
-  // ... other exports
-  duplicateAssessment, // Add this line
-  // ... rest of exports
-};
 export default {
   // Session Management (CRITICAL - used by TakeAssessment.jsx)
   startAssessment,
@@ -548,6 +541,7 @@ export default {
   deleteAssessment,
   publishAssessment,
   unpublishAssessment,
+  duplicateAssessment,
   
   // Questions
   fetchAssessmentQuestions,
