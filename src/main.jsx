@@ -10,6 +10,7 @@ import "./styles/theme.jsx";
 
 /**
  * 🎨 Material UI Theme
+ * Can switch between light/dark modes dynamically if needed
  */
 const theme = createTheme({
   palette: {
@@ -20,14 +21,11 @@ const theme = createTheme({
 });
 
 /**
- * 🚀 Production Configuration
+ * 🚀 Production Monitoring & Error Handling
  */
-
-// Performance monitoring
 const initMonitoring = () => {
   if (import.meta.env.PROD) {
     console.log("🚀 Assessly Frontend - Production Mode");
-
     const startTime = performance.now();
     window.addEventListener("load", () => {
       const loadTime = performance.now() - startTime;
@@ -36,7 +34,6 @@ const initMonitoring = () => {
   }
 };
 
-// Error handler
 const registerErrorHandlers = () => {
   window.addEventListener("unhandledrejection", (event) => {
     console.error("Unhandled promise rejection:", event.reason);
@@ -48,7 +45,6 @@ const registerErrorHandlers = () => {
   });
 };
 
-// Service Worker Registration
 const registerServiceWorker = async () => {
   if ("serviceWorker" in navigator && import.meta.env.PROD) {
     try {
@@ -88,11 +84,13 @@ const initializeApp = () => {
 
     console.log("✅ Assessly application mounted successfully");
 
+    // Register service worker
     registerServiceWorker();
 
-    // Placeholder: initialize analytics here
-    if (window.initAnalytics) {
-      window.initAnalytics({ key: import.meta.env.VITE_ANALYTICS_KEY });
+    // Initialize analytics if key exists
+    const analyticsKey = import.meta.env.VITE_ANALYTICS_KEY;
+    if (analyticsKey && window.initAnalytics) {
+      window.initAnalytics({ key: analyticsKey });
       console.log("📈 Analytics initialized");
     }
   } catch (error) {
@@ -123,14 +121,14 @@ const startApplication = () => {
 
 startApplication();
 
-// Development Utilities
+/**
+ * 🛠️ Development Utilities
+ */
 if (import.meta.env.DEV) {
   window.APP_VERSION = import.meta.env.VITE_APP_VERSION || "development";
   window.APP_ENV = import.meta.env.MODE || "development";
 
-  if (import.meta.hot) {
-    import.meta.hot.accept();
-  }
+  if (import.meta.hot) import.meta.hot.accept();
 
   console.log(`🔧 Assessly Frontend - Development Mode`);
   console.log(`📦 Version: ${window.APP_VERSION}`);
