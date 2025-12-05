@@ -34,8 +34,8 @@ import {
 } from '@mui/icons-material';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useSnackbar } from '../contexts/SnackbarContext';
-import { billingApi } from '../api/billingApi';
-import { organizationApi } from '../api/organizationApi';
+import billingApi from '../api/billingApi'; // Changed from named to default import
+import organizationApi from '../api/organizationApi'; // Changed from named to default import
 
 // Lazy-loaded billing components
 const BillingHistory = React.lazy(() => import('../components/billing/BillingHistory'));
@@ -638,5 +638,3 @@ Billing.propTypes = {
 Billing.defaultProps = {
   compact: false,
 };
-
-
