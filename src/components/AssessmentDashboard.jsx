@@ -69,7 +69,7 @@ import { useSnackbar } from "notistack";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { useAuth } from "../contexts/AuthContext";
-import { fetchAssessments, deleteAssessment, duplicateAssessment, updateAssessmentStatus } from "../../api/assessmentApi";
+import { fetchAssessments, deleteAssessment, duplicateAssessment, updateAssessmentStatus } from "../api/assessmentApi";
 import LoadingScreen from "./ui/LoadingScreen";
 import AnimatedCounter from "./ui/AnimatedCounter";
 
@@ -985,4 +985,5 @@ AssessmentDashboard.defaultProps = {
   autoRefresh: false,
   refreshInterval: 30000,
 };
+
 
