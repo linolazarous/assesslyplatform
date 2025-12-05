@@ -1,5 +1,5 @@
 // src/api/revenueApi.js
-import api from './api';
+import api from './axiosConfig';
 
 /**
  * Revenue API Service
@@ -13,10 +13,10 @@ const revenueApi = {
    */
   fetchRevenueData: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/data', { params });
+      const response = await api.get('/api/v1/revenue/data', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching revenue data:', error);
+      console.error('[RevenueAPI] Error fetching revenue data:', error);
       throw error;
     }
   },
@@ -28,10 +28,10 @@ const revenueApi = {
    */
   fetchRevenueAnalytics: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/analytics', { params });
+      const response = await api.get('/api/v1/revenue/analytics', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching revenue analytics:', error);
+      console.error('[RevenueAPI] Error fetching revenue analytics:', error);
       throw error;
     }
   },
@@ -43,10 +43,10 @@ const revenueApi = {
    */
   fetchSubscriptionRevenue: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/subscriptions', { params });
+      const response = await api.get('/api/v1/revenue/subscriptions', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching subscription revenue:', error);
+      console.error('[RevenueAPI] Error fetching subscription revenue:', error);
       throw error;
     }
   },
@@ -58,10 +58,10 @@ const revenueApi = {
    */
   fetchMRR: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/mrr', { params });
+      const response = await api.get('/api/v1/revenue/mrr', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching MRR:', error);
+      console.error('[RevenueAPI] Error fetching MRR:', error);
       throw error;
     }
   },
@@ -73,10 +73,10 @@ const revenueApi = {
    */
   fetchARR: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/arr', { params });
+      const response = await api.get('/api/v1/revenue/arr', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching ARR:', error);
+      console.error('[RevenueAPI] Error fetching ARR:', error);
       throw error;
     }
   },
@@ -88,10 +88,10 @@ const revenueApi = {
    */
   fetchChurnAnalytics: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/churn', { params });
+      const response = await api.get('/api/v1/revenue/churn', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching churn analytics:', error);
+      console.error('[RevenueAPI] Error fetching churn analytics:', error);
       throw error;
     }
   },
@@ -103,10 +103,10 @@ const revenueApi = {
    */
   fetchLTV: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/ltv', { params });
+      const response = await api.get('/api/v1/revenue/ltv', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching LTV:', error);
+      console.error('[RevenueAPI] Error fetching LTV:', error);
       throw error;
     }
   },
@@ -118,10 +118,10 @@ const revenueApi = {
    */
   fetchRevenueBreakdown: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/breakdown', { params });
+      const response = await api.get('/api/v1/revenue/breakdown', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching revenue breakdown:', error);
+      console.error('[RevenueAPI] Error fetching revenue breakdown:', error);
       throw error;
     }
   },
@@ -133,10 +133,10 @@ const revenueApi = {
    */
   fetchPayments: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/payments', { params });
+      const response = await api.get('/api/v1/revenue/payments', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching payments:', error);
+      console.error('[RevenueAPI] Error fetching payments:', error);
       throw error;
     }
   },
@@ -148,10 +148,10 @@ const revenueApi = {
    */
   fetchInvoices: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/invoices', { params });
+      const response = await api.get('/api/v1/revenue/invoices', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching invoices:', error);
+      console.error('[RevenueAPI] Error fetching invoices:', error);
       throw error;
     }
   },
@@ -163,10 +163,10 @@ const revenueApi = {
    */
   fetchRevenueForecast: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/forecast', { params });
+      const response = await api.get('/api/v1/revenue/forecast', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching revenue forecast:', error);
+      console.error('[RevenueAPI] Error fetching revenue forecast:', error);
       throw error;
     }
   },
@@ -178,10 +178,10 @@ const revenueApi = {
    */
   fetchRevenueComparison: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/comparison', { params });
+      const response = await api.get('/api/v1/revenue/comparison', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching revenue comparison:', error);
+      console.error('[RevenueAPI] Error fetching revenue comparison:', error);
       throw error;
     }
   },
@@ -193,10 +193,10 @@ const revenueApi = {
    */
   fetchRevenueByOrganization: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/by-organization', { params });
+      const response = await api.get('/api/v1/revenue/by-organization', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching revenue by organization:', error);
+      console.error('[RevenueAPI] Error fetching revenue by organization:', error);
       throw error;
     }
   },
@@ -208,10 +208,10 @@ const revenueApi = {
    */
   fetchTopOrganizations: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/top-organizations', { params });
+      const response = await api.get('/api/v1/revenue/top-organizations', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching top organizations:', error);
+      console.error('[RevenueAPI] Error fetching top organizations:', error);
       throw error;
     }
   },
@@ -223,10 +223,10 @@ const revenueApi = {
    */
   fetchDashboardMetrics: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/dashboard-metrics', { params });
+      const response = await api.get('/api/v1/revenue/dashboard-metrics', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching dashboard metrics:', error);
+      console.error('[RevenueAPI] Error fetching dashboard metrics:', error);
       throw error;
     }
   },
@@ -238,13 +238,10 @@ const revenueApi = {
    */
   exportRevenueReport: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/export', {
-        params,
-        responseType: 'blob',
-      });
+      const response = await api.download('/api/v1/revenue/export', params, 'revenue_report.xlsx');
       return response.data;
     } catch (error) {
-      console.error('Error exporting revenue report:', error);
+      console.error('[RevenueAPI] Error exporting revenue report:', error);
       throw error;
     }
   },
@@ -256,10 +253,10 @@ const revenueApi = {
    */
   fetchPlanAnalytics: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/plans/analytics', { params });
+      const response = await api.get('/api/v1/revenue/plans/analytics', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching plan analytics:', error);
+      console.error('[RevenueAPI] Error fetching plan analytics:', error);
       throw error;
     }
   },
@@ -271,10 +268,10 @@ const revenueApi = {
    */
   fetchGrowthRate: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/growth-rate', { params });
+      const response = await api.get('/api/v1/revenue/growth-rate', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching growth rate:', error);
+      console.error('[RevenueAPI] Error fetching growth rate:', error);
       throw error;
     }
   },
@@ -286,10 +283,124 @@ const revenueApi = {
    */
   fetchARPU: async (params = {}) => {
     try {
-      const response = await api.get('/revenue/arpu', { params });
+      const response = await api.get('/api/v1/revenue/arpu', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching ARPU:', error);
+      console.error('[RevenueAPI] Error fetching ARPU:', error);
+      throw error;
+    }
+  },
+
+  // ===================== NEW FUNCTIONS =====================
+
+  /**
+   * Get revenue summary (quick stats)
+   * @param {Object} params - Query parameters
+   * @returns {Promise} Revenue summary
+   */
+  fetchRevenueSummary: async (params = {}) => {
+    try {
+      const response = await api.get('/api/v1/revenue/summary', { params });
+      return response.data;
+    } catch (error) {
+      console.error('[RevenueAPI] Error fetching revenue summary:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get revenue by date range
+   * @param {string} startDate - Start date (YYYY-MM-DD)
+   * @param {string} endDate - End date (YYYY-MM-DD)
+   * @param {Object} params - Additional parameters
+   * @returns {Promise} Revenue by date range
+   */
+  fetchRevenueByDateRange: async (startDate, endDate, params = {}) => {
+    try {
+      const response = await api.get('/api/v1/revenue/date-range', {
+        params: { startDate, endDate, ...params }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('[RevenueAPI] Error fetching revenue by date range:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get revenue trends (daily, weekly, monthly)
+   * @param {string} interval - Interval (daily, weekly, monthly)
+   * @param {Object} params - Query parameters
+   * @returns {Promise} Revenue trends
+   */
+  fetchRevenueTrends: async (interval = 'monthly', params = {}) => {
+    try {
+      const response = await api.get('/api/v1/revenue/trends', {
+        params: { interval, ...params }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('[RevenueAPI] Error fetching revenue trends:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get real-time revenue updates
+   * @param {Object} params - Query parameters
+   * @returns {Promise} Real-time revenue data
+   */
+  fetchRealtimeRevenue: async (params = {}) => {
+    try {
+      const response = await api.get('/api/v1/revenue/realtime', { params });
+      return response.data;
+    } catch (error) {
+      console.error('[RevenueAPI] Error fetching real-time revenue:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get revenue goals and targets
+   * @param {Object} params - Query parameters
+   * @returns {Promise} Revenue goals
+   */
+  fetchRevenueGoals: async (params = {}) => {
+    try {
+      const response = await api.get('/api/v1/revenue/goals', { params });
+      return response.data;
+    } catch (error) {
+      console.error('[RevenueAPI] Error fetching revenue goals:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get revenue health score
+   * @param {Object} params - Query parameters
+   * @returns {Promise} Revenue health score
+   */
+  fetchRevenueHealthScore: async (params = {}) => {
+    try {
+      const response = await api.get('/api/v1/revenue/health-score', { params });
+      return response.data;
+    } catch (error) {
+      console.error('[RevenueAPI] Error fetching revenue health score:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get revenue alerts (anomalies, spikes, drops)
+   * @param {Object} params - Query parameters
+   * @returns {Promise} Revenue alerts
+   */
+  fetchRevenueAlerts: async (params = {}) => {
+    try {
+      const response = await api.get('/api/v1/revenue/alerts', { params });
+      return response.data;
+    } catch (error) {
+      console.error('[RevenueAPI] Error fetching revenue alerts:', error);
       throw error;
     }
   },
