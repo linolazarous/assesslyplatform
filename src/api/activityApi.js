@@ -1,5 +1,5 @@
 // src/api/activityApi.js
-import api from './api';
+import api from './axiosConfig';
 
 /**
  * Activity API Service
@@ -13,10 +13,10 @@ const activityApi = {
    */
   fetchRecentActivities: async (params = {}) => {
     try {
-      const response = await api.get('/activities/recent', { params });
+      const response = await api.get('/api/v1/activities/recent', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching recent activities:', error);
+      console.error('[ActivityAPI] Error fetching recent activities:', error);
       throw error;
     }
   },
@@ -28,10 +28,10 @@ const activityApi = {
    */
   fetchActivitySummary: async (params = {}) => {
     try {
-      const response = await api.get('/activities/summary', { params });
+      const response = await api.get('/api/v1/activities/summary', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching activity summary:', error);
+      console.error('[ActivityAPI] Error fetching activity summary:', error);
       throw error;
     }
   },
@@ -43,10 +43,10 @@ const activityApi = {
    */
   fetchUserActivities: async (params = {}) => {
     try {
-      const response = await api.get('/activities/user', { params });
+      const response = await api.get('/api/v1/activities/user', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching user activities:', error);
+      console.error('[ActivityAPI] Error fetching user activities:', error);
       throw error;
     }
   },
@@ -58,10 +58,10 @@ const activityApi = {
    */
   fetchOrganizationActivities: async (params = {}) => {
     try {
-      const response = await api.get('/activities/organization', { params });
+      const response = await api.get('/api/v1/activities/organization', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching organization activities:', error);
+      console.error('[ActivityAPI] Error fetching organization activities:', error);
       throw error;
     }
   },
@@ -72,10 +72,10 @@ const activityApi = {
    */
   fetchActivityTypes: async () => {
     try {
-      const response = await api.get('/activities/types');
+      const response = await api.get('/api/v1/activities/types');
       return response.data;
     } catch (error) {
-      console.error('Error fetching activity types:', error);
+      console.error('[ActivityAPI] Error fetching activity types:', error);
       throw error;
     }
   },
@@ -87,10 +87,10 @@ const activityApi = {
    */
   searchActivities: async (params = {}) => {
     try {
-      const response = await api.get('/activities/search', { params });
+      const response = await api.get('/api/v1/activities/search', { params });
       return response.data;
     } catch (error) {
-      console.error('Error searching activities:', error);
+      console.error('[ActivityAPI] Error searching activities:', error);
       throw error;
     }
   },
@@ -102,10 +102,10 @@ const activityApi = {
    */
   fetchActivityStats: async (params = {}) => {
     try {
-      const response = await api.get('/activities/stats', { params });
+      const response = await api.get('/api/v1/activities/stats', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching activity stats:', error);
+      console.error('[ActivityAPI] Error fetching activity stats:', error);
       throw error;
     }
   },
@@ -117,10 +117,10 @@ const activityApi = {
    */
   fetchPeakActivityTimes: async (params = {}) => {
     try {
-      const response = await api.get('/activities/peak-times', { params });
+      const response = await api.get('/api/v1/activities/peak-times', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching peak activity times:', error);
+      console.error('[ActivityAPI] Error fetching peak activity times:', error);
       throw error;
     }
   },
@@ -132,10 +132,10 @@ const activityApi = {
    */
   fetchSessionActivities: async (params = {}) => {
     try {
-      const response = await api.get('/activities/sessions', { params });
+      const response = await api.get('/api/v1/activities/sessions', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching session activities:', error);
+      console.error('[ActivityAPI] Error fetching session activities:', error);
       throw error;
     }
   },
@@ -147,10 +147,10 @@ const activityApi = {
    */
   fetchAssessmentActivities: async (params = {}) => {
     try {
-      const response = await api.get('/activities/assessment', { params });
+      const response = await api.get('/api/v1/activities/assessment', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching assessment activities:', error);
+      console.error('[ActivityAPI] Error fetching assessment activities:', error);
       throw error;
     }
   },
@@ -162,13 +162,10 @@ const activityApi = {
    */
   exportActivities: async (params = {}) => {
     try {
-      const response = await api.get('/activities/export', {
-        params,
-        responseType: 'blob',
-      });
+      const response = await api.download('/api/v1/activities/export', params, 'activities_export.xlsx');
       return response.data;
     } catch (error) {
-      console.error('Error exporting activities:', error);
+      console.error('[ActivityAPI] Error exporting activities:', error);
       throw error;
     }
   },
@@ -180,10 +177,10 @@ const activityApi = {
    */
   fetchActivityTrends: async (params = {}) => {
     try {
-      const response = await api.get('/activities/trends', { params });
+      const response = await api.get('/api/v1/activities/trends', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching activity trends:', error);
+      console.error('[ActivityAPI] Error fetching activity trends:', error);
       throw error;
     }
   },
@@ -195,10 +192,10 @@ const activityApi = {
    */
   fetchRealtimeActivities: async (params = {}) => {
     try {
-      const response = await api.get('/activities/realtime', { params });
+      const response = await api.get('/api/v1/activities/realtime', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching real-time activities:', error);
+      console.error('[ActivityAPI] Error fetching real-time activities:', error);
       throw error;
     }
   },
@@ -210,10 +207,10 @@ const activityApi = {
    */
   fetchActivityById: async (activityId) => {
     try {
-      const response = await api.get(`/activities/${activityId}`);
+      const response = await api.get(`/api/v1/activities/${activityId}`);
       return response.data;
     } catch (error) {
-      console.error('Error fetching activity by ID:', error);
+      console.error('[ActivityAPI] Error fetching activity by ID:', error);
       throw error;
     }
   },
@@ -225,10 +222,10 @@ const activityApi = {
    */
   fetchEngagementMetrics: async (params = {}) => {
     try {
-      const response = await api.get('/activities/engagement', { params });
+      const response = await api.get('/api/v1/activities/engagement', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching engagement metrics:', error);
+      console.error('[ActivityAPI] Error fetching engagement metrics:', error);
       throw error;
     }
   },
@@ -240,10 +237,10 @@ const activityApi = {
    */
   fetchAuditLogs: async (params = {}) => {
     try {
-      const response = await api.get('/activities/audit-logs', { params });
+      const response = await api.get('/api/v1/activities/audit-logs', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching audit logs:', error);
+      console.error('[ActivityAPI] Error fetching audit logs:', error);
       throw error;
     }
   },
@@ -255,10 +252,10 @@ const activityApi = {
    */
   fetchAdminActivities: async (params = {}) => {
     try {
-      const response = await api.get('/activities/admin', { params });
+      const response = await api.get('/api/v1/activities/admin', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching admin activities:', error);
+      console.error('[ActivityAPI] Error fetching admin activities:', error);
       throw error;
     }
   },
@@ -270,10 +267,10 @@ const activityApi = {
    */
   fetchActivityHeatmap: async (params = {}) => {
     try {
-      const response = await api.get('/activities/heatmap', { params });
+      const response = await api.get('/api/v1/activities/heatmap', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching activity heatmap:', error);
+      console.error('[ActivityAPI] Error fetching activity heatmap:', error);
       throw error;
     }
   },
@@ -285,10 +282,10 @@ const activityApi = {
    */
   fetchMostActiveUsers: async (params = {}) => {
     try {
-      const response = await api.get('/activities/most-active-users', { params });
+      const response = await api.get('/api/v1/activities/most-active-users', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching most active users:', error);
+      console.error('[ActivityAPI] Error fetching most active users:', error);
       throw error;
     }
   },
@@ -300,10 +297,10 @@ const activityApi = {
    */
   fetchActivityFrequency: async (params = {}) => {
     try {
-      const response = await api.get('/activities/frequency', { params });
+      const response = await api.get('/api/v1/activities/frequency', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching activity frequency:', error);
+      console.error('[ActivityAPI] Error fetching activity frequency:', error);
       throw error;
     }
   },
@@ -315,10 +312,10 @@ const activityApi = {
    */
   createActivityReport: async (reportConfig) => {
     try {
-      const response = await api.post('/activities/reports', reportConfig);
+      const response = await api.post('/api/v1/activities/reports', reportConfig);
       return response.data;
     } catch (error) {
-      console.error('Error creating activity report:', error);
+      console.error('[ActivityAPI] Error creating activity report:', error);
       throw error;
     }
   },
@@ -330,10 +327,25 @@ const activityApi = {
    */
   clearActivityHistory: async (params = {}) => {
     try {
-      const response = await api.delete('/activities/clear', { params });
+      const response = await api.delete('/api/v1/activities/clear', { params });
       return response.data;
     } catch (error) {
-      console.error('Error clearing activity history:', error);
+      console.error('[ActivityAPI] Error clearing activity history:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Track user activity (create new activity log)
+   * @param {Object} activityData - Activity data to log
+   * @returns {Promise} Created activity
+   */
+  trackActivity: async (activityData) => {
+    try {
+      const response = await api.post('/api/v1/activities/track', activityData);
+      return response.data;
+    } catch (error) {
+      console.error('[ActivityAPI] Error tracking activity:', error);
       throw error;
     }
   },
