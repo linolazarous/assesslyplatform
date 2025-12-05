@@ -51,7 +51,7 @@ import {
 import { useLocation, useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSnackbar } from '../contexts/SnackbarContext';
-import { searchApi } from '../api/searchApi';
+import searchApi from '../api/searchApi';
 import { formatDistanceToNow } from 'date-fns';
 
 /**
