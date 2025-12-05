@@ -39,8 +39,6 @@ import {
   Business as BusinessIcon,
   Groups as GroupsIcon,
   Diamond as DiamondIcon,
-  Refresh,
-  HelpOutline,
   Download,
   ArrowBack,
 } from '@mui/icons-material';
@@ -49,13 +47,8 @@ import { useSnackbar } from '../contexts/SnackbarContext';
 import pricingApi from '../api/pricingApi';
 import { authApi } from '../api/authApi';
 
-/**
- * Pricing Page Component
- * Displays plans, pricing, and features with organization context
- */
-
-// Plan Comparison Table Component
-const PlanComparisonTable = ({ plans, billingCycle, organizationId }) => {
+/* ---------- PlanComparisonTable ---------- */
+const PlanComparisonTable = ({ plans, billingCycle }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -87,7 +80,7 @@ const PlanComparisonTable = ({ plans, billingCycle, organizationId }) => {
                 <Box key={feature.key} sx={{ display: 'flex', justifyContent: 'space-between', py: 1, borderBottom: `1px solid ${theme.palette.divider}` }}>
                   <Typography variant="body2">{feature.name}</Typography>
                   <Typography variant="body2" fontWeight="bold">
-                    {plan.features[feature.key] || '—'}
+                    {plan.features && plan.features[feature.key] !== undefined ? plan.features[feature.key] : '—'}
                   </Typography>
                 </Box>
               ))}
@@ -99,37 +92,53 @@ const PlanComparisonTable = ({ plans, billingCycle, organizationId }) => {
   }
 
   return (
-    <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 2 }}>
+    <TableContainer component={Paper} elevation={0} sx={{ 
+      border: `1px solid ${theme.palette.divider}`, 
+      borderRadius: 2,
+      overflow: 'hidden'
+    }}>
       <Table>
         <TableHead>
-          <TableRow sx={{ bgcolor: theme.palette.action.hover }}>
-            <TableCell sx={{ fontWeight: 600 }}>Features</TableCell>
+          <TableRow sx={{ 
+            bgcolor: theme.palette.action.hover,
+            '& th': { borderBottom: `2px solid ${theme.palette.primary.main}` }
+          }}>
+            <TableCell sx={{ fontWeight: 700, fontSize: '1.1rem' }}>Features</TableCell>
             {plans.map((plan) => (
-              <TableCell key={plan.id} align="center" sx={{ fontWeight: 600 }}>
+              <TableCell key={plan.id} align="center" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
                 {plan.name}
               </TableCell>
             ))}
           </TableRow>
         </TableHead>
         <TableBody>
-          {features.map((feature) => (
-            <TableRow key={feature.key} hover>
-              <TableCell component="th" scope="row" sx={{ borderRight: `1px solid ${theme.palette.divider}` }}>
-                <Typography variant="body2" fontWeight={500}>
+          {features.map((feature, index) => (
+            <TableRow 
+              key={feature.key} 
+              hover
+              sx={{ 
+                bgcolor: index % 2 === 0 ? 'transparent' : alpha(theme.palette.action.hover, 0.1)
+              }}
+            >
+              <TableCell component="th" scope="row" sx={{ 
+                borderRight: `1px solid ${theme.palette.divider}`,
+                fontWeight: 500
+              }}>
+                <Typography variant="body1" fontWeight={500}>
                   {feature.name}
                 </Typography>
               </TableCell>
               {plans.map((plan) => (
                 <TableCell key={`${plan.id}-${feature.key}`} align="center">
-                  {typeof plan.features[feature.key] === 'boolean' ? (
+                  {plan.features && typeof plan.features[feature.key] === 'boolean' ? (
                     plan.features[feature.key] ? (
                       <CheckIcon color="success" fontSize="small" />
                     ) : (
                       <CloseIcon color="disabled" fontSize="small" />
                     )
                   ) : (
-                    <Typography variant="body2">
-                      {plan.features[feature.key] || '—'}
+                    <Typography variant="body1" fontWeight={500}>
+                      {plan.features && plan.features[feature.key] !== undefined ? plan.features[feature.key] : '—'}
                     </Typography>
                   )}
                 </TableCell>
@@ -142,37 +151,40 @@ const PlanComparisonTable = ({ plans, billingCycle, organizationId }) => {
   );
 };
 
-// Pricing Card Component
-const PricingCard = React.memo(({ 
-  plan, 
-  billingCycle, 
-  isPopular, 
-  currentPlanId, 
-  organizationId, 
-  onPlanSelect, 
-  isLoading 
+PlanComparisonTable.propTypes = {
+  plans: PropTypes.array.isRequired,
+  billingCycle: PropTypes.string,
+};
+
+/* ---------- PricingCard ---------- */
+const PricingCard = React.memo(({
+  plan,
+  billingCycle,
+  isPopular,
+  currentPlanId,
+  currentPlanLevel,
+  organizationId,
+  onPlanSelect,
+  isLoading,
 }) => {
   const theme = useTheme();
   const navigate = useNavigate();
   const { showSnackbar, showError } = useSnackbar();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  const price = billingCycle === 'annual' ? plan.annualPrice : plan.monthlyPrice;
+  // Determine price based on billing cycle
+  let price = 'Custom';
+  if (plan.id !== 'enterprise') {
+    price = billingCycle === 'annual' 
+      ? (plan.annualPrice || plan.priceYearly || plan.annualPriceFormatted)
+      : (plan.monthlyPrice || plan.priceMonthly || plan.monthlyPriceFormatted);
+  }
+  
   const period = billingCycle === 'annual' ? '/year' : '/month';
   const savings = billingCycle === 'annual' ? plan.annualSavings : null;
-
   const isCurrentPlan = currentPlanId === plan.id;
-  
-  // Create a temporary plans array for comparison
-  const tempPlans = [
-    { id: 'basic', level: 1 },
-    { id: 'professional', level: 2 },
-    { id: 'enterprise', level: 3 }
-  ];
-  
-  const currentPlanData = tempPlans.find(p => p.id === currentPlanId);
-  const isUpgrade = currentPlanData && plan.level > currentPlanData.level;
-  const isDowngrade = currentPlanData && plan.level < currentPlanData.level;
+  const isUpgrade = currentPlanId && (plan.level > (currentPlanLevel || 0));
+  const isDowngrade = currentPlanId && (plan.level < (currentPlanLevel || 0));
 
   const getPlanIcon = () => {
     switch (plan.id) {
@@ -190,7 +202,7 @@ const PricingCard = React.memo(({
     }
 
     if (isCurrentPlan) {
-      showSnackbar(`You're already on the ${plan.name} plan`, 'info');
+      showSnackbar?.(`You're already on the ${plan.name} plan`, 'info');
       return;
     }
 
@@ -215,7 +227,7 @@ const PricingCard = React.memo(({
         throw new Error(response.message || 'Failed to create checkout session');
       }
     } catch (error) {
-      showError(error.message || 'Failed to process plan selection');
+      showError?.(error.message || 'Failed to process plan selection');
       console.error('Plan selection error:', error);
     }
   }, [plan, billingCycle, organizationId, isCurrentPlan, navigate, showSnackbar, showError]);
@@ -226,6 +238,18 @@ const PricingCard = React.memo(({
     if (isUpgrade) return 'Upgrade Now';
     if (isDowngrade) return 'Downgrade';
     return 'Select Plan';
+  };
+
+  const getButtonVariant = () => {
+    if (isCurrentPlan) return 'outlined';
+    if (isPopular) return 'contained';
+    return 'outlined';
+  };
+
+  const getButtonColor = () => {
+    if (isCurrentPlan) return 'inherit';
+    if (isPopular) return 'primary';
+    return 'primary';
   };
 
   return (
@@ -257,11 +281,12 @@ const PricingCard = React.memo(({
             transform: 'translateX(-50%)',
             fontWeight: 600,
             boxShadow: theme.shadows[2],
+            zIndex: 1,
           }}
         />
       )}
 
-      {savings && billingCycle === 'annual' && (
+      {savings && billingCycle === 'annual' && plan.id !== 'enterprise' && (
         <Chip
           label={`Save ${savings}%`}
           color="success"
@@ -271,6 +296,7 @@ const PricingCard = React.memo(({
             top: 8,
             right: 8,
             fontWeight: 600,
+            zIndex: 1,
           }}
         />
       )}
@@ -302,25 +328,30 @@ const PricingCard = React.memo(({
               {price}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {period}
-              {billingCycle === 'annual' && (
+              {plan.id !== 'enterprise' && period}
+              {billingCycle === 'annual' && plan.id !== 'enterprise' && (
                 <Typography component="span" variant="caption" color="success.main" sx={{ ml: 1 }}>
                   (billed annually)
                 </Typography>
               )}
             </Typography>
+            {plan.id === 'enterprise' && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Contact sales for custom pricing
+              </Typography>
+            )}
           </Box>
         </Box>
 
         {/* Features List */}
         <List sx={{ flexGrow: 1, mb: 3 }}>
-          {plan.featuresList?.slice(0, 8).map((feature, index) => (
+          {(plan.featuresList || []).slice(0, 8).map((feature, index) => (
             <ListItem key={index} sx={{ px: 0, py: 0.5 }}>
               <ListItemIcon sx={{ minWidth: 32 }}>
                 <CheckIcon color="primary" sx={{ fontSize: 20 }} />
               </ListItemIcon>
               <ListItemText
-                primary={feature}
+                primary={typeof feature === 'string' ? feature : feature.label || feature.name || 'Feature'}
                 primaryTypographyProps={{ variant: 'body2' }}
               />
             </ListItem>
@@ -329,8 +360,8 @@ const PricingCard = React.memo(({
 
         {/* CTA Button */}
         <Button
-          variant={isCurrentPlan ? 'outlined' : isPopular ? 'contained' : 'outlined'}
-          color={isCurrentPlan ? 'inherit' : 'primary'}
+          variant={getButtonVariant()}
+          color={getButtonColor()}
           size="large"
           fullWidth
           onClick={handleSelectPlan}
@@ -341,6 +372,10 @@ const PricingCard = React.memo(({
             fontWeight: 600,
             mt: 'auto',
             position: 'relative',
+            '&:hover': {
+              transform: 'translateY(-2px)',
+              boxShadow: theme.shadows[4],
+            },
           }}
         >
           {isLoading ? (
@@ -362,20 +397,33 @@ const PricingCard = React.memo(({
 
 PricingCard.displayName = 'PricingCard';
 
-// FAQ Item Component
+PricingCard.propTypes = {
+  plan: PropTypes.object.isRequired,
+  billingCycle: PropTypes.string.isRequired,
+  isPopular: PropTypes.bool,
+  currentPlanId: PropTypes.string,
+  currentPlanLevel: PropTypes.number,
+  organizationId: PropTypes.string,
+  onPlanSelect: PropTypes.func,
+  isLoading: PropTypes.bool,
+};
+
+/* ---------- FAQItem ---------- */
 const FAQItem = React.memo(({ question, answer, isOpen, onClick }) => {
   const theme = useTheme();
-  
   return (
     <Card 
       elevation={0} 
       sx={{ 
         mb: 2, 
         border: `1px solid ${theme.palette.divider}`,
+        borderRadius: 2,
+        overflow: 'hidden',
         '&:hover': {
           borderColor: theme.palette.primary.main,
+          boxShadow: theme.shadows[2],
         },
-        transition: 'border-color 0.2s ease',
+        transition: 'all 0.2s ease',
       }}
     >
       <Button
@@ -387,8 +435,9 @@ const FAQItem = React.memo(({ question, answer, isOpen, onClick }) => {
           justifyContent: 'space-between',
           textTransform: 'none',
           color: 'text.primary',
+          backgroundColor: isOpen ? alpha(theme.palette.primary.main, 0.05) : 'transparent',
           '&:hover': {
-            backgroundColor: 'transparent',
+            backgroundColor: alpha(theme.palette.primary.main, 0.1),
           },
         }}
       >
@@ -402,7 +451,7 @@ const FAQItem = React.memo(({ question, answer, isOpen, onClick }) => {
       {isOpen && (
         <Box sx={{ px: 3, pb: 3 }}>
           <Divider sx={{ mb: 2 }} />
-          <Typography color="text.secondary">
+          <Typography color="text.secondary" variant="body1">
             {answer}
           </Typography>
         </Box>
@@ -412,10 +461,14 @@ const FAQItem = React.memo(({ question, answer, isOpen, onClick }) => {
 });
 
 FAQItem.displayName = 'FAQItem';
+FAQItem.propTypes = {
+  question: PropTypes.string.isRequired,
+  answer: PropTypes.string.isRequired,
+  isOpen: PropTypes.bool,
+  onClick: PropTypes.func,
+};
 
-/**
- * Main Pricing Page Component
- */
+/* ---------- Pricing Page (Main) ---------- */
 export default function Pricing({ organizationId = null }) {
   const theme = useTheme();
   const navigate = useNavigate();
@@ -432,6 +485,7 @@ export default function Pricing({ organizationId = null }) {
 
   // Load pricing data and user info
   useEffect(() => {
+    let mounted = true;
     const loadData = async () => {
       try {
         setLoading(true);
@@ -439,37 +493,59 @@ export default function Pricing({ organizationId = null }) {
 
         const [plansResponse, userResponse] = await Promise.all([
           pricingApi.getPlans(),
-          authApi.getProfile ? authApi.getProfile().catch(() => ({ success: false, data: null })) : Promise.resolve({ success: false, data: null }),
+          authApi.getProfile ? authApi.getProfile().catch(() => ({ success: false, data: null })) : 
+            Promise.resolve({ success: false, data: null }),
         ]);
 
+        // Extract plans with fallback logic
+        let extractedPlans = [];
         if (plansResponse.success) {
-          setPlans(plansResponse.data.plans || []);
-        } else {
-          throw new Error(plansResponse.message || 'Failed to load pricing plans');
+          extractedPlans = plansResponse.data?.plans || plansResponse.data || [];
+        } else if (Array.isArray(plansResponse)) {
+          extractedPlans = plansResponse;
+        } else if (plansResponse?.data?.plans) {
+          extractedPlans = plansResponse.data.plans;
         }
 
-        if (userResponse.success) {
-          setUser(userResponse.data);
+        if (mounted) {
+          setPlans(extractedPlans);
+          if (userResponse.success) {
+            setUser(userResponse.data);
+          }
         }
 
-        if (organizationId) {
-          const subscriptionResponse = await pricingApi.getOrganizationSubscription(organizationId);
-          if (subscriptionResponse.success) {
-            setCurrentPlan(subscriptionResponse.data.planId);
+        if (organizationId && mounted) {
+          try {
+            const subscriptionResponse = await pricingApi.getOrganizationSubscription(organizationId);
+            if (subscriptionResponse.success) {
+              setCurrentPlan(subscriptionResponse.data.planId);
+            }
+          } catch (subscriptionError) {
+            console.warn('Failed to load subscription:', subscriptionError);
           }
         }
       } catch (error) {
         const errorMessage = error.response?.data?.message || error.message || 'Failed to load pricing information';
-        setError(errorMessage);
-        showError(errorMessage);
+        if (mounted) {
+          setError(errorMessage);
+          showError?.(errorMessage);
+        }
         console.error('Load pricing data error:', error);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
     loadData();
+    return () => { mounted = false; };
   }, [organizationId, showError]);
+
+  // Get plan level for current plan
+  const getCurrentPlanLevel = useCallback(() => {
+    if (!currentPlan) return 0;
+    const plan = plans.find(p => p.id === currentPlan);
+    return plan?.level || 0;
+  }, [currentPlan, plans]);
 
   const handleBillingCycleChange = useCallback((event, newCycle) => {
     if (newCycle !== null) {
@@ -490,10 +566,10 @@ export default function Pricing({ organizationId = null }) {
       const response = await pricingApi.exportPlanComparison(billingCycle);
       if (response.success && response.data.url) {
         window.open(response.data.url, '_blank');
-        showSuccess('Plan comparison exported successfully');
+        showSuccess?.('Plan comparison exported successfully');
       }
     } catch (error) {
-      showError('Failed to export plan comparison');
+      showError?.('Failed to export plan comparison');
     }
   }, [billingCycle, showSuccess, showError]);
 
@@ -525,7 +601,7 @@ export default function Pricing({ organizationId = null }) {
   ], []);
 
   const popularPlanId = useMemo(() => {
-    return plans.find(plan => plan.popular)?.id || 'professional';
+    return plans.find(plan => plan.popular)?.id || (plans.length > 1 ? plans[1].id : (plans[0]?.id || ''));
   }, [plans]);
 
   if (loading && plans.length === 0) {
@@ -599,7 +675,7 @@ export default function Pricing({ organizationId = null }) {
           </Box>
 
           {user && organizationId && (
-            <Alert severity="info" sx={{ mt: 3 }}>
+            <Alert severity="info" sx={{ mt: 3, borderRadius: 2 }}>
               <Typography variant="body2">
                 You're viewing pricing for <strong>{user.organizationName || 'your organization'}</strong>. 
                 {' '}
@@ -617,18 +693,37 @@ export default function Pricing({ organizationId = null }) {
         </Box>
 
         {/* Billing Cycle Toggle */}
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 6 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          mb: 6,
+          p: 2,
+          borderRadius: 2,
+          bgcolor: alpha(theme.palette.primary.main, 0.05)
+        }}>
           <ToggleButtonGroup
             value={billingCycle}
             exclusive
             onChange={handleBillingCycleChange}
             aria-label="billing cycle"
             size={isMobile ? 'small' : 'medium'}
+            sx={{
+              '& .MuiToggleButton-root': {
+                px: 4,
+                '&.Mui-selected': {
+                  bgcolor: 'primary.main',
+                  color: 'white',
+                  '&:hover': {
+                    bgcolor: 'primary.dark',
+                  }
+                }
+              }
+            }}
           >
-            <ToggleButton value="monthly" sx={{ px: 4 }}>
+            <ToggleButton value="monthly">
               Monthly Billing
             </ToggleButton>
-            <ToggleButton value="annual" sx={{ px: 4 }}>
+            <ToggleButton value="annual">
               Annual Billing (Save up to 20%)
             </ToggleButton>
           </ToggleButtonGroup>
@@ -643,8 +738,8 @@ export default function Pricing({ organizationId = null }) {
                 billingCycle={billingCycle}
                 isPopular={plan.id === popularPlanId}
                 currentPlanId={currentPlan}
+                currentPlanLevel={getCurrentPlanLevel()}
                 organizationId={organizationId}
-                onPlanSelect={() => {}}
                 isLoading={loading}
               />
             </Grid>
@@ -658,8 +753,7 @@ export default function Pricing({ organizationId = null }) {
           </Typography>
           <PlanComparisonTable 
             plans={plans} 
-            billingCycle={billingCycle} 
-            organizationId={organizationId}
+            billingCycle={billingCycle}
           />
         </Box>
 
@@ -689,6 +783,18 @@ export default function Pricing({ organizationId = null }) {
             textAlign: 'center',
             background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${alpha(theme.palette.secondary.main, 0.05)} 100%)`,
             border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+            borderRadius: 3,
+            position: 'relative',
+            overflow: 'hidden',
+            '&:before': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '4px',
+              background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+            }
           }}
         >
           <Typography variant="h4" gutterBottom sx={{ fontWeight: 700 }}>
@@ -707,6 +813,7 @@ export default function Pricing({ organizationId = null }) {
                 py: 1.5,
                 fontSize: '1.1rem',
                 fontWeight: 600,
+                borderRadius: 2,
               }}
             >
               Start Free Trial
@@ -720,6 +827,11 @@ export default function Pricing({ organizationId = null }) {
                 py: 1.5,
                 fontSize: '1.1rem',
                 fontWeight: 600,
+                borderRadius: 2,
+                borderWidth: 2,
+                '&:hover': {
+                  borderWidth: 2,
+                }
               }}
             >
               Schedule Demo
@@ -731,7 +843,7 @@ export default function Pricing({ organizationId = null }) {
               component={RouterLink} 
               to="/contact" 
               size="small" 
-              sx={{ textTransform: 'none' }}
+              sx={{ textTransform: 'none', fontWeight: 600 }}
             >
               Contact our sales team
             </Button>
@@ -747,7 +859,7 @@ export default function Pricing({ organizationId = null }) {
               component={RouterLink} 
               to="/terms" 
               size="small" 
-              sx={{ textTransform: 'none' }}
+              sx={{ textTransform: 'none', fontWeight: 600 }}
             >
               View Terms of Service
             </Button>
