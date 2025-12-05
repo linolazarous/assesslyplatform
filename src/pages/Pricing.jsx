@@ -45,7 +45,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useSnackbar } from '../contexts/SnackbarContext';
-import { pricingApi } from '../api/pricingApi';
+import pricingApi from '../api/pricingApi';
 import { authApi } from '../api/authApi';
 
 /**
