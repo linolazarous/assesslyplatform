@@ -1,14 +1,10 @@
 // src/components/common/ProtectedRoute.jsx
 import React, { useEffect, useState } from "react";
-import { Navigate, Outlet, useLocation, useParams } from "react-router-dom";
+import { Navigate, Outlet, useLocation, useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import LoadingScreen from "../ui/LoadingScreen";
 import PropTypes from "prop-types";
-import { 
-  verifyOrganizationAccess, 
-  getCurrentOrganization,
-  checkSubscriptionStatus 
-} from "../../api/organizationApi";
+import organizationApi from "../../api/organizationApi"; // Changed to default import
 import { useSnackbar } from "notistack";
 import { Box, Alert, Button } from "@mui/material";
 
@@ -44,6 +40,7 @@ export default function ProtectedRoute({
   const { enqueueSnackbar } = useSnackbar();
   const location = useLocation();
   const params = useParams();
+  const navigate = useNavigate();
   
   const [verifying, setVerifying] = useState(true);
   const [organizationAccess, setOrganizationAccess] = useState(null);
@@ -68,24 +65,28 @@ export default function ProtectedRoute({
       
       // Check organization access if required
       if (requireOrganization && orgId) {
-        const accessData = await verifyOrganizationAccess(orgId);
-        setOrganizationAccess(accessData);
+        // Use organizationApi object methods instead of direct function calls
+        const accessData = await organizationApi.verifyOrganizationAccess(orgId);
+        setOrganizationAccess(accessData.data || accessData);
         
-        if (accessData.hasAccess) {
+        if (accessData.success && (accessData.data?.hasAccess || accessData.hasAccess)) {
           // Update current organization in context
           if (!currentOrganization || currentOrganization.id !== orgId) {
-            const orgData = await getCurrentOrganization(orgId);
-            setCurrentOrganization(orgData);
+            const orgData = await organizationApi.getCurrentOrganization(orgId);
+            if (orgData.success && orgData.data) {
+              setCurrentOrganization(orgData.data);
+            }
           }
           
           // Check subscription if required
           if (requireSubscription) {
-            const subscription = await checkSubscriptionStatus(orgId);
-            const isValid = subscriptionLevels.includes(subscription.status);
+            const subscription = await organizationApi.checkSubscriptionStatus(orgId);
+            const subscriptionStatus = subscription.data?.status || subscription.status;
+            const isValid = subscriptionLevels.includes(subscriptionStatus);
             setSubscriptionValid(isValid);
             
             if (!isValid && import.meta.env.DEV) {
-              console.warn(`[ProtectedRoute] Invalid subscription for org ${orgId}: ${subscription.status}`);
+              console.warn(`[ProtectedRoute] Invalid subscription for org ${orgId}: ${subscriptionStatus}`);
             }
           }
         }
@@ -148,9 +149,13 @@ export default function ProtectedRoute({
     }
 
     // Check organization access
-    if (organizationAccess && !organizationAccess.hasAccess) {
+    const hasOrgAccess = organizationAccess?.hasAccess || 
+                        (organizationAccess?.data?.hasAccess) || 
+                        (organizationAccess?.success && organizationAccess?.data);
+    
+    if (!hasOrgAccess) {
       if (import.meta.env.DEV) {
-        console.warn(`[ProtectedRoute] Organization access denied for user ${user.email} to org ${orgId}: ${organizationAccess.reason}`);
+        console.warn(`[ProtectedRoute] Organization access denied for user ${user.email} to org ${orgId}: ${organizationAccess?.reason || 'no_access'}`);
       }
       
       // Show access denied with options
@@ -172,7 +177,7 @@ export default function ProtectedRoute({
 
     // Check organization role if specified
     if (organizationRole && organizationAccess) {
-      const userOrgRole = organizationAccess.role;
+      const userOrgRole = organizationAccess.data?.role || organizationAccess.role;
       if (userOrgRole !== organizationRole && !isSuperAdmin) {
         if (import.meta.env.DEV) {
           console.warn(`[ProtectedRoute] Organization role mismatch. Required: ${organizationRole}, User has: ${userOrgRole}`);
