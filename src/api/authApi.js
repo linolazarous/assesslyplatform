@@ -1,5 +1,5 @@
 // src/api/authApi.js
-import api from './api';
+import api from './axiosConfig';  // Changed from './api' to match assessmentApi.js
 
 /**
  * Authentication API Service
@@ -11,14 +11,18 @@ import api from './api';
 /**
  * Login with email and password
  * @param {Object} credentials - Login credentials
+ * @param {string} credentials.email - User email
+ * @param {string} credentials.password - User password
+ * @param {string} [credentials.organizationId] - Optional organization ID
+ * @param {boolean} [credentials.rememberMe] - Remember login session
  * @returns {Promise} Authentication response
  */
 export const login = async (credentials) => {
   try {
-    const response = await api.post('/auth/login', credentials);
+    const response = await api.post('/api/v1/auth/login', credentials);  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('[AuthAPI] Login error:', error);
     throw error;
   }
 };
@@ -26,14 +30,22 @@ export const login = async (credentials) => {
 /**
  * Register new user account
  * @param {Object} userData - User registration data
+ * @param {string} userData.email - User email
+ * @param {string} userData.password - User password
+ * @param {string} userData.firstName - User first name
+ * @param {string} userData.lastName - User last name
+ * @param {string} [userData.organizationId] - Optional organization ID
+ * @param {string} [userData.organizationName] - Organization name (for new org)
+ * @param {string} [userData.inviteToken] - Invitation token
+ * @param {boolean} userData.acceptTerms - Terms acceptance
  * @returns {Promise} Registration response
  */
 export const register = async (userData) => {
   try {
-    const response = await api.post('/auth/register', userData);
+    const response = await api.post('/api/v1/auth/register', userData);  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('[AuthAPI] Registration error:', error);
     throw error;
   }
 };
@@ -41,14 +53,16 @@ export const register = async (userData) => {
 /**
  * Forgot password request
  * @param {Object} data - Forgot password data
+ * @param {string} data.email - User email
+ * @param {string} data.redirectUrl - Password reset redirect URL
  * @returns {Promise} Response
  */
 export const forgotPassword = async (data) => {
   try {
-    const response = await api.post('/auth/forgot-password', data);
+    const response = await api.post('/api/v1/auth/forgot-password', data);  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Forgot password error:', error);
+    console.error('[AuthAPI] Forgot password error:', error);
     throw error;
   }
 };
@@ -56,14 +70,16 @@ export const forgotPassword = async (data) => {
 /**
  * Reset password with token
  * @param {Object} data - Reset password data
+ * @param {string} data.token - Reset token
+ * @param {string} data.password - New password
  * @returns {Promise} Response
  */
 export const resetPassword = async (data) => {
   try {
-    const response = await api.post('/auth/reset-password', data);
+    const response = await api.post('/api/v1/auth/reset-password', data);  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Reset password error:', error);
+    console.error('[AuthAPI] Reset password error:', error);
     throw error;
   }
 };
@@ -75,10 +91,10 @@ export const resetPassword = async (data) => {
  */
 export const verifyResetToken = async (token) => {
   try {
-    const response = await api.get(`/auth/verify-reset-token/${token}`);
+    const response = await api.get(`/api/v1/auth/verify-reset-token/${token}`);  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Verify reset token error:', error);
+    console.error('[AuthAPI] Verify reset token error:', error);
     throw error;
   }
 };
@@ -88,14 +104,16 @@ export const verifyResetToken = async (token) => {
 /**
  * Initiate Google OAuth flow
  * @param {Object} params - OAuth parameters
+ * @param {string} params.state - OAuth state parameter
+ * @param {string} params.redirectUri - Redirect URI after OAuth
  * @returns {Promise} OAuth initiation response
  */
 export const initiateGoogleOAuth = async (params = {}) => {
   try {
-    const response = await api.get('/auth/google', { params });
+    const response = await api.get('/api/v1/auth/google', { params });  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Google OAuth initiation error:', error);
+    console.error('[AuthAPI] Google OAuth initiation error:', error);
     throw error;
   }
 };
@@ -103,14 +121,17 @@ export const initiateGoogleOAuth = async (params = {}) => {
 /**
  * Handle Google OAuth callback
  * @param {Object} oauthData - OAuth callback data
+ * @param {string} oauthData.code - Authorization code
+ * @param {string} oauthData.state - OAuth state
+ * @param {string} oauthData.redirectUri - Redirect URI
  * @returns {Promise} Authentication response
  */
 export const googleOAuthCallback = async (oauthData) => {
   try {
-    const response = await api.post('/auth/google/callback', oauthData);
+    const response = await api.post('/api/v1/auth/google/callback', oauthData);  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Google OAuth callback error:', error);
+    console.error('[AuthAPI] Google OAuth callback error:', error);
     throw error;
   }
 };
@@ -124,12 +145,12 @@ export const googleOAuthCallback = async (oauthData) => {
  */
 export const verifyToken = async (token) => {
   try {
-    const response = await api.get('/auth/verify-token', {
+    const response = await api.get('/api/v1/auth/verify-token', {  // Added /api/v1 prefix
       headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
   } catch (error) {
-    console.error('Verify token error:', error);
+    console.error('[AuthAPI] Verify token error:', error);
     throw error;
   }
 };
@@ -137,14 +158,15 @@ export const verifyToken = async (token) => {
 /**
  * Refresh access token
  * @param {Object} data - Refresh token data
+ * @param {string} data.refreshToken - Refresh token
  * @returns {Promise} New tokens
  */
 export const refreshToken = async (data) => {
   try {
-    const response = await api.post('/auth/refresh-token', data);
+    const response = await api.post('/api/v1/auth/refresh-token', data);  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Refresh token error:', error);
+    console.error('[AuthAPI] Refresh token error:', error);
     throw error;
   }
 };
@@ -155,10 +177,10 @@ export const refreshToken = async (data) => {
  */
 export const logout = async () => {
   try {
-    const response = await api.post('/auth/logout');
+    const response = await api.post('/api/v1/auth/logout');  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Logout error:', error);
+    console.error('[AuthAPI] Logout error:', error);
     throw error;
   }
 };
@@ -171,10 +193,10 @@ export const logout = async () => {
  */
 export const getProfile = async () => {
   try {
-    const response = await api.get('/auth/profile');
+    const response = await api.get('/api/v1/auth/profile');  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Get profile error:', error);
+    console.error('[AuthAPI] Get profile error:', error);
     throw error;
   }
 };
@@ -186,10 +208,10 @@ export const getProfile = async () => {
  */
 export const updateProfile = async (profileData) => {
   try {
-    const response = await api.put('/auth/profile', profileData);
+    const response = await api.put('/api/v1/auth/profile', profileData);  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Update profile error:', error);
+    console.error('[AuthAPI] Update profile error:', error);
     throw error;
   }
 };
@@ -199,14 +221,15 @@ export const updateProfile = async (profileData) => {
 /**
  * Verify email with token
  * @param {Object} data - Verification data
+ * @param {string} data.token - Verification token
  * @returns {Promise} Verification response
  */
 export const verifyEmail = async (data) => {
   try {
-    const response = await api.post('/auth/verify-email', data);
+    const response = await api.post('/api/v1/auth/verify-email', data);  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Verify email error:', error);
+    console.error('[AuthAPI] Verify email error:', error);
     throw error;
   }
 };
@@ -220,10 +243,10 @@ export const verifyEmail = async (data) => {
  */
 export const verifyInvite = async (inviteToken) => {
   try {
-    const response = await api.get(`/auth/verify-invite/${inviteToken}`);
+    const response = await api.get(`/api/v1/auth/verify-invite/${inviteToken}`);  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Verify invite error:', error);
+    console.error('[AuthAPI] Verify invite error:', error);
     throw error;
   }
 };
@@ -236,10 +259,10 @@ export const verifyInvite = async (inviteToken) => {
  */
 export const getAuthProviders = async () => {
   try {
-    const response = await api.get('/auth/providers');
+    const response = await api.get('/api/v1/auth/providers');  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Get auth providers error:', error);
+    console.error('[AuthAPI] Get auth providers error:', error);
     throw error;
   }
 };
@@ -252,10 +275,57 @@ export const getAuthProviders = async () => {
  */
 export const getUserOrganizations = async () => {
   try {
-    const response = await api.get('/auth/organizations');
+    const response = await api.get('/api/v1/auth/organizations');  // Added /api/v1 prefix
     return response.data;
   } catch (error) {
-    console.error('Get user organizations error:', error);
+    console.error('[AuthAPI] Get user organizations error:', error);
+    throw error;
+  }
+};
+
+// ===================== ADDITIONAL USEFUL ENDPOINTS =====================
+
+/**
+ * Get current user (me endpoint)
+ * @returns {Promise} Current user data
+ */
+export const getCurrentUser = async () => {
+  try {
+    const response = await api.get('/api/v1/auth/me');  // Added common endpoint
+    return response.data;
+  } catch (error) {
+    console.error('[AuthAPI] Get current user error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Check authentication status
+ * @returns {Promise} Auth status
+ */
+export const checkAuthStatus = async () => {
+  try {
+    const response = await api.get('/api/v1/auth/status');
+    return response.data;
+  } catch (error) {
+    console.error('[AuthAPI] Check auth status error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Change password (authenticated)
+ * @param {Object} data - Password change data
+ * @param {string} data.currentPassword - Current password
+ * @param {string} data.newPassword - New password
+ * @returns {Promise} Response
+ */
+export const changePassword = async (data) => {
+  try {
+    const response = await api.post('/api/v1/auth/change-password', data);
+    return response.data;
+  } catch (error) {
+    console.error('[AuthAPI] Change password error:', error);
     throw error;
   }
 };
@@ -279,6 +349,9 @@ const authApi = {
   verifyInvite,
   getAuthProviders,
   getUserOrganizations,
+  getCurrentUser,      // Added
+  checkAuthStatus,     // Added
+  changePassword,      // Added
 };
 
 export default authApi;
