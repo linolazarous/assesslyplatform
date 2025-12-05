@@ -13,28 +13,6 @@
     <link rel="apple-touch-icon" href="/logo.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
 
-    <!-- Google Analytics (GA4) -->
-    <!-- This will be injected during build with your VITE_ANALYTICS_KEY -->
-    <% if (typeof VITE_ANALYTICS_KEY !== 'undefined' && VITE_ANALYTICS_KEY) { %>
-    <script async src="https://www.googletagmanager.com/gtag/js?id=<%= VITE_ANALYTICS_KEY %>"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', '<%= VITE_ANALYTICS_KEY %>');
-      
-      // For Single Page App (SPA) tracking
-      document.addEventListener('DOMContentLoaded', function() {
-        gtag('event', 'page_view', {
-          page_title: document.title,
-          page_location: window.location.href,
-          page_path: window.location.pathname,
-          send_to: '<%= VITE_ANALYTICS_KEY %>'
-        });
-      });
-    </script>
-    <% } %>
-
     <!-- Fonts: use crossorigin and avoid preloading fonts via rel=preload unless you need subset preload -->
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
@@ -70,27 +48,6 @@
           }
         }, 300);
       });
-      
-      // For SPA route changes (if using React Router)
-      if (typeof history !== 'undefined' && typeof gtag !== 'undefined') {
-        const originalPushState = history.pushState;
-        history.pushState = function(state, title, url) {
-          originalPushState.apply(this, arguments);
-          if (url) {
-            gtag('config', '<%= VITE_ANALYTICS_KEY %>', {
-              page_path: url,
-              page_title: title || document.title
-            });
-          }
-        };
-        
-        window.addEventListener('popstate', function() {
-          gtag('config', '<%= VITE_ANALYTICS_KEY %>', {
-            page_path: window.location.pathname,
-            page_title: document.title
-          });
-        });
-      }
     </script>
   </body>
 </html>
