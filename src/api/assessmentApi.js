@@ -182,6 +182,22 @@ export const unpublishAssessment = async (assessmentId) => {
 };
 
 /**
+ * Update assessment status (publish/unpublish/archive)
+ * @param {string} assessmentId - Assessment ID
+ * @param {string} status - New status (published, unpublished, archived, draft)
+ * @returns {Promise} Updated assessment
+ */
+export const updateAssessmentStatus = async (assessmentId, status) => {
+  try {
+    const response = await api.put(`/api/v1/assessments/${assessmentId}/status`, { status });
+    return response.data;
+  } catch (error) {
+    console.error('[AssessmentAPI] Error updating assessment status:', error);
+    throw error;
+  }
+};
+
+/**
  * Duplicate an existing assessment
  * @param {string} assessmentId - Original assessment ID
  * @param {Object} options - Duplication options
@@ -541,6 +557,7 @@ export default {
   deleteAssessment,
   publishAssessment,
   unpublishAssessment,
+  updateAssessmentStatus,
   duplicateAssessment,
   
   // Questions
