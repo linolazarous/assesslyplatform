@@ -1,4 +1,3 @@
-// src/components/layout/Header.jsx
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import {
   AppBar,
@@ -44,7 +43,9 @@ import {
 } from "@mui/icons-material";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
-import { Logo, Wordmark } from "../brand";
+// FIX: Import directly instead of from barrel file
+import Logo from "../brand/Logo";
+import Wordmark from "../brand/Wordmark";
 import PropTypes from "prop-types";
 import { debounce } from "../../utils/performance";
 import { 
