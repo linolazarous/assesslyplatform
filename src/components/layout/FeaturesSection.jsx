@@ -23,6 +23,7 @@ import {
   Badge,
   Tab,
   Tabs,
+  Alert,
 } from '@mui/material';
 import {
   People,
@@ -37,7 +38,6 @@ import {
   Security,
   Timeline,
   Cloud,
-  Integration,
   Analytics,
   Code,
   Settings,
@@ -50,9 +50,17 @@ import {
   Assignment,
   Dashboard,
   CompareArrows,
+  // Integration icon doesn't exist, using alternatives:
+  SyncAlt, // Alternative for Integration
+  Api, // Another alternative
+  SettingsInputComponent, // Or this
+  Extension, // Or this
 } from '@mui/icons-material';
 import PropTypes from 'prop-types';
 import { useAuth } from '../../contexts/AuthContext';
+
+// Use SyncAlt as Integration icon replacement
+const IntegrationIcon = SyncAlt;
 
 const CORE_FEATURES = [
   {
@@ -126,7 +134,7 @@ const CORE_FEATURES = [
     badge: 'Compliance',
   },
   {
-    icon: Integration,
+    icon: IntegrationIcon, // Changed from Integration to SyncAlt
     title: 'API & Integrations',
     description: 'RESTful API with webhooks, Zapier integration, and pre-built connectors for HR systems, LMS, and CRMs.',
     color: 'error',
@@ -385,6 +393,8 @@ const FeatureCard = React.memo(({ feature, index, isExpanded, onToggle, isDemo }
   );
 });
 
+FeatureCard.displayName = 'FeatureCard';
+
 FeatureCard.propTypes = {
   feature: PropTypes.object.isRequired,
   index: PropTypes.number.isRequired,
@@ -455,7 +465,7 @@ export default function FeaturesSection({ isDemo = false }) {
     setActiveTab(newValue);
   };
 
-  const renderPlatformStats = () => (
+  const renderPlatformStats = useCallback(() => (
     <Fade in timeout={1200}>
       <Card sx={{ 
         p: 3, 
@@ -506,9 +516,9 @@ export default function FeaturesSection({ isDemo = false }) {
         </Grid>
       </Card>
     </Fade>
-  );
+  ), [animatedStats, theme]);
 
-  const renderArchitectureOverview = () => (
+  const renderArchitectureOverview = useCallback(() => (
     <Fade in timeout={1000}>
       <Card sx={{ p: 4, mb: 4, bgcolor: alpha(theme.palette.info.light, 0.05) }}>
         <Typography variant="h5" fontWeight="bold" gutterBottom>
@@ -550,9 +560,9 @@ export default function FeaturesSection({ isDemo = false }) {
         </Grid>
       </Card>
     </Fade>
-  );
+  ), [theme]);
 
-  const renderAssessmentTypes = () => (
+  const renderAssessmentTypes = useCallback(() => (
     <Fade in timeout={1000}>
       <Card sx={{ p: 4, bgcolor: alpha(theme.palette.secondary.light, 0.05) }}>
         <Typography variant="h5" fontWeight="bold" gutterBottom>
@@ -597,9 +607,9 @@ export default function FeaturesSection({ isDemo = false }) {
         </Grid>
       </Card>
     </Fade>
-  );
+  ), [theme]);
 
-  const renderLifecycle = () => (
+  const renderLifecycle = useCallback(() => (
     <Fade in timeout={1000}>
       <Card sx={{ p: 4, bgcolor: alpha(theme.palette.success.light, 0.05) }}>
         <Typography variant="h5" fontWeight="bold" gutterBottom>
@@ -678,7 +688,7 @@ export default function FeaturesSection({ isDemo = false }) {
         </Box>
       </Card>
     </Fade>
-  );
+  ), [hoveredStep, theme]);
 
   return (
     <Box 
@@ -852,16 +862,11 @@ export default function FeaturesSection({ isDemo = false }) {
           </Box>
         </Fade>
       </Container>
-
-      <style jsx global>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 0.6; transform: scale(1); }
-          50% { opacity: 1; transform: scale(1.1); }
-        }
-      `}</style>
     </Box>
   );
 }
+
+FeaturesSection.displayName = 'FeaturesSection';
 
 FeaturesSection.propTypes = {
   isDemo: PropTypes.bool,
