@@ -48,7 +48,7 @@ import {
   Info,
 } from '@mui/icons-material';
 import { formatDistanceToNow, format } from 'date-fns';
-import { fetchRecentActivities, fetchActivitySummary } from '../../api/activityApi';
+import activityAPI from '../../api/activityApi';
 import { useSnackbar } from '../../contexts/SnackbarContext';
 import { useNavigate } from 'react-router-dom';
 
