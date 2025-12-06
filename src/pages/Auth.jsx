@@ -1,6 +1,6 @@
 // src/pages/Auth.jsx
 import { alpha } from '@mui/material/styles';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import {
   Box,
@@ -34,7 +34,7 @@ import {
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSnackbar } from '../contexts/SnackbarContext';
-import authApi from '../api/authApi';
+import api, { API_ENDPOINTS, TokenManager } from '../api'; // Updated import
 
 /**
  * Authentication Page - Google OAuth & Email/Password
@@ -50,7 +50,7 @@ export default function AuthPage({
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentUser, isLoading: authLoading } = useAuth();
+  const { currentUser, isLoading: authLoading, setAuthData } = useAuth(); // Updated to include setAuthData
   const { showSnackbar, showSuccess, showError } = useSnackbar();
 
   // Parse URL parameters
@@ -100,8 +100,9 @@ export default function AuthPage({
       if (queryParams.token && queryParams.token.startsWith('reset_')) {
         setMode('reset');
         try {
-          const response = await authApi.verifyResetToken(queryParams.token);
-          if (response.success) {
+          // Using the unified API
+          const response = await api.post('/auth/verify-reset-token', { token: queryParams.token });
+          if (response.data.success) {
             setFormData(prev => ({ ...prev, email: response.data.email }));
             showSnackbar('Please enter your new password', 'info');
           } else {
@@ -109,6 +110,7 @@ export default function AuthPage({
             setMode('login');
           }
         } catch (error) {
+          console.error('Reset token verification error:', error);
           showError('Invalid reset token');
           setMode('login');
         }
@@ -118,8 +120,8 @@ export default function AuthPage({
       if (queryParams.invite) {
         setMode('signup');
         try {
-          const response = await authApi.verifyInvite(queryParams.invite);
-          if (response.success) {
+          const response = await api.post('/auth/verify-invite', { token: queryParams.invite });
+          if (response.data.success) {
             setFormData(prev => ({ 
               ...prev, 
               email: response.data.email,
@@ -128,6 +130,7 @@ export default function AuthPage({
             }));
           }
         } catch (error) {
+          console.error('Invite verification error:', error);
           showError('Invalid or expired invitation');
         }
       }
@@ -143,7 +146,7 @@ export default function AuthPage({
     }
   }, [currentUser, authLoading, navigate, queryParams.redirect]);
 
-  const validateForm = () => {
+  const validateForm = useCallback(() => {
     const errors = {};
 
     // Email validation
@@ -186,15 +189,20 @@ export default function AuthPage({
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
-  };
+  }, [formData, mode, queryParams.organization]);
 
-  const handleInputChange = (field) => (event) => {
-    const value = field === 'acceptTerms' ? event.target.checked : event.target.value;
+  const handleInputChange = useCallback((field) => (event) => {
+    const value = field === 'acceptTerms' || field === 'rememberMe' 
+      ? event.target.checked 
+      : event.target.value;
+    
     setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Clear validation error for this field
     if (validationErrors[field]) {
       setValidationErrors(prev => ({ ...prev, [field]: undefined }));
     }
-  };
+  }, [validationErrors]);
 
   const handleEmailAuth = async (event) => {
     event.preventDefault();
@@ -210,7 +218,7 @@ export default function AuthPage({
 
       switch (mode) {
         case 'login':
-          response = await authApi.login({
+          response = await api.post(API_ENDPOINTS.AUTH.LOGIN, {
             email: formData.email,
             password: formData.password,
             organizationId: queryParams.organization,
@@ -219,7 +227,7 @@ export default function AuthPage({
           break;
 
         case 'signup':
-          response = await authApi.register({
+          response = await api.post(API_ENDPOINTS.AUTH.REGISTER, {
             email: formData.email,
             password: formData.password,
             firstName: formData.firstName,
@@ -232,14 +240,14 @@ export default function AuthPage({
           break;
 
         case 'forgot':
-          response = await authApi.forgotPassword({
+          response = await api.post(API_ENDPOINTS.AUTH.FORGOT_PASSWORD, {
             email: formData.email,
             redirectUrl: `${window.location.origin}/auth?token=reset_`,
           });
           break;
 
         case 'reset':
-          response = await authApi.resetPassword({
+          response = await api.post(API_ENDPOINTS.AUTH.RESET_PASSWORD, {
             token: queryParams.token,
             password: formData.password,
           });
@@ -249,24 +257,46 @@ export default function AuthPage({
           throw new Error('Invalid authentication mode');
       }
 
-      if (response.success) {
+      const result = response.data;
+      
+      if (result.success) {
         if (mode === 'login') {
-          // Store token and redirect
-          localStorage.setItem('accessToken', response.data.token);
-          localStorage.setItem('user', JSON.stringify(response.data.user));
-          if (formData.rememberMe) {
-            localStorage.setItem('refreshToken', response.data.refreshToken);
+          // Use TokenManager from unified API
+          TokenManager.setTokens(
+            result.token,
+            formData.rememberMe ? result.refreshToken : null,
+            result.expiresIn ? new Date(Date.now() + result.expiresIn * 1000).toISOString() : null
+          );
+          
+          if (result.user) {
+            TokenManager.setUserInfo(result.user);
+            // Update auth context
+            if (setAuthData) {
+              setAuthData({ user: result.user, token: result.token });
+            }
           }
+          
+          // Set tenant context if organization is available
+          if (result.organization) {
+            TokenManager.setTenantContext(result.organization.id);
+          }
+          
           showSuccess('Login successful!');
           navigate(queryParams.redirect, { replace: true });
+          
         } else if (mode === 'signup') {
-          if (response.data.requiresVerification) {
+          if (result.requiresVerification) {
             showSuccess('Account created! Please check your email to verify your account.');
             setMode('login');
           } else {
             // Auto-login after signup
-            localStorage.setItem('accessToken', response.data.token);
-            localStorage.setItem('user', JSON.stringify(response.data.user));
+            TokenManager.setTokens(result.token, result.refreshToken);
+            if (result.user) {
+              TokenManager.setUserInfo(result.user);
+              if (setAuthData) {
+                setAuthData({ user: result.user, token: result.token });
+              }
+            }
             showSuccess('Account created successfully!');
             navigate(queryParams.redirect, { replace: true });
           }
@@ -278,20 +308,28 @@ export default function AuthPage({
           setMode('login');
         }
       } else {
-        throw new Error(response.message || 'Authentication failed');
+        throw new Error(result.message || 'Authentication failed');
       }
     } catch (error) {
       console.error('Auth error:', error);
-      const errorMessage = error.response?.data?.message || 
-                          error.message || 
-                          'Authentication failed';
+      
+      // Extract error message from unified error format
+      const errorMessage = error?.message || 
+                          error?.response?.data?.message || 
+                          'Authentication failed. Please try again.';
+      
       showError(errorMessage);
+      
+      // Clear form on invalid credentials
+      if (error?.response?.status === 401 || error?.code === 'INVALID_CREDENTIALS') {
+        setFormData(prev => ({ ...prev, password: '', confirmPassword: '' }));
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleAuth = async () => {
+  const handleGoogleAuth = useCallback(async () => {
     try {
       setOauthLoading(true);
       
@@ -307,9 +345,8 @@ export default function AuthPage({
       // Encode state for URL
       const encodedState = encodeURIComponent(state);
       
-      // Google OAuth URL - FIXED: Use Vite environment variable
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
-      const googleAuthUrl = `${apiUrl}/api/v1/auth/google?state=${encodedState}`;
+      // Use unified API base URL
+      const googleAuthUrl = `${API_ENDPOINTS.AUTH.GOOGLE}?state=${encodedState}`;
       
       // Redirect to Google OAuth
       window.location.href = googleAuthUrl;
@@ -318,15 +355,24 @@ export default function AuthPage({
       showError('Failed to initiate Google authentication');
       setOauthLoading(false);
     }
-  };
+  }, [mode, queryParams.redirect, queryParams.organization, queryParams.invite, showError]);
 
-  const switchMode = (newMode) => {
+  const switchMode = useCallback((newMode) => {
     setMode(newMode);
     setValidationErrors({});
+    
+    // Clear password fields when switching modes
+    setFormData(prev => ({
+      ...prev,
+      password: '',
+      confirmPassword: '',
+    }));
+    
     navigate(`/auth?mode=${newMode}${queryParams.organization ? `&organization=${queryParams.organization}` : ''}`, { replace: true });
-  };
+  }, [navigate, queryParams.organization]);
 
-  const renderHeader = () => (
+  // Memoized render functions for better performance
+  const renderHeader = useMemo(() => () => (
     <Box sx={{ textAlign: 'center', mb: compact ? 3 : 4 }}>
       <Typography variant="h4" color="primary" gutterBottom sx={{ fontWeight: 700 }}>
         Assessly
@@ -343,9 +389,9 @@ export default function AuthPage({
          'Sign in to your account to continue'}
       </Typography>
     </Box>
-  );
+  ), [mode, compact]);
 
-  const renderEmailField = () => (
+  const renderEmailField = useMemo(() => () => (
     <TextField
       fullWidth
       label="Email Address"
@@ -363,10 +409,11 @@ export default function AuthPage({
         ),
       }}
       sx={{ mb: 2 }}
+      autoComplete="email"
     />
-  );
+  ), [formData.email, validationErrors.email, mode, queryParams.invite, handleInputChange]);
 
-  const renderPasswordField = () => (
+  const renderPasswordField = useMemo(() => () => (
     <TextField
       fullWidth
       label="Password"
@@ -387,17 +434,19 @@ export default function AuthPage({
               onClick={() => setShowPassword(!showPassword)}
               edge="end"
               aria-label="toggle password visibility"
+              size="small"
             >
-              {showPassword ? <VisibilityOff /> : <Visibility />}
+              {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
             </IconButton>
           </InputAdornment>
         ),
       }}
       sx={{ mb: 2 }}
+      autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
     />
-  );
+  ), [formData.password, validationErrors.password, showPassword, mode, handleInputChange]);
 
-  const renderConfirmPasswordField = () => (
+  const renderConfirmPasswordField = useMemo(() => () => (
     <TextField
       fullWidth
       label="Confirm Password"
@@ -414,10 +463,11 @@ export default function AuthPage({
         ),
       }}
       sx={{ mb: 2 }}
+      autoComplete="new-password"
     />
-  );
+  ), [formData.confirmPassword, validationErrors.confirmPassword, showPassword, handleInputChange]);
 
-  const renderNameFields = () => (
+  const renderNameFields = useMemo(() => () => (
     <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
       <TextField
         fullWidth
@@ -433,6 +483,7 @@ export default function AuthPage({
             </InputAdornment>
           ),
         }}
+        autoComplete="given-name"
       />
       <TextField
         fullWidth
@@ -441,11 +492,12 @@ export default function AuthPage({
         onChange={handleInputChange('lastName')}
         error={!!validationErrors.lastName}
         helperText={validationErrors.lastName}
+        autoComplete="family-name"
       />
     </Box>
-  );
+  ), [formData.firstName, formData.lastName, validationErrors.firstName, validationErrors.lastName, handleInputChange]);
 
-  const renderOrganizationField = () => (
+  const renderOrganizationField = useMemo(() => () => (
     <TextField
       fullWidth
       label="Organization Name"
@@ -462,16 +514,18 @@ export default function AuthPage({
         ),
       }}
       sx={{ mb: 2 }}
+      autoComplete="organization"
     />
-  );
+  ), [formData.organizationName, validationErrors.organizationName, queryParams.organization, handleInputChange]);
 
-  const renderTermsCheckbox = () => (
+  const renderTermsCheckbox = useMemo(() => () => (
     <FormControlLabel
       control={
         <Checkbox
           checked={formData.acceptTerms}
           onChange={handleInputChange('acceptTerms')}
           color="primary"
+          required
         />
       }
       label={
@@ -493,9 +547,9 @@ export default function AuthPage({
         }
       }}
     />
-  );
+  ), [formData.acceptTerms, validationErrors.acceptTerms, theme, handleInputChange]);
 
-  const renderRememberMe = () => (
+  const renderRememberMe = useMemo(() => () => (
     <FormControlLabel
       control={
         <Checkbox
@@ -507,9 +561,9 @@ export default function AuthPage({
       label="Remember me"
       sx={{ mb: 2 }}
     />
-  );
+  ), [formData.rememberMe, handleInputChange]);
 
-  const renderSubmitButton = () => {
+  const renderSubmitButton = useMemo(() => () => {
     const buttonText = {
       login: 'Sign In',
       signup: 'Create Account',
@@ -530,21 +584,30 @@ export default function AuthPage({
           mb: 3,
           fontWeight: 600,
           fontSize: '1rem',
+          '&:disabled': {
+            backgroundColor: theme.palette.action.disabledBackground,
+          }
         }}
       >
-        {loading ? <CircularProgress size={24} color="inherit" /> : buttonText}
+        {loading ? (
+          <CircularProgress 
+            size={24} 
+            color="inherit" 
+            sx={{ color: theme.palette.primary.contrastText }} 
+          />
+        ) : buttonText}
       </Button>
     );
-  };
+  }, [mode, loading, theme]);
 
-  const renderGoogleAuthButton = () => (
+  const renderGoogleAuthButton = useMemo(() => () => (
     <Button
       variant="outlined"
       fullWidth
       size="large"
       startIcon={oauthLoading ? <CircularProgress size={20} /> : <Google />}
       onClick={handleGoogleAuth}
-      disabled={oauthLoading}
+      disabled={oauthLoading || loading}
       sx={{ 
         py: 1.5,
         mb: 3,
@@ -553,13 +616,17 @@ export default function AuthPage({
           borderColor: theme.palette.text.primary,
           backgroundColor: alpha(theme.palette.grey[100], 0.5),
         },
+        '&:disabled': {
+          borderColor: theme.palette.action.disabled,
+          color: theme.palette.action.disabled,
+        }
       }}
     >
       Continue with Google
     </Button>
-  );
+  ), [oauthLoading, loading, theme, handleGoogleAuth]);
 
-  const renderDivider = () => (
+  const renderDivider = useMemo(() => () => (
     <Box sx={{ display: 'flex', alignItems: 'center', my: 3 }}>
       <Divider sx={{ flex: 1 }} />
       <Typography variant="body2" color="text.secondary" sx={{ px: 2 }}>
@@ -567,9 +634,9 @@ export default function AuthPage({
       </Typography>
       <Divider sx={{ flex: 1 }} />
     </Box>
-  );
+  ), []);
 
-  const renderModeLinks = () => {
+  const renderModeLinks = useMemo(() => () => {
     if (mode === 'login') {
       return (
         <Box sx={{ textAlign: 'center' }}>
@@ -580,7 +647,7 @@ export default function AuthPage({
               onClick={() => switchMode('signup')}
               disabled={disableSignup}
               size="small"
-              sx={{ textTransform: 'none' }}
+              sx={{ textTransform: 'none', fontWeight: 600 }}
             >
               Sign up
             </Button>
@@ -589,7 +656,7 @@ export default function AuthPage({
             color="secondary"
             onClick={() => switchMode('forgot')}
             size="small"
-            sx={{ textTransform: 'none' }}
+            sx={{ textTransform: 'none', fontWeight: 600 }}
           >
             Forgot your password?
           </Button>
@@ -606,7 +673,7 @@ export default function AuthPage({
               color="primary"
               onClick={() => switchMode('login')}
               size="small"
-              sx={{ textTransform: 'none' }}
+              sx={{ textTransform: 'none', fontWeight: 600 }}
             >
               Sign in
             </Button>
@@ -623,7 +690,7 @@ export default function AuthPage({
             onClick={() => switchMode('login')}
             startIcon={<ArrowBack />}
             size="small"
-            sx={{ textTransform: 'none' }}
+            sx={{ textTransform: 'none', fontWeight: 600 }}
           >
             Back to Sign In
           </Button>
@@ -632,9 +699,9 @@ export default function AuthPage({
     }
 
     return null;
-  };
+  }, [mode, disableSignup, switchMode]);
 
-  const renderForm = () => {
+  const renderForm = useMemo(() => {
     if (authLoading) {
       return (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -644,12 +711,16 @@ export default function AuthPage({
     }
 
     return (
-      <form onSubmit={handleEmailAuth}>
+      <form onSubmit={handleEmailAuth} noValidate>
         {renderHeader()}
         
         {queryParams.invite && (
-          <Alert severity="info" sx={{ mb: 3 }}>
-            <Typography variant="body2">
+          <Alert 
+            severity="info" 
+            sx={{ mb: 3 }}
+            icon={<Business />}
+          >
+            <Typography variant="body2" component="div">
               You've been invited to join an organization. Complete your registration below.
             </Typography>
           </Alert>
@@ -678,7 +749,12 @@ export default function AuthPage({
         {renderModeLinks()}
       </form>
     );
-  };
+  }, [
+    authLoading, handleEmailAuth, renderHeader, queryParams.invite, renderEmailField, 
+    mode, renderNameFields, queryParams.organization, renderOrganizationField, 
+    renderPasswordField, renderConfirmPasswordField, renderRememberMe, renderTermsCheckbox, 
+    renderSubmitButton, renderDivider, renderGoogleAuthButton, renderModeLinks
+  ]);
 
   return (
     <Container maxWidth="sm">
@@ -689,16 +765,16 @@ export default function AuthPage({
           alignItems: 'center',
           justifyContent: 'center',
           py: 4,
-          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.1)} 0%, ${alpha(theme.palette.secondary.light, 0.1)} 100%)`,
+          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.05)} 0%, ${alpha(theme.palette.secondary.light, 0.05)} 100%)`,
         }}
       >
         <Card
-          elevation={3}
+          elevation={2}
           sx={{
             width: '100%',
             maxWidth: compact ? 400 : 480,
             borderRadius: 3,
-            overflow: 'visible',
+            overflow: 'hidden',
             position: 'relative',
             '&:before': {
               content: '""',
@@ -708,24 +784,34 @@ export default function AuthPage({
               right: 0,
               height: 4,
               background: `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-              borderTopLeftRadius: 12,
-              borderTopRightRadius: 12,
             },
           }}
         >
           <CardContent sx={{ p: compact ? 3 : 4, pt: compact ? 4 : 5 }}>
-            {renderForm()}
+            {renderForm}
             
-            <Typography variant="caption" color="text.secondary" sx={{ 
-              display: 'block', 
-              textAlign: 'center', 
-              mt: 4,
-              pt: 2,
-              borderTop: `1px solid ${theme.palette.divider}`,
-            }}>
+            <Typography 
+              variant="caption" 
+              color="text.secondary" 
+              sx={{ 
+                display: 'block', 
+                textAlign: 'center', 
+                mt: 4,
+                pt: 2,
+                borderTop: `1px solid ${theme.palette.divider}`,
+                fontSize: '0.75rem',
+                lineHeight: 1.5,
+              }}
+            >
               By continuing, you agree to our Terms of Service and Privacy Policy.
+              <br />
               Need help?{' '}
-              <Link component={RouterLink} to="/support" color="primary">
+              <Link 
+                component={RouterLink} 
+                to="/support" 
+                color="primary"
+                sx={{ fontSize: '0.75rem', fontWeight: 600 }}
+              >
                 Contact Support
               </Link>
             </Typography>
