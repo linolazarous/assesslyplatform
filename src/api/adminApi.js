@@ -1,9 +1,10 @@
 // src/api/adminApi.js
-import api from './axiosConfig';
+import api, { API_ENDPOINTS, TokenManager, trackError } from './index';
 
 /**
  * Admin API Service
  * Handles all admin-related API calls for the Assessly Platform
+ * Multi-tenant aware with role-based access control
  */
 
 // ==================== DASHBOARD STATS ====================
@@ -20,10 +21,11 @@ import api from './axiosConfig';
  */
 export const fetchAdminStats = async (params = {}) => {
   try {
-    const response = await api.get('/api/v1/admin/dashboard/stats', { params });
+    const response = await api.get('/admin/dashboard/stats', { params });
     return response.data;
   } catch (error) {
-    console.error('Error fetching admin stats:', error);
+    console.error('[AdminAPI] Error fetching admin stats:', error);
+    trackError(error, { endpoint: '/admin/dashboard/stats', params });
     throw error;
   }
 };
@@ -34,10 +36,11 @@ export const fetchAdminStats = async (params = {}) => {
  */
 export const fetchSystemStats = async () => {
   try {
-    const response = await api.get('/api/v1/admin/system/stats');
+    const response = await api.get('/admin/system/stats');
     return response.data;
   } catch (error) {
-    console.error('Error fetching system stats:', error);
+    console.error('[AdminAPI] Error fetching system stats:', error);
+    trackError(error, { endpoint: '/admin/system/stats' });
     throw error;
   }
 };
@@ -57,10 +60,11 @@ export const fetchSystemStats = async () => {
  */
 export const fetchOrganizations = async (params = {}) => {
   try {
-    const response = await api.get('/api/v1/admin/organizations', { params });
+    const response = await api.get('/admin/organizations', { params });
     return response.data;
   } catch (error) {
-    console.error('Error fetching organizations:', error);
+    console.error('[AdminAPI] Error fetching organizations:', error);
+    trackError(error, { endpoint: '/admin/organizations', params });
     throw error;
   }
 };
@@ -72,10 +76,11 @@ export const fetchOrganizations = async (params = {}) => {
  */
 export const fetchOrganizationById = async (organizationId) => {
   try {
-    const response = await api.get(`/api/v1/admin/organizations/${organizationId}`);
+    const response = await api.get(`/admin/organizations/${organizationId}`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching organization:', error);
+    console.error('[AdminAPI] Error fetching organization:', error);
+    trackError(error, { endpoint: `/admin/organizations/${organizationId}` });
     throw error;
   }
 };
@@ -87,10 +92,15 @@ export const fetchOrganizationById = async (organizationId) => {
  */
 export const createOrganization = async (organizationData) => {
   try {
-    const response = await api.post('/api/v1/admin/organizations', organizationData);
+    const response = await api.post('/admin/organizations', organizationData);
     return response.data;
   } catch (error) {
-    console.error('Error creating organization:', error);
+    console.error('[AdminAPI] Error creating organization:', error);
+    trackError(error, { 
+      endpoint: '/admin/organizations', 
+      method: 'POST',
+      data: organizationData 
+    });
     throw error;
   }
 };
@@ -103,10 +113,15 @@ export const createOrganization = async (organizationData) => {
  */
 export const updateOrganization = async (organizationId, updates) => {
   try {
-    const response = await api.put(`/api/v1/admin/organizations/${organizationId}`, updates);
+    const response = await api.put(`/admin/organizations/${organizationId}`, updates);
     return response.data;
   } catch (error) {
-    console.error('Error updating organization:', error);
+    console.error('[AdminAPI] Error updating organization:', error);
+    trackError(error, { 
+      endpoint: `/admin/organizations/${organizationId}`, 
+      method: 'PUT',
+      data: updates 
+    });
     throw error;
   }
 };
@@ -118,10 +133,14 @@ export const updateOrganization = async (organizationId, updates) => {
  */
 export const deleteOrganization = async (organizationId) => {
   try {
-    const response = await api.delete(`/api/v1/admin/organizations/${organizationId}`);
+    const response = await api.delete(`/admin/organizations/${organizationId}`);
     return response.data;
   } catch (error) {
-    console.error('Error deleting organization:', error);
+    console.error('[AdminAPI] Error deleting organization:', error);
+    trackError(error, { 
+      endpoint: `/admin/organizations/${organizationId}`, 
+      method: 'DELETE' 
+    });
     throw error;
   }
 };
@@ -134,10 +153,15 @@ export const deleteOrganization = async (organizationId) => {
  */
 export const updateOrganizationStatus = async (organizationId, status) => {
   try {
-    const response = await api.patch(`/api/v1/admin/organizations/${organizationId}/status`, { status });
+    const response = await api.patch(`/admin/organizations/${organizationId}/status`, { status });
     return response.data;
   } catch (error) {
-    console.error('Error updating organization status:', error);
+    console.error('[AdminAPI] Error updating organization status:', error);
+    trackError(error, { 
+      endpoint: `/admin/organizations/${organizationId}/status`, 
+      method: 'PATCH',
+      data: { status } 
+    });
     throw error;
   }
 };
@@ -157,10 +181,11 @@ export const updateOrganizationStatus = async (organizationId, status) => {
  */
 export const fetchUsers = async (params = {}) => {
   try {
-    const response = await api.get('/api/v1/admin/users', { params });
+    const response = await api.get('/admin/users', { params });
     return response.data;
   } catch (error) {
-    console.error('Error fetching users:', error);
+    console.error('[AdminAPI] Error fetching users:', error);
+    trackError(error, { endpoint: '/admin/users', params });
     throw error;
   }
 };
@@ -172,10 +197,11 @@ export const fetchUsers = async (params = {}) => {
  */
 export const fetchUserById = async (userId) => {
   try {
-    const response = await api.get(`/api/v1/admin/users/${userId}`);
+    const response = await api.get(`/admin/users/${userId}`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching user:', error);
+    console.error('[AdminAPI] Error fetching user:', error);
+    trackError(error, { endpoint: `/admin/users/${userId}` });
     throw error;
   }
 };
@@ -187,10 +213,15 @@ export const fetchUserById = async (userId) => {
  */
 export const createUser = async (userData) => {
   try {
-    const response = await api.post('/api/v1/admin/users', userData);
+    const response = await api.post('/admin/users', userData);
     return response.data;
   } catch (error) {
-    console.error('Error creating user:', error);
+    console.error('[AdminAPI] Error creating user:', error);
+    trackError(error, { 
+      endpoint: '/admin/users', 
+      method: 'POST',
+      data: userData 
+    });
     throw error;
   }
 };
@@ -203,10 +234,15 @@ export const createUser = async (userData) => {
  */
 export const updateUser = async (userId, updates) => {
   try {
-    const response = await api.put(`/api/v1/admin/users/${userId}`, updates);
+    const response = await api.put(`/admin/users/${userId}`, updates);
     return response.data;
   } catch (error) {
-    console.error('Error updating user:', error);
+    console.error('[AdminAPI] Error updating user:', error);
+    trackError(error, { 
+      endpoint: `/admin/users/${userId}`, 
+      method: 'PUT',
+      data: updates 
+    });
     throw error;
   }
 };
@@ -224,10 +260,15 @@ export const updateUserRole = async (userId, role, organizationId = null) => {
     if (organizationId) {
       payload.organizationId = organizationId;
     }
-    const response = await api.patch(`/api/v1/admin/users/${userId}/role`, payload);
+    const response = await api.patch(`/admin/users/${userId}/role`, payload);
     return response.data;
   } catch (error) {
-    console.error('Error updating user role:', error);
+    console.error('[AdminAPI] Error updating user role:', error);
+    trackError(error, { 
+      endpoint: `/admin/users/${userId}/role`, 
+      method: 'PATCH',
+      data: { role, organizationId } 
+    });
     throw error;
   }
 };
@@ -240,10 +281,15 @@ export const updateUserRole = async (userId, role, organizationId = null) => {
  */
 export const updateUserStatus = async (userId, status) => {
   try {
-    const response = await api.patch(`/api/v1/admin/users/${userId}/status`, { status });
+    const response = await api.patch(`/admin/users/${userId}/status`, { status });
     return response.data;
   } catch (error) {
-    console.error('Error updating user status:', error);
+    console.error('[AdminAPI] Error updating user status:', error);
+    trackError(error, { 
+      endpoint: `/admin/users/${userId}/status`, 
+      method: 'PATCH',
+      data: { status } 
+    });
     throw error;
   }
 };
@@ -260,14 +306,19 @@ export const bulkImportUsers = async (file, organizationId) => {
     formData.append('file', file);
     formData.append('organizationId', organizationId);
 
-    const response = await api.post('/api/v1/admin/users/import', formData, {
+    const response = await api.post('/admin/users/import', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
     return response.data;
   } catch (error) {
-    console.error('Error importing users:', error);
+    console.error('[AdminAPI] Error importing users:', error);
+    trackError(error, { 
+      endpoint: '/admin/users/import', 
+      method: 'POST',
+      fileName: file.name 
+    });
     throw error;
   }
 };
@@ -286,10 +337,11 @@ export const bulkImportUsers = async (file, organizationId) => {
  */
 export const fetchAssessments = async (params = {}) => {
   try {
-    const response = await api.get('/api/v1/admin/assessments', { params });
+    const response = await api.get('/admin/assessments', { params });
     return response.data;
   } catch (error) {
-    console.error('Error fetching assessments:', error);
+    console.error('[AdminAPI] Error fetching assessments:', error);
+    trackError(error, { endpoint: '/admin/assessments', params });
     throw error;
   }
 };
@@ -301,10 +353,11 @@ export const fetchAssessments = async (params = {}) => {
  */
 export const fetchAssessmentAnalytics = async (assessmentId) => {
   try {
-    const response = await api.get(`/api/v1/admin/assessments/${assessmentId}/analytics`);
+    const response = await api.get(`/admin/assessments/${assessmentId}/analytics`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching assessment analytics:', error);
+    console.error('[AdminAPI] Error fetching assessment analytics:', error);
+    trackError(error, { endpoint: `/admin/assessments/${assessmentId}/analytics` });
     throw error;
   }
 };
@@ -317,10 +370,14 @@ export const fetchAssessmentAnalytics = async (assessmentId) => {
  */
 export const fetchAssessmentResponses = async (assessmentId, params = {}) => {
   try {
-    const response = await api.get(`/api/v1/admin/assessments/${assessmentId}/responses`, { params });
+    const response = await api.get(`/admin/assessments/${assessmentId}/responses`, { params });
     return response.data;
   } catch (error) {
-    console.error('Error fetching assessment responses:', error);
+    console.error('[AdminAPI] Error fetching assessment responses:', error);
+    trackError(error, { 
+      endpoint: `/admin/assessments/${assessmentId}/responses`, 
+      params 
+    });
     throw error;
   }
 };
@@ -333,10 +390,15 @@ export const fetchAssessmentResponses = async (assessmentId, params = {}) => {
  */
 export const updateAssessmentStatus = async (assessmentId, status) => {
   try {
-    const response = await api.patch(`/api/v1/admin/assessments/${assessmentId}/status`, { status });
+    const response = await api.patch(`/admin/assessments/${assessmentId}/status`, { status });
     return response.data;
   } catch (error) {
-    console.error('Error updating assessment status:', error);
+    console.error('[AdminAPI] Error updating assessment status:', error);
+    trackError(error, { 
+      endpoint: `/admin/assessments/${assessmentId}/status`, 
+      method: 'PATCH',
+      data: { status } 
+    });
     throw error;
   }
 };
@@ -352,10 +414,11 @@ export const updateAssessmentStatus = async (assessmentId, status) => {
  */
 export const fetchAssessmentAnalyticsOverTime = async (params = {}) => {
   try {
-    const response = await api.get('/api/v1/admin/analytics/assessments', { params });
+    const response = await api.get('/admin/analytics/assessments', { params });
     return response.data;
   } catch (error) {
-    console.error('Error fetching assessment analytics:', error);
+    console.error('[AdminAPI] Error fetching assessment analytics:', error);
+    trackError(error, { endpoint: '/admin/analytics/assessments', params });
     throw error;
   }
 };
@@ -367,10 +430,11 @@ export const fetchAssessmentAnalyticsOverTime = async (params = {}) => {
  */
 export const fetchUserActivityAnalytics = async (params = {}) => {
   try {
-    const response = await api.get('/api/v1/admin/analytics/user-activity', { params });
+    const response = await api.get('/admin/analytics/user-activity', { params });
     return response.data;
   } catch (error) {
-    console.error('Error fetching user activity analytics:', error);
+    console.error('[AdminAPI] Error fetching user activity analytics:', error);
+    trackError(error, { endpoint: '/admin/analytics/user-activity', params });
     throw error;
   }
 };
@@ -382,10 +446,11 @@ export const fetchUserActivityAnalytics = async (params = {}) => {
  */
 export const fetchRevenueAnalytics = async (params = {}) => {
   try {
-    const response = await api.get('/api/v1/admin/analytics/revenue', { params });
+    const response = await api.get('/admin/analytics/revenue', { params });
     return response.data;
   } catch (error) {
-    console.error('Error fetching revenue analytics:', error);
+    console.error('[AdminAPI] Error fetching revenue analytics:', error);
+    trackError(error, { endpoint: '/admin/analytics/revenue', params });
     throw error;
   }
 };
@@ -397,10 +462,15 @@ export const fetchRevenueAnalytics = async (params = {}) => {
  */
 export const generateReport = async (reportConfig) => {
   try {
-    const response = await api.post('/api/v1/admin/reports/generate', reportConfig);
+    const response = await api.post('/admin/reports/generate', reportConfig);
     return response.data;
   } catch (error) {
-    console.error('Error generating report:', error);
+    console.error('[AdminAPI] Error generating report:', error);
+    trackError(error, { 
+      endpoint: '/admin/reports/generate', 
+      method: 'POST',
+      data: reportConfig 
+    });
     throw error;
   }
 };
@@ -413,10 +483,11 @@ export const generateReport = async (reportConfig) => {
  */
 export const fetchSystemHealth = async () => {
   try {
-    const response = await api.get('/api/v1/admin/system/health');
+    const response = await api.get('/admin/system/health');
     return response.data;
   } catch (error) {
-    console.error('Error fetching system health:', error);
+    console.error('[AdminAPI] Error fetching system health:', error);
+    trackError(error, { endpoint: '/admin/system/health' });
     throw error;
   }
 };
@@ -427,10 +498,11 @@ export const fetchSystemHealth = async () => {
  */
 export const fetchPerformanceMetrics = async () => {
   try {
-    const response = await api.get('/api/v1/admin/system/performance');
+    const response = await api.get('/admin/system/performance');
     return response.data;
   } catch (error) {
-    console.error('Error fetching performance metrics:', error);
+    console.error('[AdminAPI] Error fetching performance metrics:', error);
+    trackError(error, { endpoint: '/admin/system/performance' });
     throw error;
   }
 };
@@ -441,10 +513,11 @@ export const fetchPerformanceMetrics = async () => {
  */
 export const fetchDatabaseStats = async () => {
   try {
-    const response = await api.get('/api/v1/admin/system/database');
+    const response = await api.get('/admin/system/database');
     return response.data;
   } catch (error) {
-    console.error('Error fetching database stats:', error);
+    console.error('[AdminAPI] Error fetching database stats:', error);
+    trackError(error, { endpoint: '/admin/system/database' });
     throw error;
   }
 };
@@ -460,10 +533,11 @@ export const fetchDatabaseStats = async () => {
  */
 export const fetchRecentActivities = async (params = {}) => {
   try {
-    const response = await api.get('/api/v1/admin/activities/recent', { params });
+    const response = await api.get('/admin/activities/recent', { params });
     return response.data;
   } catch (error) {
-    console.error('Error fetching recent activities:', error);
+    console.error('[AdminAPI] Error fetching recent activities:', error);
+    trackError(error, { endpoint: '/admin/activities/recent', params });
     throw error;
   }
 };
@@ -475,10 +549,11 @@ export const fetchRecentActivities = async (params = {}) => {
  */
 export const fetchActivityLogs = async (params = {}) => {
   try {
-    const response = await api.get('/api/v1/admin/activities', { params });
+    const response = await api.get('/admin/activities', { params });
     return response.data;
   } catch (error) {
-    console.error('Error fetching activity logs:', error);
+    console.error('[AdminAPI] Error fetching activity logs:', error);
+    trackError(error, { endpoint: '/admin/activities', params });
     throw error;
   }
 };
@@ -492,10 +567,11 @@ export const fetchActivityLogs = async (params = {}) => {
  */
 export const fetchSubscriptions = async (params = {}) => {
   try {
-    const response = await api.get('/api/v1/admin/billing/subscriptions', { params });
+    const response = await api.get('/admin/billing/subscriptions', { params });
     return response.data;
   } catch (error) {
-    console.error('Error fetching subscriptions:', error);
+    console.error('[AdminAPI] Error fetching subscriptions:', error);
+    trackError(error, { endpoint: '/admin/billing/subscriptions', params });
     throw error;
   }
 };
@@ -506,10 +582,11 @@ export const fetchSubscriptions = async (params = {}) => {
  */
 export const fetchSubscriptionAnalytics = async () => {
   try {
-    const response = await api.get('/api/v1/admin/billing/analytics');
+    const response = await api.get('/admin/billing/analytics');
     return response.data;
   } catch (error) {
-    console.error('Error fetching subscription analytics:', error);
+    console.error('[AdminAPI] Error fetching subscription analytics:', error);
+    trackError(error, { endpoint: '/admin/billing/analytics' });
     throw error;
   }
 };
@@ -522,10 +599,15 @@ export const fetchSubscriptionAnalytics = async () => {
  */
 export const updateSubscriptionPlan = async (organizationId, plan) => {
   try {
-    const response = await api.put(`/api/v1/admin/billing/organizations/${organizationId}/subscription`, { plan });
+    const response = await api.put(`/admin/billing/organizations/${organizationId}/subscription`, { plan });
     return response.data;
   } catch (error) {
-    console.error('Error updating subscription:', error);
+    console.error('[AdminAPI] Error updating subscription:', error);
+    trackError(error, { 
+      endpoint: `/admin/billing/organizations/${organizationId}/subscription`, 
+      method: 'PUT',
+      data: { plan } 
+    });
     throw error;
   }
 };
@@ -538,10 +620,11 @@ export const updateSubscriptionPlan = async (organizationId, plan) => {
  */
 export const fetchSystemSettings = async () => {
   try {
-    const response = await api.get('/api/v1/admin/settings');
+    const response = await api.get('/admin/settings');
     return response.data;
   } catch (error) {
-    console.error('Error fetching system settings:', error);
+    console.error('[AdminAPI] Error fetching system settings:', error);
+    trackError(error, { endpoint: '/admin/settings' });
     throw error;
   }
 };
@@ -553,10 +636,15 @@ export const fetchSystemSettings = async () => {
  */
 export const updateSystemSettings = async (settings) => {
   try {
-    const response = await api.put('/api/v1/admin/settings', settings);
+    const response = await api.put('/admin/settings', settings);
     return response.data;
   } catch (error) {
-    console.error('Error updating system settings:', error);
+    console.error('[AdminAPI] Error updating system settings:', error);
+    trackError(error, { 
+      endpoint: '/admin/settings', 
+      method: 'PUT',
+      data: settings 
+    });
     throw error;
   }
 };
@@ -567,10 +655,11 @@ export const updateSystemSettings = async (settings) => {
  */
 export const fetchEmailTemplates = async () => {
   try {
-    const response = await api.get('/api/v1/admin/settings/email-templates');
+    const response = await api.get('/admin/settings/email-templates');
     return response.data;
   } catch (error) {
-    console.error('Error fetching email templates:', error);
+    console.error('[AdminAPI] Error fetching email templates:', error);
+    trackError(error, { endpoint: '/admin/settings/email-templates' });
     throw error;
   }
 };
@@ -583,10 +672,15 @@ export const fetchEmailTemplates = async () => {
  */
 export const updateEmailTemplate = async (templateId, updates) => {
   try {
-    const response = await api.put(`/api/v1/admin/settings/email-templates/${templateId}`, updates);
+    const response = await api.put(`/admin/settings/email-templates/${templateId}`, updates);
     return response.data;
   } catch (error) {
-    console.error('Error updating email template:', error);
+    console.error('[AdminAPI] Error updating email template:', error);
+    trackError(error, { 
+      endpoint: `/admin/settings/email-templates/${templateId}`, 
+      method: 'PUT',
+      data: updates 
+    });
     throw error;
   }
 };
@@ -599,50 +693,104 @@ export const updateEmailTemplate = async (templateId, updates) => {
  * @returns {Promise} Mock data
  */
 export const getMockData = async (endpoint) => {
+  // Only return mock data in development
+  if (!import.meta.env.DEV) {
+    console.warn('[AdminAPI] Mock data only available in development');
+    return null;
+  }
+
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 500));
 
   const mockData = {
     'dashboard/stats': {
-      totalAssessments: 1247,
-      activeUsers: 345,
-      totalOrganizations: 48,
-      completedAssessments: 892,
-      pendingAssessments: 67,
-      totalRevenue: 125430,
-      activeAssessments: 156,
-      totalCandidates: 2345,
-      averageScore: 78.5,
-      organizations: [
-        { id: 'org1', name: 'TechCorp Inc.', status: 'active', users: 45 },
-        { id: 'org2', name: 'EduSystems', status: 'active', users: 23 },
-        { id: 'org3', name: 'HealthOrg', status: 'pending', users: 12 },
-      ],
+      success: true,
+      data: {
+        totalAssessments: 1247,
+        activeUsers: 345,
+        totalOrganizations: 48,
+        completedAssessments: 892,
+        pendingAssessments: 67,
+        totalRevenue: 125430,
+        activeAssessments: 156,
+        totalCandidates: 2345,
+        averageScore: 78.5,
+        organizations: [
+          { id: 'org1', name: 'TechCorp Inc.', status: 'active', users: 45 },
+          { id: 'org2', name: 'EduSystems', status: 'active', users: 23 },
+          { id: 'org3', name: 'HealthOrg', status: 'pending', users: 12 },
+        ],
+      },
+      fromMock: true,
     },
     'system/health': {
-      status: 'healthy',
-      healthScore: 98,
-      uptime: '99.9%',
-      responseTime: 125,
-      database: { status: 'connected', size: '2.4GB', connections: 24 },
-      server: { cpu: 45, memory: 67, disk: 32 },
-      services: [
-        { name: 'API', status: 'up', responseTime: 120 },
-        { name: 'Database', status: 'up', responseTime: 45 },
-        { name: 'Cache', status: 'up', responseTime: 12 },
-        { name: 'Email', status: 'up', responseTime: 200 },
-      ],
+      success: true,
+      data: {
+        status: 'healthy',
+        healthScore: 98,
+        uptime: '99.9%',
+        responseTime: 125,
+        database: { status: 'connected', size: '2.4GB', connections: 24 },
+        server: { cpu: 45, memory: 67, disk: 32 },
+        services: [
+          { name: 'API', status: 'up', responseTime: 120 },
+          { name: 'Database', status: 'up', responseTime: 45 },
+          { name: 'Cache', status: 'up', responseTime: 12 },
+          { name: 'Email', status: 'up', responseTime: 200 },
+        ],
+      },
+      fromMock: true,
     },
-    'activities/recent': [
-      { id: 1, user: 'Sarah Johnson', action: 'created_assessment', target: 'Technical Skills Test', timestamp: '2024-01-15T10:30:00Z' },
-      { id: 2, user: 'Michael Chen', action: 'completed_assessment', target: 'Leadership Evaluation', timestamp: '2024-01-15T09:15:00Z' },
-      { id: 3, user: 'System', action: 'organization_created', target: 'NewCorp LLC', timestamp: '2024-01-14T16:45:00Z' },
-      { id: 4, user: 'David Wilson', action: 'user_registered', target: 'john.doe@example.com', timestamp: '2024-01-14T14:20:00Z' },
-      { id: 5, user: 'Admin', action: 'updated_settings', target: 'Email Templates', timestamp: '2024-01-14T11:10:00Z' },
-    ],
+    'activities/recent': {
+      success: true,
+      data: [
+        { id: 1, user: 'Sarah Johnson', action: 'created_assessment', target: 'Technical Skills Test', timestamp: '2024-01-15T10:30:00Z' },
+        { id: 2, user: 'Michael Chen', action: 'completed_assessment', target: 'Leadership Evaluation', timestamp: '2024-01-15T09:15:00Z' },
+        { id: 3, user: 'System', action: 'organization_created', target: 'NewCorp LLC', timestamp: '2024-01-14T16:45:00Z' },
+        { id: 4, user: 'David Wilson', action: 'user_registered', target: 'john.doe@example.com', timestamp: '2024-01-14T14:20:00Z' },
+        { id: 5, user: 'Admin', action: 'updated_settings', target: 'Email Templates', timestamp: '2024-01-14T11:10:00Z' },
+      ],
+      fromMock: true,
+    },
   };
 
-  return mockData[endpoint] || {};
+  return mockData[endpoint] || { success: true, data: {}, fromMock: true };
+};
+
+// ==================== ROLE-BASED ACCESS HELPERS ====================
+
+/**
+ * Check if current user has admin access
+ * @returns {boolean} True if user is admin
+ */
+export const hasAdminAccess = () => {
+  const userInfo = TokenManager.getUserInfo();
+  return userInfo?.role === 'admin' || userInfo?.role === 'super_admin';
+};
+
+/**
+ * Check if current user has super admin access
+ * @returns {boolean} True if user is super admin
+ */
+export const hasSuperAdminAccess = () => {
+  const userInfo = TokenManager.getUserInfo();
+  return userInfo?.role === 'super_admin';
+};
+
+/**
+ * Get admin role display name
+ * @param {string} role - Role code
+ * @returns {string} Display name
+ */
+export const getRoleDisplayName = (role) => {
+  const roles = {
+    'super_admin': 'Super Admin',
+    'admin': 'Administrator',
+    'org_admin': 'Organization Admin',
+    'assessor': 'Assessor',
+    'candidate': 'Candidate',
+  };
+  return roles[role] || role;
 };
 
 // Export all functions
@@ -702,4 +850,9 @@ export default {
   
   // Development
   getMockData,
+  
+  // Role helpers
+  hasAdminAccess,
+  hasSuperAdminAccess,
+  getRoleDisplayName,
 };
