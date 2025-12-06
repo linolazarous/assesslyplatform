@@ -28,6 +28,7 @@ const initMonitoring = () => {
     startTime: appStartTime,
     version: appVersion,
     environment,
+    apiUrl,
   };
 
   // Performance monitoring
@@ -215,32 +216,46 @@ const registerServiceWorker = async () => {
  * 📈 Analytics & Telemetry Initialization
  */
 const initAnalytics = () => {
-  // Only initialize in production if analytics key is provided and valid
-  const analyticsKey = import.meta.env.VITE_ANALYTICS_KEY;
-  const isValidAnalyticsKey = analyticsKey && (
-    analyticsKey.startsWith('G-') || // Google Analytics 4
-    analyticsKey.startsWith('UA-') || // Universal Analytics
-    /^[A-Z0-9-]+$/.test(analyticsKey) // General pattern
-  );
+  // Get analytics endpoint from environment variable
+  const analyticsEndpoint = import.meta.env.VITE_ANALYTICS_ENDPOINT;
   
-  if (isValidAnalyticsKey && import.meta.env.PROD) {
+  // Only initialize if analytics endpoint is configured
+  if (analyticsEndpoint && import.meta.env.PROD) {
     try {
-      // Google Analytics
-      if (!window.gtag) {
-        window.dataLayer = window.dataLayer || [];
-        function gtag() { window.dataLayer.push(arguments); }
-        window.gtag = gtag;
-        gtag('js', new Date());
-        gtag('config', analyticsKey, {
-          page_title: document.title,
-          page_location: window.location.href,
-          transport_type: 'beacon',
+      console.log('📈 Analytics endpoint configured:', analyticsEndpoint);
+      
+      // Initialize custom analytics service if endpoint exists
+      if (window.initAnalyticsService) {
+        window.initAnalyticsService({
+          endpoint: analyticsEndpoint,
+          enableBatch: true,
+        }).then(() => {
+          console.log('✅ Custom analytics service initialized');
+        }).catch(error => {
+          console.warn('⚠️ Custom analytics service failed to initialize:', error);
         });
       }
+      
+      // Initialize Google Analytics if configured separately
+      const gaMeasurementId = import.meta.env.VITE_GA_MEASUREMENT_ID;
+      if (gaMeasurementId && (gaMeasurementId.startsWith('G-') || gaMeasurementId.startsWith('UA-'))) {
+        if (!window.gtag) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag() { window.dataLayer.push(arguments); }
+          window.gtag = gtag;
+          gtag('js', new Date());
+          gtag('config', gaMeasurementId, {
+            page_title: document.title,
+            page_location: window.location.href,
+            transport_type: 'beacon',
+          });
+        }
+        console.log('✅ Google Analytics initialized');
+      }
 
-      // Custom error tracking (only if endpoint exists)
+      // Set up error tracking
       window.trackError = (error, context = {}) => {
-        // Send to Google Analytics
+        // Send to Google Analytics if available
         if (window.gtag) {
           gtag('event', 'exception', {
             description: error?.message || 'Unknown error',
@@ -249,12 +264,11 @@ const initAnalytics = () => {
           });
         }
         
-        // Only send to custom telemetry if not a network error
+        // Send to custom analytics endpoint if not a network error
         const isNetworkError = error?.message?.includes('Network') || 
                               error?.code === 'NETWORK_ERROR';
         
-        if (!isNetworkError) {
-          // Use navigator.sendBeacon for better performance
+        if (!isNetworkError && analyticsEndpoint) {
           const errorData = {
             error: error?.message,
             stack: error?.stack,
@@ -264,18 +278,25 @@ const initAnalytics = () => {
             ...context,
           };
           
-          if (navigator.sendBeacon) {
-            navigator.sendBeacon('/api/v1/telemetry/error', JSON.stringify(errorData));
+          // Use sendBeacon for better performance
+          if (navigator.sendBeacon && analyticsEndpoint.includes('/error')) {
+            navigator.sendBeacon(`${analyticsEndpoint}/error`, JSON.stringify(errorData));
+          } else if (window.trackEvent) {
+            // Use custom analytics service if available
+            window.trackEvent('error', {
+              message: error?.message,
+              type: error?.name,
+            }, context);
           }
         }
       };
 
-      console.log('📈 Analytics initialized');
+      console.log('📈 Analytics system initialized');
     } catch (error) {
       console.warn('⚠️ Analytics initialization failed:', error);
     }
-  } else if (analyticsKey && !isValidAnalyticsKey) {
-    console.warn('⚠️ Invalid analytics key format:', analyticsKey);
+  } else {
+    console.log('ℹ️ Analytics disabled - no endpoint configured');
   }
 };
 
@@ -396,6 +417,7 @@ const initializeApp = async () => {
     // Dispatch app ready event
     setTimeout(() => {
       document.dispatchEvent(new CustomEvent('app:ready'));
+      console.log('✅ Application ready');
     }, 500);
 
   } catch (error) {
@@ -557,6 +579,8 @@ if (import.meta.env.DEV) {
     environment: import.meta.env.MODE,
     buildTime: new Date().toISOString(),
     apiUrl: import.meta.env.VITE_API_BASE_URL,
+    analyticsEndpoint: import.meta.env.VITE_ANALYTICS_ENDPOINT || 'Not configured',
+    gaMeasurementId: import.meta.env.VITE_GA_MEASUREMENT_ID || 'Not configured',
   };
 
   // Development console styling
@@ -607,6 +631,24 @@ if (import.meta.env.DEV) {
         metrics.resource = performance.getEntriesByType('resource');
       }
       return metrics;
+    },
+    testAnalytics: () => {
+      console.group('🔍 Analytics Test');
+      console.log('Analytics Endpoint:', import.meta.env.VITE_ANALYTICS_ENDPOINT || 'Not set');
+      console.log('GA Measurement ID:', import.meta.env.VITE_GA_MEASUREMENT_ID || 'Not set');
+      console.log('Is Production:', import.meta.env.PROD);
+      
+      if (window.trackEvent) {
+        console.log('Custom analytics service is available');
+        window.trackEvent('test_event', { test: true });
+      } else {
+        console.log('Custom analytics service not available');
+      }
+      
+      if (window.gtag) {
+        console.log('Google Analytics is available');
+      }
+      console.groupEnd();
     },
   };
 }
