@@ -5,24 +5,27 @@ import { ThemeProvider, CssBaseline, Snackbar, Alert } from "@mui/material";
 import ErrorBoundary from "./components/ErrorBoundary";
 import LoadingScreen from "./components/ui/LoadingScreen";
 
-// Auth context
 import { AuthProvider } from "./context/AuthContext";
 
-// Theme hook + theme
-import { useThemeMode } from "./hooks/useThemeMode";
+// Theme hook & theme generator
+import useThemeMode from "./hooks/useThemeMode";
+import createTheme from "./theme";
 
-// Lazy loaded pages
+// Lazy pages
 const LandingPage = React.lazy(() => import("./pages/LandingPage"));
 const PricingPage = React.lazy(() => import("./pages/Pricing"));
 const ContactPage = React.lazy(() => import("./pages/Contact"));
 const Login = React.lazy(() => import("./pages/auth/Login"));
 const Register = React.lazy(() => import("./pages/auth/Register"));
 const DashboardLayout = React.lazy(() => import("./layouts/DashboardLayout"));
-const AdminDashboard = React.lazy(() => import("./pages/dashboard/AdminDashboard"));
+const AdminDashboard = React.lazy(() =>
+  import("./pages/dashboard/AdminDashboard")
+);
 const NotFound = React.lazy(() => import("./pages/errors/NotFound"));
 
 export default function App() {
-  const { theme } = useThemeMode();
+  const { mode } = useThemeMode();
+  const theme = createTheme(mode);
 
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -30,11 +33,9 @@ export default function App() {
     message: "",
   });
 
-  const handleSnackbarClose = () => {
+  const handleSnackbarClose = () =>
     setSnackbar((prev) => ({ ...prev, open: false }));
-  };
 
-  // Global App Error listener
   useEffect(() => {
     const handleError = (event) => {
       console.error("🚨 Application Error:", event.error);
@@ -56,16 +57,16 @@ export default function App() {
           <Router>
             <Suspense fallback={<LoadingScreen fullScreen />}>
               <Routes>
-                {/* Public Routes */}
+                {/* Public */}
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/pricing" element={<PricingPage />} />
                 <Route path="/contact" element={<ContactPage />} />
 
-                {/* Auth Routes */}
+                {/* Auth */}
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
 
-                {/* Protected Routes */}
+                {/* Protected */}
                 <Route path="/dashboard" element={<DashboardLayout />}>
                   <Route index element={<AdminDashboard />} />
                 </Route>
@@ -75,14 +76,20 @@ export default function App() {
               </Routes>
             </Suspense>
 
-            {/* Global Snackbar */}
+            {/* Snackbar */}
             <Snackbar
               open={snackbar.open}
               autoHideDuration={4000}
               onClose={handleSnackbarClose}
-              anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+              anchorOrigin={{
+                vertical: "bottom",
+                horizontal: "center",
+              }}
             >
-              <Alert severity={snackbar.severity} onClose={handleSnackbarClose}>
+              <Alert
+                severity={snackbar.severity}
+                onClose={handleSnackbarClose}
+              >
                 {snackbar.message}
               </Alert>
             </Snackbar>
@@ -92,5 +99,3 @@ export default function App() {
     </ErrorBoundary>
   );
 }
-
-
