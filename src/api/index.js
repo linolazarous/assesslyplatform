@@ -303,13 +303,13 @@ const refreshAccessToken = async () => {
     }
 
     const response = await api.post(
-      '/auth/refresh', // Using relative path since api baseURL is already set
+      '/auth/refresh',
       { refreshToken },
       {
         timeout: 10000,
         headers: {
           'X-Client-Platform': 'web',
-          'X-Bypass-Rate-Limit': 'true' // Don't rate limit token refresh
+          'X-Bypass-Rate-Limit': 'true'
         }
       }
     );
@@ -418,11 +418,9 @@ api.interceptors.response.use(
         const newToken = await refreshAccessToken();
         if (newToken) {
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          // Retry original request with new token
           return api(originalRequest);
         }
       } catch (refreshError) {
-        // Redirect to login if refresh fails
         if (!window.location.pathname.includes('/auth') && 
             !window.location.pathname.includes('/login')) {
           window.location.href = '/login?session=expired';
@@ -494,10 +492,9 @@ api.interceptors.response.use(
 );
 
 // ----------------------
-// API Endpoints (Keep your existing endpoints)
+// API Endpoints
 // ----------------------
 export const API_ENDPOINTS = {
-  // ... (keep your existing endpoints exactly as they are)
   AUTH: {
     REGISTER: '/auth/register',
     LOGIN: '/auth/login',
@@ -511,7 +508,153 @@ export const API_ENDPOINTS = {
     VERIFY_EMAIL: '/auth/verify-email',
     RESEND_VERIFICATION: '/auth/resend-verification',
   },
-  // ... rest of your endpoints
+  ORGANIZATIONS: {
+    BASE: '/organizations',
+    CREATE: '/organizations',
+    LIST: '/organizations',
+    DETAIL: (id) => `/organizations/${id}`,
+    UPDATE: (id) => `/organizations/${id}`,
+    DELETE: (id) => `/organizations/${id}`,
+    MEMBERS: (id) => `/organizations/${id}/members`,
+    INVITE: (id) => `/organizations/${id}/invite`,
+    ACCEPT_INVITE: '/organizations/accept-invite',
+    LEAVE: (id) => `/organizations/${id}/leave`,
+  },
+  USERS: {
+    BASE: '/users',
+    PROFILE: '/users/profile',
+    UPDATE_PROFILE: '/users/profile',
+    CHANGE_PASSWORD: '/users/change-password',
+    UPLOAD_AVATAR: '/users/avatar',
+    PREFERENCES: '/users/preferences',
+  },
+  ASSESSMENTS: {
+    BASE: '/assessments',
+    CREATE: '/assessments',
+    LIST: '/assessments',
+    DETAIL: (id) => `/assessments/${id}`,
+    UPDATE: (id) => `/assessments/${id}`,
+    DELETE: (id) => `/assessments/${id}`,
+    PUBLISH: (id) => `/assessments/${id}/publish`,
+    UNPUBLISH: (id) => `/assessments/${id}/unpublish`,
+    DUPLICATE: (id) => `/assessments/${id}/duplicate`,
+    SHARE: (id) => `/assessments/${id}/share`,
+    COLLABORATORS: (id) => `/assessments/${id}/collaborators`,
+    STATS: (id) => `/assessments/${id}/stats`,
+    TEMPLATES: '/assessments/templates',
+    CATEGORIES: '/assessments/categories',
+  },
+  QUESTIONS: {
+    BASE: (assessmentId) => `/assessments/${assessmentId}/questions`,
+    CREATE: (assessmentId) => `/assessments/${assessmentId}/questions`,
+    LIST: (assessmentId) => `/assessments/${assessmentId}/questions`,
+    DETAIL: (assessmentId, questionId) => `/assessments/${assessmentId}/questions/${questionId}`,
+    UPDATE: (assessmentId, questionId) => `/assessments/${assessmentId}/questions/${questionId}`,
+    DELETE: (assessmentId, questionId) => `/assessments/${assessmentId}/questions/${questionId}`,
+    REORDER: (assessmentId) => `/assessments/${assessmentId}/questions/reorder`,
+    BULK_CREATE: (assessmentId) => `/assessments/${assessmentId}/questions/bulk`,
+    BULK_UPDATE: (assessmentId) => `/assessments/${assessmentId}/questions/bulk`,
+  },
+  RESPONSES: {
+    BASE: '/responses',
+    CREATE: '/responses',
+    LIST: '/responses',
+    DETAIL: (id) => `/responses/${id}`,
+    UPDATE: (id) => `/responses/${id}`,
+    DELETE: (id) => `/responses/${id}`,
+    SUBMIT: (id) => `/responses/${id}/submit`,
+    SCORE: (id) => `/responses/${id}/score`,
+    ANALYZE: (id) => `/responses/${id}/analyze`,
+    BY_ASSESSMENT: (assessmentId) => `/responses/assessment/${assessmentId}`,
+    EXPORT: (assessmentId) => `/responses/export/${assessmentId}`,
+    STATS: (assessmentId) => `/responses/stats/${assessmentId}`,
+  },
+  INVITATIONS: {
+    BASE: '/invitations',
+    CREATE: '/invitations',
+    LIST: '/invitations',
+    DETAIL: (id) => `/invitations/${id}`,
+    UPDATE: (id) => `/invitations/${id}`,
+    DELETE: (id) => `/invitations/${id}`,
+    ACCEPT: (id) => `/invitations/${id}/accept`,
+    REJECT: (id) => `/invitations/${id}/reject`,
+    RESEND: (id) => `/invitations/${id}/resend`,
+    BY_ORGANIZATION: (orgId) => `/invitations/organization/${orgId}`,
+  },
+  ANALYTICS: {
+    BASE: '/analytics',
+    DASHBOARD: '/analytics/dashboard',
+    ASSESSMENT_STATS: (assessmentId) => `/analytics/assessment/${assessmentId}`,
+    RESPONSE_TRENDS: (assessmentId) => `/analytics/assessment/${assessmentId}/trends`,
+    QUESTION_ANALYSIS: (assessmentId) => `/analytics/assessment/${assessmentId}/questions`,
+    EXPORT: (assessmentId) => `/analytics/assessment/${assessmentId}/export`,
+  },
+  FILES: {
+    BASE: '/files',
+    UPLOAD: '/files/upload',
+    DELETE: (id) => `/files/${id}`,
+    DOWNLOAD: (id) => `/files/${id}/download`,
+    PRESIGNED_URL: (id) => `/files/${id}/presigned-url`,
+    LIST: '/files',
+  },
+  NOTIFICATIONS: {
+    BASE: '/notifications',
+    LIST: '/notifications',
+    MARK_READ: (id) => `/notifications/${id}/read`,
+    MARK_ALL_READ: '/notifications/mark-all-read',
+    UNREAD_COUNT: '/notifications/unread-count',
+    SETTINGS: '/notifications/settings',
+  },
+  REPORTS: {
+    BASE: '/reports',
+    GENERATE: '/reports/generate',
+    LIST: '/reports',
+    DETAIL: (id) => `/reports/${id}`,
+    DELETE: (id) => `/reports/${id}`,
+    DOWNLOAD: (id) => `/reports/${id}/download`,
+    SHARE: (id) => `/reports/${id}/share`,
+  },
+  INTEGRATIONS: {
+    BASE: '/integrations',
+    LIST: '/integrations',
+    CONNECT: (type) => `/integrations/${type}/connect`,
+    DISCONNECT: (type) => `/integrations/${type}/disconnect`,
+    STATUS: (type) => `/integrations/${type}/status`,
+    SYNC: (type) => `/integrations/${type}/sync`,
+  },
+  SUBSCRIPTIONS: {
+    BASE: '/subscriptions',
+    PLANS: '/subscriptions/plans',
+    SUBSCRIBE: '/subscriptions/subscribe',
+    CANCEL: '/subscriptions/cancel',
+    UPGRADE: '/subscriptions/upgrade',
+    INVOICES: '/subscriptions/invoices',
+    CURRENT: '/subscriptions/current',
+  },
+  SUPPORT: {
+    BASE: '/support',
+    TICKETS: '/support/tickets',
+    CREATE_TICKET: '/support/tickets',
+    TICKET_DETAIL: (id) => `/support/tickets/${id}`,
+    MESSAGES: (ticketId) => `/support/tickets/${ticketId}/messages`,
+    SEND_MESSAGE: (ticketId) => `/support/tickets/${ticketId}/messages`,
+    CLOSE: (ticketId) => `/support/tickets/${ticketId}/close`,
+    CATEGORIES: '/support/categories',
+    PRIORITIES: '/support/priorities',
+  },
+  HEALTH: {
+    CHECK: '/health',
+    METRICS: '/health/metrics',
+    STATUS: '/health/status',
+  },
+  UTILS: {
+    VALIDATE_EMAIL: '/utils/validate-email',
+    GENERATE_SLUG: '/utils/generate-slug',
+    COUNTRIES: '/utils/countries',
+    TIMEZONES: '/utils/timezones',
+    LANGUAGES: '/utils/languages',
+    CURRENCIES: '/utils/currencies',
+  }
 };
 
 // ----------------------
@@ -605,10 +748,6 @@ export const debounce = (func, wait) => {
   };
 };
 
-// ----------------------
-// Export API Instance & Utilities
-// ----------------------
-
 // Debounced health check for background monitoring
 export const debouncedHealthCheck = debounce(() => {
   checkServerHealth().then(health => {
@@ -634,13 +773,5 @@ if (typeof window !== 'undefined') {
   }, 10000);
 }
 
-// Export everything
+// Export the API instance as default
 export default api;
-export {
-  TokenManager,
-  trackError,
-  debounce,
-  checkServerHealth,
-  API_ENDPOINTS,
-  apiEvents,
-};
