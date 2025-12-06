@@ -5,7 +5,7 @@ import { ThemeProvider, CssBaseline, Snackbar, Alert } from "@mui/material";
 import ErrorBoundary from "./ErrorBoundary";
 import LoadingScreen from "./components/ui/LoadingScreen";
 
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider } from "./contexts/AuthContext";
 
 // Theme hook & theme generator
 import useThemeMode from "./hooks/useThemeMode";
@@ -99,4 +99,5 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
 
