@@ -9,7 +9,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 
 // Theme hook & theme generator
 import useThemeMode from "./hooks/useThemeMode";
-import createTheme from "./theme";
+import createTheme from "./styles/theme";
 
 // Lazy pages
 const LandingPage = React.lazy(() => import("./pages/LandingPage"));
@@ -99,5 +99,6 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
 
 
