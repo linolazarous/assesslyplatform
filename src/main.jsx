@@ -6,6 +6,9 @@ import App from './App.jsx';
 import ErrorBoundary from './ErrorBoundary.jsx';
 import './styles/global.css';
 
+// Import analytics utilities
+import { initAnalytics as initCustomAnalytics, isAnalyticsConfigured } from './utils/analytics';
+
 /**
  * 🚀 Production Monitoring & Performance Tracking
  */
@@ -15,13 +18,15 @@ const initMonitoring = () => {
   const appVersion = import.meta.env.VITE_APP_VERSION || '1.0.0';
   const environment = import.meta.env.MODE || 'development';
   const apiUrl = import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform-t49h.onrender.com';
-  const analyticsKey = import.meta.env.VITE_ANALYTICS_KEY;
+  const customAnalyticsEndpoint = import.meta.env.VITE_ANALYTICS_ENDPOINT;
+  const gaMeasurementId = import.meta.env.VITE_GA_MEASUREMENT_ID;
   
   console.group('🚀 Assessly Platform - Startup');
   console.log(`📦 Version: ${appVersion}`);
   console.log(`🌍 Environment: ${environment}`);
   console.log(`🔗 API: ${apiUrl}`);
-  console.log(`🔑 Analytics: ${analyticsKey ? 'Configured' : 'Not configured'}`);
+  console.log(`📊 Custom Analytics: ${customAnalyticsEndpoint ? 'Configured' : 'Not configured'}`);
+  console.log(`📈 Google Analytics: ${gaMeasurementId ? 'Configured' : 'Not configured'}`);
   console.log(`🕒 Start Time: ${new Date().toISOString()}`);
   console.groupEnd();
 
@@ -31,7 +36,8 @@ const initMonitoring = () => {
     version: appVersion,
     environment,
     apiUrl,
-    analyticsConfigured: !!analyticsKey,
+    customAnalyticsConfigured: !!customAnalyticsEndpoint,
+    googleAnalyticsConfigured: !!gaMeasurementId,
   };
 };
 
@@ -168,20 +174,18 @@ const registerServiceWorker = async () => {
 };
 
 /**
- * 📈 Analytics & Telemetry Initialization
+ * 📈 Google Analytics Initialization
  */
-const initAnalytics = () => {
-  // Get Google Analytics Measurement ID from environment variable
-  const analyticsKey = import.meta.env.VITE_ANALYTICS_KEY;
+const initGoogleAnalytics = () => {
+  const gaMeasurementId = import.meta.env.VITE_GA_MEASUREMENT_ID;
   
-  // Only initialize if analytics key is provided and valid
-  const isValidAnalyticsKey = analyticsKey && (
-    analyticsKey.startsWith('G-') || // Google Analytics 4
-    analyticsKey.startsWith('UA-') || // Universal Analytics
-    /^[A-Z0-9-]+$/.test(analyticsKey) // General pattern for validation
+  // Only initialize if GA measurement ID is provided and valid
+  const isValidGAMeasurementId = gaMeasurementId && (
+    gaMeasurementId.startsWith('G-') || // Google Analytics 4
+    gaMeasurementId.startsWith('UA-')   // Universal Analytics
   );
   
-  if (isValidAnalyticsKey && import.meta.env.PROD) {
+  if (isValidGAMeasurementId && import.meta.env.PROD) {
     try {
       // Initialize Google Analytics
       if (!window.gtag) {
@@ -189,54 +193,118 @@ const initAnalytics = () => {
         function gtag() { window.dataLayer.push(arguments); }
         window.gtag = gtag;
         gtag('js', new Date());
-        gtag('config', analyticsKey, {
+        gtag('config', gaMeasurementId, {
           page_title: document.title,
           page_location: window.location.href,
           transport_type: 'beacon',
         });
       }
 
-      // Set up error tracking for Google Analytics
-      window.trackError = (error, context = {}) => {
-        // Send to Google Analytics
-        if (window.gtag) {
-          gtag('event', 'exception', {
-            description: error?.message || 'Unknown error',
-            fatal: error?.fatal !== false,
-            ...context,
-          });
-        }
-        
-        // Also send to your backend error tracking endpoint if not a network error
-        const isNetworkError = error?.message?.includes('Network') || 
-                              error?.code === 'NETWORK_ERROR';
-        
-        if (!isNetworkError) {
-          const errorData = {
-            error: error?.message,
-            stack: error?.stack,
-            url: window.location.href,
-            timestamp: new Date().toISOString(),
-            userAgent: navigator.userAgent,
-            ...context,
-          };
-          
-          // Use sendBeacon for better performance
-          if (navigator.sendBeacon) {
-            navigator.sendBeacon('/api/v1/telemetry/error', JSON.stringify(errorData));
-          }
-        }
-      };
-
-      console.log('✅ Google Analytics initialized with key:', analyticsKey);
+      console.log('✅ Google Analytics initialized with ID:', gaMeasurementId);
+      return true;
     } catch (error) {
       console.warn('⚠️ Google Analytics initialization failed:', error);
+      return false;
     }
-  } else if (analyticsKey && !isValidAnalyticsKey) {
-    console.warn('⚠️ Invalid Google Analytics key format:', analyticsKey);
+  } else if (gaMeasurementId && !isValidGAMeasurementId) {
+    console.warn('⚠️ Invalid Google Analytics Measurement ID format:', gaMeasurementId);
   } else {
     console.log('ℹ️ Google Analytics not configured or disabled in development');
   }
+  return false;
+};
+
+/**
+ * 📊 Custom Analytics Initialization
+ */
+const initCustomAnalyticsService = async () => {
+  const customAnalyticsEndpoint = import.meta.env.VITE_ANALYTICS_ENDPOINT;
+  
+  if (!customAnalyticsEndpoint) {
+    console.log('ℹ️ Custom analytics not configured - VITE_ANALYTICS_ENDPOINT is not set');
+    return false;
+  }
+
+  try {
+    // Initialize custom analytics service
+    const initialized = await initCustomAnalytics({
+      endpoint: customAnalyticsEndpoint,
+      enableBatch: true,
+      requireConsent: true,
+    });
+    
+    if (initialized) {
+      console.log('✅ Custom analytics service initialized:', customAnalyticsEndpoint);
+      return true;
+    } else {
+      console.log('ℹ️ Custom analytics service not initialized (user consent required)');
+      return false;
+    }
+  } catch (error) {
+    console.error('⚠️ Custom analytics service initialization failed:', error);
+    return false;
+  }
+};
+
+/**
+ * 📈 Combined Analytics & Telemetry Initialization
+ */
+const initAllAnalytics = async () => {
+  console.group('📊 Analytics Initialization');
+  
+  // Initialize Google Analytics (non-blocking)
+  const gaInitialized = initGoogleAnalytics();
+  
+  // Initialize custom analytics service
+  const customAnalyticsInitialized = await initCustomAnalyticsService();
+  
+  // Set up global error tracking function
+  window.trackError = (error, context = {}) => {
+    // Send to Google Analytics if available
+    if (window.gtag) {
+      window.gtag('event', 'exception', {
+        description: error?.message || 'Unknown error',
+        fatal: error?.fatal !== false,
+        ...context,
+      });
+    }
+    
+    // Send to custom analytics if available
+    const customAnalytics = window.trackEvent;
+    if (customAnalytics && typeof customAnalytics === 'function') {
+      customAnalytics('error', {
+        error_message: error?.message,
+        error_type: error?.name,
+        ...context,
+      });
+    }
+    
+    // Send to backend error tracking endpoint if not a network error
+    const isNetworkError = error?.message?.includes('Network') || 
+                          error?.code === 'NETWORK_ERROR';
+    
+    if (!isNetworkError) {
+      const errorData = {
+        error: error?.message,
+        stack: error?.stack,
+        url: window.location.href,
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent,
+        ...context,
+      };
+      
+      // Use sendBeacon for better performance
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/v1/telemetry/error', JSON.stringify(errorData));
+      }
+    }
+  };
+
+  console.log('✅ Analytics initialization complete', {
+    googleAnalytics: gaInitialized,
+    customAnalytics: customAnalyticsInitialized,
+  });
+  console.groupEnd();
 };
 
 /**
@@ -350,8 +418,12 @@ const initializeApp = async () => {
 
     console.log('✅ React application mounted successfully');
 
-    // Initialize analytics after a delay (non-blocking)
-    setTimeout(initAnalytics, 1000);
+    // Initialize all analytics services after a delay (non-blocking)
+    setTimeout(() => {
+      initAllAnalytics().catch(error => {
+        console.error('Failed to initialize analytics:', error);
+      });
+    }, 1500);
 
     // Dispatch app ready event
     setTimeout(() => {
@@ -518,7 +590,8 @@ if (import.meta.env.DEV) {
     environment: import.meta.env.MODE,
     buildTime: new Date().toISOString(),
     apiUrl: import.meta.env.VITE_API_BASE_URL,
-    analyticsKey: import.meta.env.VITE_ANALYTICS_KEY || 'Not configured',
+    customAnalyticsEndpoint: import.meta.env.VITE_ANALYTICS_ENDPOINT || 'Not configured',
+    gaMeasurementId: import.meta.env.VITE_GA_MEASUREMENT_ID || 'Not configured',
     isProduction: import.meta.env.PROD,
   };
 
@@ -572,14 +645,15 @@ if (import.meta.env.DEV) {
       return metrics;
     },
     testAnalytics: () => {
-      console.group('🔍 Google Analytics Test');
-      const analyticsKey = import.meta.env.VITE_ANALYTICS_KEY;
-      console.log('Analytics Key:', analyticsKey || 'Not set');
+      console.group('🔍 Analytics System Test');
+      console.log('Custom Analytics Endpoint:', import.meta.env.VITE_ANALYTICS_ENDPOINT || 'Not set');
+      console.log('Google Analytics ID:', import.meta.env.VITE_GA_MEASUREMENT_ID || 'Not set');
       console.log('Is Production:', import.meta.env.PROD);
       
+      // Test Google Analytics
       if (window.gtag) {
         console.log('✅ Google Analytics is available');
-        console.log('Testing page view...');
+        console.log('Testing GA page view...');
         gtag('event', 'page_view', {
           page_title: 'Test Page',
           page_location: window.location.href,
@@ -587,7 +661,34 @@ if (import.meta.env.DEV) {
       } else {
         console.log('❌ Google Analytics not initialized');
       }
+      
+      // Test custom analytics
+      if (window.trackEvent && typeof window.trackEvent === 'function') {
+        console.log('✅ Custom analytics is available');
+        console.log('Testing custom analytics event...');
+        window.trackEvent('test_event', { test: true, timestamp: new Date().toISOString() });
+      } else {
+        console.log('❌ Custom analytics not initialized');
+      }
+      
+      // Test error tracking
+      if (window.trackError && typeof window.trackError === 'function') {
+        console.log('✅ Error tracking is available');
+      }
+      
       console.groupEnd();
     },
+    getAnalyticsStatus: () => {
+      return {
+        googleAnalytics: {
+          configured: !!import.meta.env.VITE_GA_MEASUREMENT_ID,
+          initialized: !!window.gtag,
+        },
+        customAnalytics: {
+          configured: !!import.meta.env.VITE_ANALYTICS_ENDPOINT,
+          initialized: !!(window.trackEvent && typeof window.trackEvent === 'function'),
+        },
+      };
+    },
   };
-  }
+}
