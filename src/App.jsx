@@ -15,8 +15,7 @@ import createTheme from "./styles/theme";
 const LandingPage = React.lazy(() => import("./pages/LandingPage"));
 const PricingPage = React.lazy(() => import("./pages/Pricing"));
 const ContactPage = React.lazy(() => import("./pages/Contact"));
-const Login = React.lazy(() => import("./pages/auth/Login"));
-const Register = React.lazy(() => import("./pages/auth/Register"));
+const AuthPage = React.lazy(() => import("./pages/Auth")); // Import the comprehensive AuthPage
 const DashboardLayout = React.lazy(() => import("./layouts/DashboardLayout"));
 const AdminDashboard = React.lazy(() =>
   import("./pages/dashboard/AdminDashboard")
@@ -62,9 +61,12 @@ export default function App() {
                 <Route path="/pricing" element={<PricingPage />} />
                 <Route path="/contact" element={<ContactPage />} />
 
-                {/* Auth */}
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
+                {/* Auth - Single comprehensive page with mode switching */}
+                <Route path="/auth" element={<AuthPage />} />
+                <Route path="/login" element={<AuthPage defaultMode="login" />} />
+                <Route path="/register" element={<AuthPage defaultMode="signup" />} />
+                <Route path="/forgot-password" element={<AuthPage defaultMode="forgot" />} />
+                <Route path="/reset-password" element={<AuthPage defaultMode="reset" />} />
 
                 {/* Protected */}
                 <Route path="/dashboard" element={<DashboardLayout />}>
@@ -99,6 +101,3 @@ export default function App() {
     </ErrorBoundary>
   );
 }
-
-
-
