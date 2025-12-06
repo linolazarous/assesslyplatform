@@ -6,13 +6,20 @@
  */
 
 // Configuration
-const ANALYTICS_ENDPOINT = import.meta.env.VITE_ANALYTICS_ENDPOINT || '/api/v1/analytics';
+const ANALYTICS_ENDPOINT = import.meta.env.VITE_ANALYTICS_ENDPOINT;
 const ENABLE_CONSOLE_LOG = import.meta.env.MODE === 'development';
 const BATCH_SIZE = 10;
 const BATCH_INTERVAL = 5000; // 5 seconds
 const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
+
+/**
+ * Check if analytics endpoint is configured
+ */
+export const isAnalyticsConfigured = () => {
+  return !!ANALYTICS_ENDPOINT && ANALYTICS_ENDPOINT.trim() !== '';
+};
 
 // Event types
 export const EVENT_TYPES = Object.freeze({
@@ -58,7 +65,13 @@ let userConsent = false;
 export const initAnalytics = async (config = {}) => {
   if (isInitialized) {
     logDebug('Analytics already initialized');
-    return;
+    return false;
+  }
+
+  // Check if analytics endpoint is configured
+  if (!isAnalyticsConfigured()) {
+    console.warn('Analytics not configured - VITE_ANALYTICS_ENDPOINT is not set or empty');
+    return false;
   }
 
   const {
@@ -66,7 +79,6 @@ export const initAnalytics = async (config = {}) => {
     organizationId: initialOrgId = null,
     userProperties: initialUserProps = {},
     enableBatch = true,
-    endpoint = ANALYTICS_ENDPOINT,
     requireConsent = true
   } = config;
 
@@ -74,7 +86,7 @@ export const initAnalytics = async (config = {}) => {
   userConsent = !requireConsent || hasUserConsent();
   if (!userConsent) {
     logDebug('Analytics disabled - user consent required');
-    return;
+    return false;
   }
 
   userId = initialUserId;
@@ -110,7 +122,7 @@ export const initAnalytics = async (config = {}) => {
       sessionId,
       userId,
       organizationId,
-      endpoint
+      endpoint: ANALYTICS_ENDPOINT
     });
 
     return true;
@@ -140,8 +152,10 @@ export const setAnalyticsConsent = (consent) => {
     localStorage.setItem('analytics_consent', consent ? 'true' : 'false');
     userConsent = consent;
     
-    if (consent && !isInitialized) {
-      initAnalytics({ requireConsent: false });
+    if (consent && !isInitialized && isAnalyticsConfigured()) {
+      initAnalytics({ requireConsent: false }).catch(error => {
+        console.error('Failed to initialize analytics after consent:', error);
+      });
     } else if (!consent) {
       cleanupAnalytics();
     }
@@ -783,7 +797,8 @@ export const getSessionInfo = () => ({
   organizationId,
   queuedEventsCount: queuedEvents.length,
   isInitialized,
-  userConsent
+  userConsent,
+  isConfigured: isAnalyticsConfigured()
 });
 
 /**
@@ -799,6 +814,7 @@ export default {
   setAnalyticsConsent,
   retryOfflineEvents,
   isAnalyticsReady,
+  isAnalyticsConfigured,
   getSessionInfo,
   
   // User management
