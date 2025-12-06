@@ -1,4 +1,4 @@
-// src/components/ErrorBoundary.jsx
+// src/ErrorBoundary.jsx
 import React from "react";
 import {
   Box,
@@ -797,6 +797,7 @@ export const ErrorBoundaryContext = React.createContext({
 });
 
 export default ErrorBoundary;
+
 
 
 
