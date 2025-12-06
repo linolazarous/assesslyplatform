@@ -2,7 +2,7 @@
 import React, { Suspense, useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ThemeProvider, CssBaseline, Snackbar, Alert } from "@mui/material";
-import ErrorBoundary from "./components/common/ErrorBoundary";
+import ErrorBoundary from "./components/ErrorBoundary";
 import LoadingScreen from "./components/common/LoadingScreen";
 
 // Auth context
@@ -92,3 +92,4 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
