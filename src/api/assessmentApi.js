@@ -1,9 +1,10 @@
 // src/api/assessmentApi.js
-import api from './axiosConfig';
+import api, { API_ENDPOINTS, TokenManager, trackError } from './index';
 
 /**
  * Assessment API Service - Complete version
  * Handles all assessment operations for the Assessly Platform
+ * Multi-tenant aware with organization context
  */
 
 // ==================== ASSESSMENT SESSION MANAGEMENT ====================
@@ -18,10 +19,23 @@ import api from './axiosConfig';
  */
 export const startAssessment = async (assessmentId, options = {}) => {
   try {
-    const response = await api.post(`/api/v1/assessments/${assessmentId}/start`, options);
+    // Add organization context if not provided
+    if (!options.organizationId) {
+      const tenantId = TokenManager.getTenantId();
+      if (tenantId) {
+        options.organizationId = tenantId;
+      }
+    }
+
+    const response = await api.post(`/assessments/${assessmentId}/start`, options);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error starting assessment:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/start`, 
+      method: 'POST',
+      assessmentId 
+    });
     throw error;
   }
 };
@@ -34,10 +48,15 @@ export const startAssessment = async (assessmentId, options = {}) => {
  */
 export const submitAssessment = async (assessmentId, submissionData) => {
   try {
-    const response = await api.post(`/api/v1/assessments/${assessmentId}/submit`, submissionData);
+    const response = await api.post(`/assessments/${assessmentId}/submit`, submissionData);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error submitting assessment:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/submit`, 
+      method: 'POST',
+      assessmentId 
+    });
     throw error;
   }
 };
@@ -50,11 +69,18 @@ export const submitAssessment = async (assessmentId, submissionData) => {
  */
 export const saveProgress = async (assessmentId, progressData) => {
   try {
-    const response = await api.post(`/api/v1/assessments/${assessmentId}/progress`, progressData);
+    const response = await api.post(`/assessments/${assessmentId}/progress`, progressData);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error saving progress:', error);
-    throw error;
+    // Don't throw for progress save errors - they shouldn't break the assessment
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/progress`, 
+      method: 'POST',
+      assessmentId,
+      isProgressSave: true 
+    });
+    return { success: false, message: 'Failed to save progress' };
   }
 };
 
@@ -65,10 +91,15 @@ export const saveProgress = async (assessmentId, progressData) => {
  */
 export const getAssessmentProgress = async (assessmentId) => {
   try {
-    const response = await api.get(`/api/v1/assessments/${assessmentId}/progress`);
+    const response = await api.get(`/assessments/${assessmentId}/progress`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error getting progress:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/progress`, 
+      method: 'GET',
+      assessmentId 
+    });
     throw error;
   }
 };
@@ -82,10 +113,17 @@ export const getAssessmentProgress = async (assessmentId) => {
  */
 export const fetchAssessments = async (params = {}) => {
   try {
-    const response = await api.get('/api/v1/assessments', { params });
+    // Add organization context for filtering
+    const organizationId = TokenManager.getTenantId();
+    if (organizationId && !params.organizationId) {
+      params.organizationId = organizationId;
+    }
+
+    const response = await api.get('/assessments', { params });
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error fetching assessments:', error);
+    trackError(error, { endpoint: '/assessments', params });
     throw error;
   }
 };
@@ -97,10 +135,11 @@ export const fetchAssessments = async (params = {}) => {
  */
 export const fetchAssessmentById = async (assessmentId) => {
   try {
-    const response = await api.get(`/api/v1/assessments/${assessmentId}`);
+    const response = await api.get(`/assessments/${assessmentId}`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error fetching assessment:', error);
+    trackError(error, { endpoint: `/assessments/${assessmentId}` });
     throw error;
   }
 };
@@ -112,10 +151,23 @@ export const fetchAssessmentById = async (assessmentId) => {
  */
 export const createAssessment = async (assessmentData) => {
   try {
-    const response = await api.post('/api/v1/assessments', assessmentData);
+    // Add organization context if not provided
+    if (!assessmentData.organizationId) {
+      const tenantId = TokenManager.getTenantId();
+      if (tenantId) {
+        assessmentData.organizationId = tenantId;
+      }
+    }
+
+    const response = await api.post('/assessments', assessmentData);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error creating assessment:', error);
+    trackError(error, { 
+      endpoint: '/assessments', 
+      method: 'POST',
+      data: assessmentData 
+    });
     throw error;
   }
 };
@@ -128,10 +180,15 @@ export const createAssessment = async (assessmentData) => {
  */
 export const updateAssessment = async (assessmentId, updates) => {
   try {
-    const response = await api.put(`/api/v1/assessments/${assessmentId}`, updates);
+    const response = await api.put(`/assessments/${assessmentId}`, updates);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error updating assessment:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}`, 
+      method: 'PUT',
+      data: updates 
+    });
     throw error;
   }
 };
@@ -143,10 +200,14 @@ export const updateAssessment = async (assessmentId, updates) => {
  */
 export const deleteAssessment = async (assessmentId) => {
   try {
-    const response = await api.delete(`/api/v1/assessments/${assessmentId}`);
+    const response = await api.delete(`/assessments/${assessmentId}`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error deleting assessment:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}`, 
+      method: 'DELETE' 
+    });
     throw error;
   }
 };
@@ -158,10 +219,14 @@ export const deleteAssessment = async (assessmentId) => {
  */
 export const publishAssessment = async (assessmentId) => {
   try {
-    const response = await api.post(`/api/v1/assessments/${assessmentId}/publish`);
+    const response = await api.post(`/assessments/${assessmentId}/publish`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error publishing assessment:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/publish`, 
+      method: 'POST' 
+    });
     throw error;
   }
 };
@@ -173,10 +238,14 @@ export const publishAssessment = async (assessmentId) => {
  */
 export const unpublishAssessment = async (assessmentId) => {
   try {
-    const response = await api.post(`/api/v1/assessments/${assessmentId}/unpublish`);
+    const response = await api.post(`/assessments/${assessmentId}/unpublish`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error unpublishing assessment:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/unpublish`, 
+      method: 'POST' 
+    });
     throw error;
   }
 };
@@ -189,10 +258,15 @@ export const unpublishAssessment = async (assessmentId) => {
  */
 export const updateAssessmentStatus = async (assessmentId, status) => {
   try {
-    const response = await api.put(`/api/v1/assessments/${assessmentId}/status`, { status });
+    const response = await api.put(`/assessments/${assessmentId}/status`, { status });
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error updating assessment status:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/status`, 
+      method: 'PUT',
+      data: { status } 
+    });
     throw error;
   }
 };
@@ -205,10 +279,15 @@ export const updateAssessmentStatus = async (assessmentId, status) => {
  */
 export const duplicateAssessment = async (assessmentId, options = {}) => {
   try {
-    const response = await api.post(`/api/v1/assessments/${assessmentId}/duplicate`, options);
+    const response = await api.post(`/assessments/${assessmentId}/duplicate`, options);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error duplicating assessment:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/duplicate`, 
+      method: 'POST',
+      data: options 
+    });
     throw error;
   }
 };
@@ -222,10 +301,11 @@ export const duplicateAssessment = async (assessmentId, options = {}) => {
  */
 export const fetchAssessmentQuestions = async (assessmentId) => {
   try {
-    const response = await api.get(`/api/v1/assessments/${assessmentId}/questions`);
+    const response = await api.get(`/assessments/${assessmentId}/questions`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error fetching questions:', error);
+    trackError(error, { endpoint: `/assessments/${assessmentId}/questions` });
     throw error;
   }
 };
@@ -238,10 +318,15 @@ export const fetchAssessmentQuestions = async (assessmentId) => {
  */
 export const addQuestion = async (assessmentId, questionData) => {
   try {
-    const response = await api.post(`/api/v1/assessments/${assessmentId}/questions`, questionData);
+    const response = await api.post(`/assessments/${assessmentId}/questions`, questionData);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error adding question:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/questions`, 
+      method: 'POST',
+      data: questionData 
+    });
     throw error;
   }
 };
@@ -255,10 +340,15 @@ export const addQuestion = async (assessmentId, questionData) => {
  */
 export const updateQuestion = async (assessmentId, questionId, updates) => {
   try {
-    const response = await api.put(`/api/v1/assessments/${assessmentId}/questions/${questionId}`, updates);
+    const response = await api.put(`/assessments/${assessmentId}/questions/${questionId}`, updates);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error updating question:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/questions/${questionId}`, 
+      method: 'PUT',
+      data: updates 
+    });
     throw error;
   }
 };
@@ -271,10 +361,14 @@ export const updateQuestion = async (assessmentId, questionId, updates) => {
  */
 export const deleteQuestion = async (assessmentId, questionId) => {
   try {
-    const response = await api.delete(`/api/v1/assessments/${assessmentId}/questions/${questionId}`);
+    const response = await api.delete(`/assessments/${assessmentId}/questions/${questionId}`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error deleting question:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/questions/${questionId}`, 
+      method: 'DELETE' 
+    });
     throw error;
   }
 };
@@ -287,10 +381,15 @@ export const deleteQuestion = async (assessmentId, questionId) => {
  */
 export const reorderQuestions = async (assessmentId, questionOrder) => {
   try {
-    const response = await api.put(`/api/v1/assessments/${assessmentId}/questions/reorder`, { order: questionOrder });
+    const response = await api.put(`/assessments/${assessmentId}/questions/reorder`, { order: questionOrder });
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error reordering questions:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/questions/reorder`, 
+      method: 'PUT',
+      data: { order: questionOrder } 
+    });
     throw error;
   }
 };
@@ -304,10 +403,11 @@ export const reorderQuestions = async (assessmentId, questionOrder) => {
  */
 export const fetchSessionById = async (sessionId) => {
   try {
-    const response = await api.get(`/api/v1/assessment-sessions/${sessionId}`);
+    const response = await api.get(`/assessment-sessions/${sessionId}`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error fetching session:', error);
+    trackError(error, { endpoint: `/assessment-sessions/${sessionId}` });
     throw error;
   }
 };
@@ -319,10 +419,11 @@ export const fetchSessionById = async (sessionId) => {
  */
 export const fetchUserSessions = async (params = {}) => {
   try {
-    const response = await api.get('/api/v1/assessment-sessions', { params });
+    const response = await api.get('/assessment-sessions', { params });
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error fetching user sessions:', error);
+    trackError(error, { endpoint: '/assessment-sessions', params });
     throw error;
   }
 };
@@ -334,10 +435,14 @@ export const fetchUserSessions = async (params = {}) => {
  */
 export const resumeSession = async (sessionId) => {
   try {
-    const response = await api.post(`/api/v1/assessment-sessions/${sessionId}/resume`);
+    const response = await api.post(`/assessment-sessions/${sessionId}/resume`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error resuming session:', error);
+    trackError(error, { 
+      endpoint: `/assessment-sessions/${sessionId}/resume`, 
+      method: 'POST' 
+    });
     throw error;
   }
 };
@@ -349,10 +454,11 @@ export const resumeSession = async (sessionId) => {
  */
 export const validateSession = async (sessionId) => {
   try {
-    const response = await api.get(`/api/v1/assessment-sessions/${sessionId}/validate`);
+    const response = await api.get(`/assessment-sessions/${sessionId}/validate`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error validating session:', error);
+    trackError(error, { endpoint: `/assessment-sessions/${sessionId}/validate` });
     throw error;
   }
 };
@@ -367,10 +473,14 @@ export const validateSession = async (sessionId) => {
  */
 export const fetchAssessmentResults = async (assessmentId, params = {}) => {
   try {
-    const response = await api.get(`/api/v1/assessments/${assessmentId}/results`, { params });
+    const response = await api.get(`/assessments/${assessmentId}/results`, { params });
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error fetching results:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/results`, 
+      params 
+    });
     throw error;
   }
 };
@@ -382,10 +492,11 @@ export const fetchAssessmentResults = async (assessmentId, params = {}) => {
  */
 export const fetchUserResult = async (sessionId) => {
   try {
-    const response = await api.get(`/api/v1/assessment-sessions/${sessionId}/result`);
+    const response = await api.get(`/assessment-sessions/${sessionId}/result`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error fetching user result:', error);
+    trackError(error, { endpoint: `/assessment-sessions/${sessionId}/result` });
     throw error;
   }
 };
@@ -398,10 +509,15 @@ export const fetchUserResult = async (sessionId) => {
  */
 export const generateReport = async (sessionId, reportOptions = {}) => {
   try {
-    const response = await api.post(`/api/v1/assessment-sessions/${sessionId}/report`, reportOptions);
+    const response = await api.post(`/assessment-sessions/${sessionId}/report`, reportOptions);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error generating report:', error);
+    trackError(error, { 
+      endpoint: `/assessment-sessions/${sessionId}/report`, 
+      method: 'POST',
+      data: reportOptions 
+    });
     throw error;
   }
 };
@@ -415,10 +531,11 @@ export const generateReport = async (sessionId, reportOptions = {}) => {
  */
 export const fetchAssessmentAnalytics = async (assessmentId) => {
   try {
-    const response = await api.get(`/api/v1/assessments/${assessmentId}/analytics`);
+    const response = await api.get(`/assessments/${assessmentId}/analytics`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error fetching analytics:', error);
+    trackError(error, { endpoint: `/assessments/${assessmentId}/analytics` });
     throw error;
   }
 };
@@ -431,10 +548,13 @@ export const fetchAssessmentAnalytics = async (assessmentId) => {
  */
 export const fetchQuestionAnalytics = async (assessmentId, questionId) => {
   try {
-    const response = await api.get(`/api/v1/assessments/${assessmentId}/questions/${questionId}/analytics`);
+    const response = await api.get(`/assessments/${assessmentId}/questions/${questionId}/analytics`);
     return response.data;
   } catch (error) {
     console.error('[AssessmentAPI] Error fetching question analytics:', error);
+    trackError(error, { 
+      endpoint: `/assessments/${assessmentId}/questions/${questionId}/analytics` 
+    });
     throw error;
   }
 };
@@ -447,97 +567,204 @@ export const fetchQuestionAnalytics = async (assessmentId, questionId) => {
  * @returns {Promise} Mock data
  */
 export const getMockAssessmentData = async (endpoint) => {
+  // Only return mock data in development
+  if (!import.meta.env.DEV) {
+    console.warn('[AssessmentAPI] Mock data only available in development');
+    return null;
+  }
+
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 500));
 
   const mockData = {
     'startAssessment': {
-      id: 'session_12345',
-      assessmentId: 'assessment_123',
-      userId: 'user_456',
-      status: 'in_progress',
-      startedAt: '2024-01-15T10:30:00Z',
-      timeRemaining: 2700, // 45 minutes in seconds
-      currentQuestion: 0,
-      answers: {},
-      progress: 0,
-      assessment: {
-        id: 'assessment_123',
-        title: 'JavaScript Fundamentals Assessment',
-        description: 'Test your JavaScript knowledge with this comprehensive assessment',
-        duration: 60,
-        passingScore: 70,
-        totalQuestions: 20,
-        status: 'published',
-        type: 'quiz',
-        difficulty: 'intermediate',
-        tags: ['javascript', 'programming', 'fundamentals'],
-        createdBy: 'user_456',
-        createdAt: '2024-01-10T10:30:00Z',
-        updatedAt: '2024-01-15T14:20:00Z',
-        organizationId: 'org_789',
+      success: true,
+      data: {
+        id: 'session_12345',
+        assessmentId: 'assessment_123',
+        userId: 'user_456',
+        status: 'in_progress',
+        startedAt: '2024-01-15T10:30:00Z',
+        timeRemaining: 2700, // 45 minutes in seconds
+        currentQuestion: 0,
+        answers: {},
+        progress: 0,
+        assessment: {
+          id: 'assessment_123',
+          title: 'JavaScript Fundamentals Assessment',
+          description: 'Test your JavaScript knowledge with this comprehensive assessment',
+          duration: 60,
+          passingScore: 70,
+          totalQuestions: 20,
+          status: 'published',
+          type: 'quiz',
+          difficulty: 'intermediate',
+          tags: ['javascript', 'programming', 'fundamentals'],
+          createdBy: 'user_456',
+          createdAt: '2024-01-10T10:30:00Z',
+          updatedAt: '2024-01-15T14:20:00Z',
+          organizationId: 'org_789',
+        },
+        questions: [
+          {
+            id: 'q1',
+            type: 'multiple_choice',
+            text: 'What is the output of: console.log(typeof null)?',
+            options: [
+              { id: '1', text: 'null', isCorrect: false },
+              { id: '2', text: 'undefined', isCorrect: false },
+              { id: '3', text: 'object', isCorrect: true },
+              { id: '4', text: 'string', isCorrect: false },
+            ],
+            points: 5,
+            required: true,
+            explanation: 'In JavaScript, typeof null returns "object". This is a known language querk.',
+          },
+          {
+            id: 'q2',
+            type: 'multiple_choice',
+            text: 'Which method is used to add an element to the end of an array?',
+            options: [
+              { id: '1', text: 'push()', isCorrect: true },
+              { id: '2', text: 'pop()', isCorrect: false },
+              { id: '3', text: 'shift()', isCorrect: false },
+              { id: '4', text: 'unshift()', isCorrect: false },
+            ],
+            points: 5,
+            required: true,
+            explanation: 'The push() method adds one or more elements to the end of an array.',
+          },
+        ],
       },
-      questions: [
-        {
-          id: 'q1',
-          type: 'multiple_choice',
-          text: 'What is the output of: console.log(typeof null)?',
-          options: [
-            { id: '1', text: 'null', isCorrect: false },
-            { id: '2', text: 'undefined', isCorrect: false },
-            { id: '3', text: 'object', isCorrect: true },
-            { id: '4', text: 'string', isCorrect: false },
-          ],
-          points: 5,
-          required: true,
-          explanation: 'In JavaScript, typeof null returns "object". This is a known language quirk.',
-        },
-        {
-          id: 'q2',
-          type: 'multiple_choice',
-          text: 'Which method is used to add an element to the end of an array?',
-          options: [
-            { id: '1', text: 'push()', isCorrect: true },
-            { id: '2', text: 'pop()', isCorrect: false },
-            { id: '3', text: 'shift()', isCorrect: false },
-            { id: '4', text: 'unshift()', isCorrect: false },
-          ],
-          points: 5,
-          required: true,
-          explanation: 'The push() method adds one or more elements to the end of an array.',
-        },
-      ],
+      fromMock: true,
     },
     'getAssessmentProgress': {
-      sessionId: 'session_12345',
-      currentQuestion: 1,
-      answers: { 0: 'object' },
-      timeSpent: 900, // 15 minutes in seconds
-      lastSaved: '2024-01-15T10:45:00Z',
-      bookmarkedQuestions: [],
-      flaggedQuestions: [],
+      success: true,
+      data: {
+        sessionId: 'session_12345',
+        currentQuestion: 1,
+        answers: { 0: 'object' },
+        timeSpent: 900, // 15 minutes in seconds
+        lastSaved: '2024-01-15T10:45:00Z',
+        bookmarkedQuestions: [],
+        flaggedQuestions: [],
+      },
+      fromMock: true,
     },
     'submitAssessment': {
-      id: 'response_789',
-      assessmentId: 'assessment_123',
-      sessionId: 'session_12345',
-      userId: 'user_456',
-      score: 85,
-      totalPoints: 100,
-      percentage: 85,
-      status: 'completed',
-      submittedAt: '2024-01-15T11:30:00Z',
-      timeTaken: 45, // minutes
-      passed: true,
-      feedback: 'Great job! You demonstrated strong JavaScript fundamentals.',
-      answers: {
-        0: { questionId: 'q1', answer: 'object', correct: true, points: 5 },
-        1: { questionId: 'q2', answer: 'push()', correct: true, points: 5 },
+      success: true,
+      data: {
+        id: 'response_789',
+        assessmentId: 'assessment_123',
+        sessionId: 'session_12345',
+        userId: 'user_456',
+        score: 85,
+        totalPoints: 100,
+        percentage: 85,
+        status: 'completed',
+        submittedAt: '2024-01-15T11:30:00Z',
+        timeTaken: 45, // minutes
+        passed: true,
+        feedback: 'Great job! You demonstrated strong JavaScript fundamentals.',
+        answers: {
+          0: { questionId: 'q1', answer: 'object', correct: true, points: 5 },
+          1: { questionId: 'q2', answer: 'push()', correct: true, points: 5 },
+        },
       },
+      fromMock: true,
     },
   };
 
-  return mockData[endpoint] || {};
+  return mockData[endpoint] || { success: true, data: {}, fromMock: true };
+};
+
+// ==================== ASSESSMENT HELPER FUNCTIONS ====================
+
+/**
+ * Calculate assessment progress percentage
+ * @param {number} currentQuestion - Current question index
+ * @param {number} totalQuestions - Total number of questions
+ * @returns {number} Progress percentage
+ */
+export const calculateProgressPercentage = (currentQuestion, totalQuestions) => {
+  if (!totalQuestions || totalQuestions === 0) return 0;
+  return Math.round(((currentQuestion + 1) / totalQuestions) * 100);
+};
+
+/**
+ * Format assessment duration
+ * @param {number} minutes - Duration in minutes
+ * @returns {string} Formatted duration
+ */
+export const formatDuration = (minutes) => {
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes > 0 
+    ? `${hours}h ${remainingMinutes}min` 
+    : `${hours}h`;
+};
+
+/**
+ * Get assessment difficulty color
+ * @param {string} difficulty - Difficulty level
+ * @returns {string} Color code
+ */
+export const getDifficultyColor = (difficulty) => {
+  const colors = {
+    beginner: '#4caf50', // green
+    easy: '#4caf50', // green
+    intermediate: '#ff9800', // orange
+    advanced: '#f44336', // red
+    expert: '#9c27b0', // purple
+  };
+  return colors[difficulty?.toLowerCase()] || '#757575'; // default grey
+};
+
+/**
+ * Check if assessment is available for taking
+ * @param {Object} assessment - Assessment object
+ * @returns {Object} Availability check result
+ */
+export const checkAssessmentAvailability = (assessment) => {
+  const now = new Date();
+  const availability = {
+    available: true,
+    message: '',
+    reason: null,
+  };
+
+  if (!assessment) {
+    availability.available = false;
+    availability.message = 'Assessment not found';
+    availability.reason = 'not_found';
+    return availability;
+  }
+
+  if (assessment.status !== 'published') {
+    availability.available = false;
+    availability.message = 'This assessment is not published';
+    availability.reason = 'not_published';
+    return availability;
+  }
+
+  if (assessment.startDate && new Date(assessment.startDate) > now) {
+    availability.available = false;
+    availability.message = `Assessment starts on ${new Date(assessment.startDate).toLocaleDateString()}`;
+    availability.reason = 'not_started';
+    return availability;
+  }
+
+  if (assessment.endDate && new Date(assessment.endDate) < now) {
+    availability.available = false;
+    availability.message = `Assessment ended on ${new Date(assessment.endDate).toLocaleDateString()}`;
+    availability.reason = 'ended';
+    return availability;
+  }
+
+  return availability;
 };
 
 // ==================== SINGLE DEFAULT EXPORT ====================
@@ -581,6 +808,12 @@ export default {
   // Analytics
   fetchAssessmentAnalytics,
   fetchQuestionAnalytics,
+  
+  // Helper Functions
+  calculateProgressPercentage,
+  formatDuration,
+  getDifficultyColor,
+  checkAssessmentAvailability,
   
   // Development
   getMockAssessmentData,
