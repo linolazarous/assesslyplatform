@@ -1,30 +1,47 @@
 // src/utils/billing-helpers.js
-import { ObjectId } from 'mongodb';
-
 /**
  * Enterprise-grade billing utilities for Stripe integration and subscription management
  * Compatible with Assessly Platform's multi-tenant architecture
  */
 
 // Standard plan structure mapping Stripe price IDs to internal plans
-const PLAN_MAPPINGS = {
+export const PLAN_MAPPINGS = Object.freeze({
   // Free Plan (handled internally, no Stripe ID)
-  'free': {
+  FREE: 'free',
+  STARTER_MONTHLY: 'price_starter_monthly',
+  STARTER_YEARLY: 'price_starter_yearly',
+  PROFESSIONAL_MONTHLY: 'price_professional_monthly',
+  PROFESSIONAL_YEARLY: 'price_professional_yearly',
+  ENTERPRISE_YEARLY: 'price_enterprise_yearly'
+});
+
+// Plan configurations with immutable structure
+export const PLAN_CONFIGS = Object.freeze({
+  [PLAN_MAPPINGS.FREE]: {
     name: 'Free',
     tier: 'free',
     features: {
       maxUsers: 3,
       maxAssessments: 10,
-      maxStorage: 100,
+      maxStorage: 100, // MB
       customBranding: false,
       apiAccess: false,
-      prioritySupport: false
+      prioritySupport: false,
+      advancedAnalytics: false,
+      ssoIntegration: false,
+      webhooks: false,
+      whiteLabeling: false,
+      customDomains: false
     },
-    stripePriceId: null
+    stripePriceId: null,
+    billingPeriod: null,
+    monthlyPrice: 0,
+    annualPrice: 0,
+    isEnterprise: false,
+    isTrialEligible: false
   },
   
-  // Starter Plan
-  'price_starter_monthly': {
+  [PLAN_MAPPINGS.STARTER_MONTHLY]: {
     name: 'Starter',
     tier: 'starter',
     features: {
@@ -32,13 +49,23 @@ const PLAN_MAPPINGS = {
       maxAssessments: 100,
       maxStorage: 1000,
       customBranding: true,
-      apiAccess: false,
+      apiAccess: true,
       prioritySupport: false,
-      advancedAnalytics: true
+      advancedAnalytics: true,
+      ssoIntegration: false,
+      webhooks: false,
+      whiteLabeling: false,
+      customDomains: false
     },
-    billingPeriod: 'monthly'
+    stripePriceId: PLAN_MAPPINGS.STARTER_MONTHLY,
+    billingPeriod: 'monthly',
+    monthlyPrice: 29,
+    annualPrice: 299,
+    isEnterprise: false,
+    isTrialEligible: true
   },
-  'price_starter_yearly': {
+  
+  [PLAN_MAPPINGS.STARTER_YEARLY]: {
     name: 'Starter',
     tier: 'starter',
     features: {
@@ -46,15 +73,23 @@ const PLAN_MAPPINGS = {
       maxAssessments: 100,
       maxStorage: 1000,
       customBranding: true,
-      apiAccess: false,
+      apiAccess: true,
       prioritySupport: false,
-      advancedAnalytics: true
+      advancedAnalytics: true,
+      ssoIntegration: false,
+      webhooks: false,
+      whiteLabeling: false,
+      customDomains: false
     },
-    billingPeriod: 'yearly'
+    stripePriceId: PLAN_MAPPINGS.STARTER_YEARLY,
+    billingPeriod: 'yearly',
+    monthlyPrice: 24.92, // Annual / 12
+    annualPrice: 299,
+    isEnterprise: false,
+    isTrialEligible: true
   },
   
-  // Professional Plan
-  'price_professional_monthly': {
+  [PLAN_MAPPINGS.PROFESSIONAL_MONTHLY]: {
     name: 'Professional',
     tier: 'professional',
     features: {
@@ -66,11 +101,19 @@ const PLAN_MAPPINGS = {
       prioritySupport: true,
       advancedAnalytics: true,
       ssoIntegration: true,
-      webhooks: true
+      webhooks: true,
+      whiteLabeling: false,
+      customDomains: true
     },
-    billingPeriod: 'monthly'
+    stripePriceId: PLAN_MAPPINGS.PROFESSIONAL_MONTHLY,
+    billingPeriod: 'monthly',
+    monthlyPrice: 99,
+    annualPrice: 999,
+    isEnterprise: false,
+    isTrialEligible: true
   },
-  'price_professional_yearly': {
+  
+  [PLAN_MAPPINGS.PROFESSIONAL_YEARLY]: {
     name: 'Professional',
     tier: 'professional',
     features: {
@@ -82,13 +125,19 @@ const PLAN_MAPPINGS = {
       prioritySupport: true,
       advancedAnalytics: true,
       ssoIntegration: true,
-      webhooks: true
+      webhooks: true,
+      whiteLabeling: false,
+      customDomains: true
     },
-    billingPeriod: 'yearly'
+    stripePriceId: PLAN_MAPPINGS.PROFESSIONAL_YEARLY,
+    billingPeriod: 'yearly',
+    monthlyPrice: 83.25, // Annual / 12
+    annualPrice: 999,
+    isEnterprise: false,
+    isTrialEligible: true
   },
   
-  // Enterprise Plan
-  'price_enterprise_yearly': {
+  [PLAN_MAPPINGS.ENTERPRISE_YEARLY]: {
     name: 'Enterprise',
     tier: 'enterprise',
     features: {
@@ -103,45 +152,83 @@ const PLAN_MAPPINGS = {
       webhooks: true,
       whiteLabeling: true,
       customDomains: true,
-      compliance: ['GDPR', 'HIPAA', 'SOC2']
+      compliance: ['GDPR', 'HIPAA', 'SOC2'],
+      dedicatedSupport: true,
+      customSLA: true,
+      onboarding: true
     },
-    billingPeriod: 'yearly'
+    stripePriceId: PLAN_MAPPINGS.ENTERPRISE_YEARLY,
+    billingPeriod: 'yearly',
+    monthlyPrice: 499, // Monthly equivalent
+    annualPrice: 4990,
+    isEnterprise: true,
+    isTrialEligible: false
   }
-};
+});
 
 // Stripe status to internal status mapping
-const STATUS_MAPPINGS = {
-  'active': 'active',
-  'trialing': 'trialing',
-  'past_due': 'past_due',
-  'canceled': 'canceled',
-  'unpaid': 'expired',
-  'incomplete': 'incomplete',
-  'incomplete_expired': 'expired'
-};
+export const STATUS_MAPPINGS = Object.freeze({
+  active: 'active',
+  trialing: 'trialing',
+  past_due: 'past_due',
+  canceled: 'canceled',
+  unpaid: 'expired',
+  incomplete: 'incomplete',
+  incomplete_expired: 'expired'
+});
+
+// Internal subscription statuses
+export const SUBSCRIPTION_STATUS = Object.freeze({
+  ACTIVE: 'active',
+  TRIALING: 'trialing',
+  PAST_DUE: 'past_due',
+  CANCELED: 'canceled',
+  EXPIRED: 'expired',
+  INCOMPLETE: 'incomplete'
+});
 
 /**
  * Get comprehensive plan details from Stripe Price ID
  * @param {string} priceId - Stripe Price ID
  * @returns {Object} Complete plan configuration
+ * @throws {Error} If priceId is invalid
  */
 export const getPlanDetails = (priceId) => {
-  if (!priceId) {
-    return PLAN_MAPPINGS.free;
+  if (!priceId || priceId === 'free') {
+    return PLAN_CONFIGS[PLAN_MAPPINGS.FREE];
   }
   
-  const plan = PLAN_MAPPINGS[priceId];
-  if (!plan) {
-    console.warn(`[Billing] Unknown price ID: ${priceId}. Using Free plan as fallback.`);
-    return PLAN_MAPPINGS.free;
+  const planConfig = PLAN_CONFIGS[priceId];
+  if (!planConfig) {
+    throw new Error(`Unknown price ID: ${priceId}`);
   }
   
   return {
-    ...plan,
-    stripePriceId: priceId,
-    isAnnual: plan.billingPeriod === 'yearly',
-    isMonthly: plan.billingPeriod === 'monthly'
+    ...planConfig,
+    isAnnual: planConfig.billingPeriod === 'yearly',
+    isMonthly: planConfig.billingPeriod === 'monthly',
+    isFree: planConfig.tier === 'free'
   };
+};
+
+/**
+ * Get plan by tier and billing period
+ * @param {string} tier - Plan tier (free, starter, professional, enterprise)
+ * @param {string} billingPeriod - Billing period (monthly, yearly)
+ * @returns {Object} Plan configuration
+ */
+export const getPlanByTier = (tier, billingPeriod = 'monthly') => {
+  const tierKey = tier.toUpperCase();
+  const periodKey = billingPeriod.toUpperCase();
+  const planKey = `${tierKey}_${periodKey}`;
+  
+  const mappingKey = PLAN_MAPPINGS[planKey];
+  if (!mappingKey) {
+    if (tier === 'free') return PLAN_CONFIGS[PLAN_MAPPINGS.FREE];
+    throw new Error(`Plan not found for tier: ${tier}, period: ${billingPeriod}`);
+  }
+  
+  return PLAN_CONFIGS[mappingKey];
 };
 
 /**
@@ -150,53 +237,64 @@ export const getPlanDetails = (priceId) => {
  * @returns {string} Internal subscription status
  */
 export const mapSubscriptionStatus = (stripeStatus) => {
-  return STATUS_MAPPINGS[stripeStatus] || 'unknown';
+  const status = STATUS_MAPPINGS[stripeStatus];
+  if (!status) {
+    console.warn(`Unknown Stripe status: ${stripeStatus}`);
+    return SUBSCRIPTION_STATUS.INCOMPLETE;
+  }
+  return status;
 };
 
 /**
- * Calculate trial end date based on Stripe trial period
- * @param {number} trialEnd - Unix timestamp from Stripe
- * @returns {Date|null} Trial end date
+ * Check if subscription is active
+ * @param {string} status - Subscription status
+ * @returns {boolean} True if subscription is active
  */
-export const calculateTrialEndDate = (trialEnd) => {
-  if (!trialEnd) return null;
-  return new Date(trialEnd * 1000);
+export const isSubscriptionActive = (status) => {
+  const activeStatuses = [SUBSCRIPTION_STATUS.ACTIVE, SUBSCRIPTION_STATUS.TRIALING];
+  return activeStatuses.includes(status);
 };
 
 /**
  * Calculate subscription period dates
  * @param {Object} stripeSubscription - Stripe subscription object
- * @returns {Object} Period dates
+ * @returns {Object} Period dates and metadata
  */
 export const calculateSubscriptionPeriod = (stripeSubscription) => {
+  if (!stripeSubscription) {
+    throw new Error('Stripe subscription is required');
+  }
+
   const currentPeriodStart = new Date(stripeSubscription.current_period_start * 1000);
   const currentPeriodEnd = new Date(stripeSubscription.current_period_end * 1000);
   const trialEnd = stripeSubscription.trial_end 
     ? new Date(stripeSubscription.trial_end * 1000)
     : null;
 
-  // Calculate next billing date
-  let nextBillingDate = null;
-  if (stripeSubscription.cancel_at_period_end) {
-    nextBillingDate = new Date(stripeSubscription.cancel_at * 1000);
-  } else if (stripeSubscription.current_period_end) {
-    nextBillingDate = new Date(stripeSubscription.current_period_end * 1000);
-  }
-
-  // Calculate days remaining
   const now = new Date();
-  const daysRemaining = trialEnd 
-    ? Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24))
-    : Math.ceil((currentPeriodEnd - now) / (1000 * 60 * 60 * 24));
+  const daysInPeriod = Math.ceil((currentPeriodEnd - currentPeriodStart) / (1000 * 60 * 60 * 24));
+  const daysUsed = Math.ceil((now - currentPeriodStart) / (1000 * 60 * 60 * 24));
+  const daysRemaining = Math.max(0, Math.ceil((currentPeriodEnd - now) / (1000 * 60 * 60 * 24)));
+  
+  const trialDaysRemaining = trialEnd 
+    ? Math.max(0, Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24)))
+    : 0;
 
   return {
     startDate: currentPeriodStart,
     endDate: currentPeriodEnd,
     trialEndDate: trialEnd,
-    nextBillingDate,
-    daysRemaining: Math.max(0, daysRemaining),
+    nextBillingDate: stripeSubscription.cancel_at_period_end 
+      ? new Date(stripeSubscription.cancel_at * 1000)
+      : currentPeriodEnd,
+    daysInPeriod,
+    daysUsed,
+    daysRemaining,
+    trialDaysRemaining,
+    percentageUsed: Math.min(100, Math.round((daysUsed / daysInPeriod) * 100)),
     isTrialActive: trialEnd ? trialEnd > now : false,
-    willCancelAtPeriodEnd: stripeSubscription.cancel_at_period_end || false
+    willCancelAtPeriodEnd: stripeSubscription.cancel_at_period_end || false,
+    isActive: now >= currentPeriodStart && now <= currentPeriodEnd
   };
 };
 
@@ -206,11 +304,17 @@ export const calculateSubscriptionPeriod = (stripeSubscription) => {
  * @returns {Object} Payment details
  */
 export const extractPaymentDetails = (stripeSubscription) => {
+  if (!stripeSubscription) return null;
+
   const defaultPaymentMethod = stripeSubscription.default_payment_method;
-  const invoiceSettings = stripeSubscription.invoice_settings || {};
+  const latestInvoice = stripeSubscription.latest_invoice;
   
   return {
     method: defaultPaymentMethod?.type || 'card',
+    lastFour: defaultPaymentMethod?.card?.last4 || '',
+    brand: defaultPaymentMethod?.card?.brand || '',
+    expMonth: defaultPaymentMethod?.card?.exp_month || '',
+    expYear: defaultPaymentMethod?.card?.exp_year || '',
     gateway: {
       name: 'stripe',
       customerId: stripeSubscription.customer,
@@ -218,23 +322,24 @@ export const extractPaymentDetails = (stripeSubscription) => {
       priceId: stripeSubscription.items?.data[0]?.price?.id,
       paymentMethodId: defaultPaymentMethod?.id
     },
-    billingAddress: defaultPaymentMethod?.billing_details?.address || {},
-    lastPayment: extractLastPayment(stripeSubscription.latest_invoice),
-    nextPayment: {
-      amount: stripeSubscription.items?.data[0]?.price?.unit_amount / 100 || 0,
-      currency: stripeSubscription.items?.data[0]?.price?.currency || 'usd',
-      date: new Date(stripeSubscription.current_period_end * 1000)
-    }
+    billingAddress: {
+      line1: defaultPaymentMethod?.billing_details?.address?.line1 || '',
+      line2: defaultPaymentMethod?.billing_details?.address?.line2 || '',
+      city: defaultPaymentMethod?.billing_details?.address?.city || '',
+      state: defaultPaymentMethod?.billing_details?.address?.state || '',
+      postalCode: defaultPaymentMethod?.billing_details?.address?.postal_code || '',
+      country: defaultPaymentMethod?.billing_details?.address?.country || ''
+    },
+    lastPayment: extractLastPayment(latestInvoice),
+    upcomingPayment: extractUpcomingPayment(stripeSubscription)
   };
 };
 
 /**
  * Extract last payment details from Stripe invoice
- * @param {Object} stripeInvoice - Stripe invoice object
- * @returns {Object} Last payment details
  */
 const extractLastPayment = (stripeInvoice) => {
-  if (!stripeInvoice) return null;
+  if (!stripeInvoice || stripeInvoice.status !== 'paid') return null;
   
   return {
     amount: stripeInvoice.amount_paid / 100,
@@ -243,52 +348,79 @@ const extractLastPayment = (stripeInvoice) => {
     invoiceUrl: stripeInvoice.hosted_invoice_url,
     receiptUrl: stripeInvoice.receipt_url,
     status: stripeInvoice.status,
-    invoiceId: stripeInvoice.id
+    invoiceId: stripeInvoice.id,
+    invoiceNumber: stripeInvoice.number
+  };
+};
+
+/**
+ * Extract upcoming payment details
+ */
+const extractUpcomingPayment = (stripeSubscription) => {
+  if (!stripeSubscription.items?.data[0]?.price) return null;
+  
+  const price = stripeSubscription.items.data[0].price;
+  const periodEnd = new Date(stripeSubscription.current_period_end * 1000);
+  
+  return {
+    amount: price.unit_amount / 100,
+    currency: price.currency,
+    date: periodEnd,
+    description: price.nickname || `Plan renewal - ${getPlanDetails(price.id).name}`
   };
 };
 
 /**
  * Create subscription metadata for audit log
- * @param {Object} stripeSubscription - Stripe subscription object
- * @param {string} performedBy - User ID who performed the action
- * @param {string} action - Action performed
- * @returns {Object} Audit log entry
  */
-export const createAuditLogEntry = (stripeSubscription, performedBy, action) => {
+export const createAuditLogEntry = (stripeSubscription, performedBy, action, oldValues = {}) => {
   const now = new Date();
   
   return {
+    _id: new ObjectId(),
     action,
-    performedBy,
-    oldValues: {}, // Could be populated from previous state
+    performedBy: new ObjectId(performedBy),
+    timestamp: now,
+    oldValues,
     newValues: {
       status: mapSubscriptionStatus(stripeSubscription.status),
       plan: getPlanDetails(stripeSubscription.items?.data[0]?.price?.id),
       period: calculateSubscriptionPeriod(stripeSubscription),
       payment: extractPaymentDetails(stripeSubscription)
     },
-    timestamp: now,
-    ipAddress: '', // Would come from request context
-    userAgent: '', // Would come from request context
     metadata: {
       stripeEventId: stripeSubscription.id,
       stripeCustomerId: stripeSubscription.customer,
-      source: 'stripe_webhook'
+      source: 'stripe_webhook',
+      userAgent: '', // Would come from request context
+      ipAddress: ''  // Would come from request context
     }
   };
 };
 
 /**
+ * Validate organization ID
+ */
+const validateOrganizationId = (organizationId) => {
+  if (!organizationId) {
+    throw new Error('Organization ID is required');
+  }
+  
+  try {
+    return new ObjectId(organizationId);
+  } catch (error) {
+    throw new Error(`Invalid Organization ID: ${organizationId}`);
+  }
+};
+
+/**
  * Update organization subscription in database
- * @param {Object} db - MongoDB database instance
- * @param {string} organizationId - Organization ID
- * @param {Object} stripeSubscription - Stripe subscription object
- * @param {string} action - Action performed (create, update, cancel, etc.)
- * @returns {Promise<Object>} Update result
  */
 export const updateOrganizationSubscription = async (db, organizationId, stripeSubscription, action = 'update') => {
   const organizations = db.collection('organizations');
   const subscriptions = db.collection('subscriptions');
+  
+  const orgObjectId = validateOrganizationId(organizationId);
   
   try {
     const planDetails = getPlanDetails(stripeSubscription.items?.data[0]?.price?.id);
@@ -296,9 +428,9 @@ export const updateOrganizationSubscription = async (db, organizationId, stripeS
     const periodDetails = calculateSubscriptionPeriod(stripeSubscription);
     const paymentDetails = extractPaymentDetails(stripeSubscription);
     
-    // Create subscription update document
-    const subscriptionUpdate = {
-      organization: new ObjectId(organizationId),
+    // Create subscription document
+    const subscriptionDoc = {
+      organizationId: orgObjectId,
       plan: planDetails.tier,
       planName: planDetails.name,
       status: subscriptionStatus,
@@ -320,7 +452,12 @@ export const updateOrganizationSubscription = async (db, organizationId, stripeS
       usage: {
         users: { current: 1, limit: planDetails.features.maxUsers, overage: 0 },
         assessments: { current: 0, limit: planDetails.features.maxAssessments, overage: 0 },
-        storage: { current: 0, limit: planDetails.features.maxStorage, overage: 0 }
+        storage: { current: 0, limit: planDetails.features.maxStorage, overage: 0, unit: 'MB' }
+      },
+      limits: {
+        maxUsers: planDetails.features.maxUsers,
+        maxAssessments: planDetails.features.maxAssessments,
+        maxStorage: planDetails.features.maxStorage
       },
       payment: paymentDetails,
       metadata: {
@@ -331,7 +468,8 @@ export const updateOrganizationSubscription = async (db, organizationId, stripeS
           subscriptionId: stripeSubscription.id,
           customerId: stripeSubscription.customer,
           priceId: stripeSubscription.items?.data[0]?.price?.id,
-          latestInvoice: stripeSubscription.latest_invoice
+          latestInvoice: stripeSubscription.latest_invoice,
+          collectionMethod: stripeSubscription.collection_method || 'charge_automatically'
         }
       },
       updatedAt: new Date()
@@ -339,15 +477,26 @@ export const updateOrganizationSubscription = async (db, organizationId, stripeS
 
     // Add createdAt for new subscriptions
     if (action === 'create') {
-      subscriptionUpdate.createdAt = new Date();
+      subscriptionDoc.createdAt = new Date();
     }
 
     // Update or insert subscription
     const subscriptionResult = await subscriptions.findOneAndUpdate(
-      { organization: new ObjectId(organizationId) },
-      { $set: subscriptionUpdate, $setOnInsert: { createdAt: new Date() } },
-      { upsert: true, returnDocument: 'after' }
+      { organizationId: orgObjectId },
+      { 
+        $set: subscriptionDoc,
+        $setOnInsert: { createdAt: new Date() }
+      },
+      { 
+        upsert: true, 
+        returnDocument: 'after',
+        maxTimeMS: 5000 // 5 second timeout
+      }
     );
+
+    if (!subscriptionResult.value) {
+      throw new Error('Failed to create/update subscription');
+    }
 
     // Update organization with subscription reference
     const organizationUpdate = {
@@ -357,27 +506,42 @@ export const updateOrganizationSubscription = async (db, organizationId, stripeS
         'subscription.planName': planDetails.name,
         'subscription.stripeSubscriptionId': stripeSubscription.id,
         'subscription.currentPeriodEnd': periodDetails.endDate,
+        'subscription.isTrialActive': periodDetails.isTrialActive,
         'updatedAt': new Date()
       }
     };
 
     const organizationResult = await organizations.updateOne(
-      { _id: new ObjectId(organizationId) },
+      { _id: orgObjectId },
       organizationUpdate
     );
 
     // Add audit log entry
-    const auditLogEntry = createAuditLogEntry(stripeSubscription, 'system', action);
+    const auditLogEntry = createAuditLogEntry(
+      stripeSubscription, 
+      'system', 
+      action,
+      {} // Could store old values here
+    );
+    
     await subscriptions.updateOne(
       { _id: subscriptionResult.value._id },
-      { $push: { auditLog: auditLogEntry } }
+      { 
+        $push: { 
+          auditLog: { 
+            $each: [auditLogEntry], 
+            $slice: -50 // Keep last 50 audit log entries
+          } 
+        } 
+      }
     );
 
     return {
       success: true,
       subscription: subscriptionResult.value,
       organizationUpdated: organizationResult.modifiedCount > 0,
-      action
+      action,
+      timestamp: new Date()
     };
   } catch (error) {
     console.error(`[Billing Error] Failed to update subscription for organization ${organizationId}:`, error);
@@ -387,20 +551,25 @@ export const updateOrganizationSubscription = async (db, organizationId, stripeS
 
 /**
  * Handle subscription webhook events
- * @param {Object} db - MongoDB database instance
- * @param {Object} event - Stripe webhook event
- * @returns {Promise<Object>} Processing result
  */
 export const handleStripeWebhook = async (db, event) => {
   const { type, data } = event;
   const stripeSubscription = data.object;
   
+  if (!stripeSubscription) {
+    throw new Error('Invalid webhook event: missing subscription data');
+  }
+
   // Extract organization ID from metadata
   const organizationId = stripeSubscription.metadata?.organizationId;
   
   if (!organizationId) {
     console.warn('[Billing] No organization ID found in Stripe subscription metadata');
-    return { success: false, error: 'Missing organization ID' };
+    return { 
+      success: false, 
+      error: 'Missing organization ID',
+      eventType: type 
+    };
   }
 
   try {
@@ -427,27 +596,42 @@ export const handleStripeWebhook = async (db, event) => {
         result = await handlePaymentFailure(db, organizationId, stripeSubscription);
         break;
         
+      case 'customer.subscription.trial_will_end':
+        result = await handleTrialEnding(db, organizationId, stripeSubscription);
+        break;
+        
       default:
         console.log(`[Billing] Unhandled webhook event type: ${type}`);
-        return { success: true, skipped: true, type };
+        return { 
+          success: true, 
+          skipped: true, 
+          eventType: type 
+        };
     }
     
-    return { success: true, type, ...result };
+    return { 
+      success: true, 
+      eventType: type, 
+      ...result 
+    };
   } catch (error) {
     console.error(`[Billing] Failed to process webhook ${type}:`, error);
-    return { success: false, error: error.message, type };
+    return { 
+      success: false, 
+      error: error.message, 
+      eventType: type 
+    };
   }
 };
 
-/**
- * Handle subscription cancellation
- */
+// Individual webhook handlers
 const handleSubscriptionCancellation = async (db, organizationId, stripeSubscription) => {
   const subscriptions = db.collection('subscriptions');
+  const orgObjectId = validateOrganizationId(organizationId);
   
   const update = {
     $set: {
-      status: 'canceled',
+      status: SUBSCRIPTION_STATUS.CANCELED,
       'period.canceledAt': new Date(),
       'period.cancelAtPeriodEnd': false,
       'metadata.autoRenew': false,
@@ -456,85 +640,112 @@ const handleSubscriptionCancellation = async (db, organizationId, stripeSubscrip
   };
 
   const result = await subscriptions.updateOne(
-    { organization: new ObjectId(organizationId) },
+    { organizationId: orgObjectId },
     update
   );
 
-  // Add audit log
-  const auditLog = createAuditLogEntry(stripeSubscription, 'system', 'subscription_canceled');
-  await subscriptions.updateOne(
-    { organization: new ObjectId(organizationId) },
-    { $push: { auditLog } }
-  );
-
-  return { action: 'cancel', modifiedCount: result.modifiedCount };
+  return { 
+    action: 'subscription_canceled', 
+    modifiedCount: result.modifiedCount 
+  };
 };
 
-/**
- * Handle successful payment
- */
 const handlePaymentSuccess = async (db, organizationId, stripeInvoice) => {
   const subscriptions = db.collection('subscriptions');
+  const orgObjectId = validateOrganizationId(organizationId);
   
   const paymentRecord = {
+    _id: new ObjectId(),
     date: new Date(stripeInvoice.created * 1000),
     amount: stripeInvoice.amount_paid / 100,
     currency: stripeInvoice.currency,
     invoiceId: stripeInvoice.id,
+    invoiceNumber: stripeInvoice.number,
     invoiceUrl: stripeInvoice.hosted_invoice_url,
     status: 'succeeded',
-    description: `Payment for ${stripeInvoice.description || 'subscription'}`
+    description: `Payment for ${stripeInvoice.description || 'subscription renewal'}`
   };
 
   const update = {
     $set: {
       'payment.lastPayment': paymentRecord,
-      'status': 'active', // Ensure status is active after successful payment
+      'status': SUBSCRIPTION_STATUS.ACTIVE,
       updatedAt: new Date()
     },
     $push: {
-      'payment.paymentHistory': paymentRecord
+      'payment.paymentHistory': {
+        $each: [paymentRecord],
+        $slice: -100 // Keep last 100 payments
+      }
     }
   };
 
   const result = await subscriptions.updateOne(
-    { organization: new ObjectId(organizationId) },
+    { organizationId: orgObjectId },
     update
   );
 
-  return { action: 'payment_success', modifiedCount: result.modifiedCount };
+  return { 
+    action: 'payment_success', 
+    modifiedCount: result.modifiedCount 
+  };
 };
 
-/**
- * Handle payment failure
- */
 const handlePaymentFailure = async (db, organizationId, stripeInvoice) => {
   const subscriptions = db.collection('subscriptions');
+  const orgObjectId = validateOrganizationId(organizationId);
   
   const update = {
     $set: {
       'payment.lastPayment.status': 'failed',
-      'status': 'past_due',
+      'status': SUBSCRIPTION_STATUS.PAST_DUE,
       updatedAt: new Date()
     }
   };
 
   const result = await subscriptions.updateOne(
-    { organization: new ObjectId(organizationId) },
+    { organizationId: orgObjectId },
     update
   );
 
-  // Could trigger email notification here
-  console.log(`[Billing] Payment failed for organization ${organizationId}`);
+  // Trigger notification logic would go here
+  console.log(`[Billing] Payment failed for organization ${organizationId}, invoice: ${stripeInvoice.id}`);
 
-  return { action: 'payment_failed', modifiedCount: result.modifiedCount };
+  return { 
+    action: 'payment_failed', 
+    modifiedCount: result.modifiedCount,
+    invoiceId: stripeInvoice.id
+  };
+};
+
+const handleTrialEnding = async (db, organizationId, stripeSubscription) => {
+  const subscriptions = db.collection('subscriptions');
+  const orgObjectId = validateOrganizationId(organizationId);
+  
+  // Update trial ending notification
+  const update = {
+    $set: {
+      'metadata.trialEndingNotified': true,
+      updatedAt: new Date()
+    }
+  };
+
+  const result = await subscriptions.updateOne(
+    { organizationId: orgObjectId },
+    update
+  );
+
+  // Send notification logic would go here
+  console.log(`[Billing] Trial ending soon for organization ${organizationId}`);
+
+  return { 
+    action: 'trial_ending', 
+    modifiedCount: result.modifiedCount 
+  };
 };
 
 /**
  * Check if subscription allows a specific feature
- * @param {Object} subscription - Subscription document
- * @param {string} feature - Feature to check
- * @returns {boolean} Whether feature is allowed
  */
 export const hasSubscriptionFeature = (subscription, feature) => {
   if (!subscription?.features) return false;
@@ -555,79 +766,131 @@ export const hasSubscriptionFeature = (subscription, feature) => {
 
 /**
  * Check if subscription is within usage limits
- * @param {Object} subscription - Subscription document
- * @param {string} resource - Resource to check (users, assessments, storage)
- * @param {number} currentUsage - Current usage count
- * @returns {boolean} Whether within limits
  */
 export const isWithinUsageLimits = (subscription, resource, currentUsage) => {
   if (!subscription?.usage?.[resource]) return true;
   
   const limit = subscription.usage[resource].limit;
-  return currentUsage <= limit;
+  const current = subscription.usage[resource].current || 0;
+  const totalUsage = current + currentUsage;
+  
+  return totalUsage <= limit;
 };
 
 /**
- * Calculate prorated amount for subscription change
- * @param {Object} currentSubscription - Current subscription
- * @param {Object} newPlan - New plan details
- * @param {Date} changeDate - Date of change
- * @returns {number} Prorated amount in cents
+ * Calculate overage for a resource
  */
-export const calculateProratedAmount = (currentSubscription, newPlan, changeDate = new Date()) => {
-  if (!currentSubscription?.period?.endDate) return newPlan.price.amount;
+export const calculateOverage = (subscription, resource, currentUsage) => {
+  if (!subscription?.usage?.[resource]) return 0;
   
-  const periodStart = new Date(currentSubscription.period.startDate);
-  const periodEnd = new Date(currentSubscription.period.endDate);
-  const daysInPeriod = Math.ceil((periodEnd - periodStart) / (1000 * 60 * 60 * 24));
-  const daysUsed = Math.ceil((changeDate - periodStart) / (1000 * 60 * 60 * 24));
-  const daysRemaining = daysInPeriod - daysUsed;
+  const limit = subscription.usage[resource].limit;
+  const current = subscription.usage[resource].current || 0;
+  const totalUsage = current + currentUsage;
   
-  const dailyRate = currentSubscription.price.amount / daysInPeriod;
-  const credit = dailyRate * daysRemaining;
-  
-  const newDailyRate = newPlan.price.amount / (newPlan.billingPeriod === 'yearly' ? 365 : 30);
-  const newCharge = newDailyRate * daysRemaining;
-  
-  return Math.max(0, newCharge - credit);
+  return Math.max(0, totalUsage - limit);
 };
 
 /**
- * Generate invoice data for display
- * @param {Object} stripeInvoice - Stripe invoice
- * @returns {Object} Formatted invoice data
+ * Format price for display
  */
-export const formatInvoiceData = (stripeInvoice) => {
+export const formatPrice = (amount, currency = 'USD', includeSymbol = true) => {
+  const formatter = new Intl.NumberFormat('en-US', {
+    style: includeSymbol ? 'currency' : 'decimal',
+    currency: currency.toUpperCase(),
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  });
+  
+  return formatter.format(amount);
+};
+
+/**
+ * Format period for display
+ */
+export const formatPeriod = (billingPeriod) => {
+  switch (billingPeriod) {
+    case 'monthly':
+      return 'month';
+    case 'yearly':
+      return 'year';
+    default:
+      return billingPeriod;
+  }
+};
+
+/**
+ * Calculate savings percentage for annual vs monthly
+ */
+export const calculateAnnualSavings = (monthlyPrice, annualPrice) => {
+  if (!monthlyPrice || !annualPrice || monthlyPrice === 0) return 0;
+  
+  const monthlyEquivalent = annualPrice / 12;
+  const savings = monthlyPrice - monthlyEquivalent;
+  const percentage = (savings / monthlyPrice) * 100;
+  
+  return Math.round(percentage);
+};
+
+/**
+ * Generate subscription summary
+ */
+export const generateSubscriptionSummary = (subscription) => {
+  if (!subscription) return null;
+  
+  const planDetails = getPlanDetails(subscription.price?.stripePriceId);
+  const periodDetails = calculateSubscriptionPeriod(subscription);
+  const isActive = isSubscriptionActive(subscription.status);
+  
   return {
-    id: stripeInvoice.id,
-    number: stripeInvoice.number,
-    date: new Date(stripeInvoice.created * 1000),
-    dueDate: new Date(stripeInvoice.due_date * 1000),
-    amount: stripeInvoice.amount_due / 100,
-    amountPaid: stripeInvoice.amount_paid / 100,
-    currency: stripeInvoice.currency.toUpperCase(),
-    status: stripeInvoice.status,
-    pdfUrl: stripeInvoice.invoice_pdf,
-    hostedUrl: stripeInvoice.hosted_invoice_url,
-    lines: stripeInvoice.lines?.data.map(line => ({
-      description: line.description,
-      amount: line.amount / 100,
-      quantity: line.quantity,
-      period: line.period
-    })) || []
+    planName: planDetails.name,
+    tier: planDetails.tier,
+    status: subscription.status,
+    isActive,
+    isTrial: subscription.status === SUBSCRIPTION_STATUS.TRIALING,
+    price: {
+      amount: subscription.price?.amount || 0,
+      currency: subscription.price?.currency || 'USD',
+      billingPeriod: subscription.price?.billingPeriod,
+      formatted: formatPrice(
+        subscription.price?.amount || 0,
+        subscription.price?.currency || 'USD'
+      )
+    },
+    period: periodDetails,
+    nextBillingDate: periodDetails.nextBillingDate,
+    features: Object.entries(planDetails.features)
+      .filter(([_, value]) => value === true || typeof value === 'number')
+      .map(([key, value]) => ({ key, value })),
+    limits: subscription.limits || planDetails.features
   };
 };
 
 export default {
+  // Constants
+  PLAN_MAPPINGS,
+  PLAN_CONFIGS,
+  STATUS_MAPPINGS,
+  SUBSCRIPTION_STATUS,
+  
+  // Core functions
   getPlanDetails,
+  getPlanByTier,
   mapSubscriptionStatus,
+  isSubscriptionActive,
   calculateSubscriptionPeriod,
+  extractPaymentDetails,
+  createAuditLogEntry,
   updateOrganizationSubscription,
   handleStripeWebhook,
+  
+  // Feature and usage checks
   hasSubscriptionFeature,
   isWithinUsageLimits,
-  calculateProratedAmount,
-  formatInvoiceData,
-  PLAN_MAPPINGS,
-  STATUS_MAPPINGS
+  calculateOverage,
+  
+  // Utility functions
+  formatPrice,
+  formatPeriod,
+  calculateAnnualSavings,
+  generateSubscriptionSummary
 };
