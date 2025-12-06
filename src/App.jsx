@@ -18,7 +18,7 @@ const ContactPage = React.lazy(() => import("./pages/Contact"));
 const AuthPage = React.lazy(() => import("./pages/Auth")); // Import the comprehensive AuthPage
 const DashboardLayout = React.lazy(() => import("./layouts/DashboardLayout"));
 const AdminDashboard = React.lazy(() =>
-  import("./pages/dashboard/AdminDashboard")
+  import("./pages/Admin/Dashboard")
 );
 const NotFound = React.lazy(() => import("./pages/errors/NotFound"));
 
@@ -101,3 +101,4 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
