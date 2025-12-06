@@ -1,646 +1,594 @@
-// src/api/index.js
+// src/api/userApi.js
 /**
- * Enterprise-grade API client for Assessly Platform
- * Axios configuration compliant with Assessly Platform API documentation
- * Multi-tenant aware with advanced error handling and token management
+ * User Management API for Assessly Platform
+ * Multi-tenant aware user operations with advanced error handling
  */
 
-import axios from 'axios';
-import { EventEmitter } from 'events';
+import api, { TokenManager, apiEvents, trackError } from './index';
 
 // ----------------------
-// Configuration & Constants
+// API Endpoints
 // ----------------------
-const getApiBaseUrl = () => {
-  const envUrl = import.meta.env.VITE_API_BASE_URL;
-  if (envUrl) return envUrl.replace(/\/+$/, '');
-  return 'https://assesslyplatform-t49h.onrender.com';
-};
-
-export const API_BASE_URL = getApiBaseUrl();
-export const API_V1_BASE_URL = `${API_BASE_URL}/api/v1`;
-
-// API Event Emitter for real-time updates
-export const apiEvents = new EventEmitter();
-apiEvents.setMaxListeners(50);
-
-// Rate Limiting Configuration
-export const RATE_LIMITS = {
-  AUTH: 10,    // 10 requests per minute for auth endpoints
-  GENERAL: 100 // 100 requests per minute for other endpoints
-};
-
-// Request tracking for rate limiting
-let requestTimestamps = [];
-const REQUEST_WINDOW = 60000; // 1 minute in ms
-
-// ----------------------
-// Token Management with Multi-Tenant Support
-// ----------------------
-const TOKEN_STORAGE_KEYS = {
-  TOKEN: 'assessly_token',
-  REFRESH_TOKEN: 'assessly_refresh_token',
-  USER: 'assessly_user',
-  ORGANIZATION: 'assessly_organization',
-  TENANT_ID: 'assessly_tenant_id',
-  TOKEN_EXPIRY: 'assessly_token_expiry'
-};
-
-export const TokenManager = {
-  getToken: () => {
-    try {
-      return localStorage.getItem(TOKEN_STORAGE_KEYS.TOKEN);
-    } catch (error) {
-      console.warn('Failed to access token storage:', error);
-      return null;
-    }
-  },
-
-  getRefreshToken: () => {
-    try {
-      return localStorage.getItem(TOKEN_STORAGE_KEYS.REFRESH_TOKEN);
-    } catch (error) {
-      console.warn('Failed to access refresh token storage:', error);
-      return null;
-    }
-  },
-
-  setTokens: (token, refreshToken = null, expiry = null) => {
-    try {
-      if (token) {
-        localStorage.setItem(TOKEN_STORAGE_KEYS.TOKEN, token);
-        if (expiry) {
-          localStorage.setItem(TOKEN_STORAGE_KEYS.TOKEN_EXPIRY, expiry);
-        }
-      }
-      if (refreshToken) {
-        localStorage.setItem(TOKEN_STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
-      }
-    } catch (error) {
-      console.warn('Failed to set tokens:', error);
-    }
-  },
-
-  clearTokens: () => {
-    try {
-      localStorage.removeItem(TOKEN_STORAGE_KEYS.TOKEN);
-      localStorage.removeItem(TOKEN_STORAGE_KEYS.REFRESH_TOKEN);
-      localStorage.removeItem(TOKEN_STORAGE_KEYS.TOKEN_EXPIRY);
-    } catch (error) {
-      console.warn('Failed to clear tokens:', error);
-    }
-  },
-
-  getTenantId: () => {
-    try {
-      const org = localStorage.getItem(TOKEN_STORAGE_KEYS.ORGANIZATION);
-      if (org) {
-        const orgData = JSON.parse(org);
-        return orgData.id || null;
-      }
-      return localStorage.getItem(TOKEN_STORAGE_KEYS.TENANT_ID);
-    } catch (error) {
-      console.warn('Failed to get tenant ID:', error);
-      return null;
-    }
-  },
-
-  setTenantContext: (organizationId) => {
-    try {
-      localStorage.setItem(TOKEN_STORAGE_KEYS.TENANT_ID, organizationId);
-    } catch (error) {
-      console.warn('Failed to set tenant context:', error);
-    }
-  },
-
-  isTokenExpired: () => {
-    try {
-      const expiry = localStorage.getItem(TOKEN_STORAGE_KEYS.TOKEN_EXPIRY);
-      if (!expiry) return false;
-      return new Date(expiry) < new Date();
-    } catch (error) {
-      console.warn('Failed to check token expiry:', error);
-      return false;
-    }
-  },
-
-  getUserInfo: () => {
-    try {
-      const user = localStorage.getItem(TOKEN_STORAGE_KEYS.USER);
-      return user ? JSON.parse(user) : null;
-    } catch (error) {
-      console.warn('Failed to get user info:', error);
-      return null;
-    }
-  },
-
-  setUserInfo: (user) => {
-    try {
-      localStorage.setItem(TOKEN_STORAGE_KEYS.USER, JSON.stringify(user));
-    } catch (error) {
-      console.warn('Failed to set user info:', error);
-    }
-  },
-
-  clearAll: () => {
-    try {
-      Object.values(TOKEN_STORAGE_KEYS).forEach(key => {
-        localStorage.removeItem(key);
-      });
-    } catch (error) {
-      console.warn('Failed to clear all storage:', error);
-    }
-    
-    // Clear any legacy keys
-    ['accessToken', 'user', 'organization'].forEach(key => {
-      try {
-        localStorage.removeItem(key);
-      } catch (e) {
-        // Ignore errors for legacy keys
-      }
-    });
-  },
-
-  setOrganization: (organization) => {
-    try {
-      localStorage.setItem(TOKEN_STORAGE_KEYS.ORGANIZATION, JSON.stringify(organization));
-    } catch (error) {
-      console.warn('Failed to set organization:', error);
-    }
-  },
-
-  getOrganization: () => {
-    try {
-      const org = localStorage.getItem(TOKEN_STORAGE_KEYS.ORGANIZATION);
-      return org ? JSON.parse(org) : null;
-    } catch (error) {
-      console.warn('Failed to get organization:', error);
-      return null;
-    }
-  }
+export const USER_ENDPOINTS = {
+  PROFILE: '/users/profile',
+  ORGANIZATIONS: '/users/organizations',
+  SWITCH_ORGANIZATION: '/users/switch-organization',
+  UPDATE_PROFILE: '/users/profile',
+  CHANGE_PASSWORD: '/users/change-password',
+  UPLOAD_AVATAR: '/users/avatar',
+  PREFERENCES: '/users/preferences',
+  NOTIFICATIONS: '/users/notifications',
+  SESSIONS: '/users/sessions',
+  ACTIVITY: '/users/activity',
 };
 
 // ----------------------
-// Rate Limiting Middleware
+// User Profile Service
 // ----------------------
-const checkRateLimit = (config) => {
-  const now = Date.now();
-  
-  // Clean old requests
-  requestTimestamps = requestTimestamps.filter(time => now - time < REQUEST_WINDOW);
-  
-  const isAuthEndpoint = config.url?.includes('/auth/');
-  const limit = isAuthEndpoint ? RATE_LIMITS.AUTH : RATE_LIMITS.GENERAL;
-  
-  if (requestTimestamps.length >= limit) {
-    const oldestRequest = requestTimestamps[0];
-    const waitTime = REQUEST_WINDOW - (now - oldestRequest);
-    
-    if (waitTime > 0) {
-      throw new Error(`Rate limit exceeded. Please wait ${Math.ceil(waitTime/1000)} seconds.`);
-    }
-  }
-  
-  requestTimestamps.push(now);
-  return config;
-};
 
-// ----------------------
-// Axios Instance with Advanced Configuration
-// ----------------------
-const api = axios.create({
-  baseURL: API_V1_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'X-Client-Version': import.meta.env.VITE_APP_VERSION || '1.0.0',
-    'X-Client-Platform': 'web',
-  },
-  timeout: 30000,
-  timeoutErrorMessage: 'Request timeout. Please check your connection.',
-  withCredentials: true,
-  maxRedirects: 5,
-  maxContentLength: 50 * 1024 * 1024, // 50MB
-});
-
-// ----------------------
-// Request Interceptor with Multi-Tenant Support
-// ----------------------
-api.interceptors.request.use(
-  async (config) => {
-    try {
-      // Check rate limit
-      checkRateLimit(config);
-      
-      // Add Authorization header
-      const token = TokenManager.getToken();
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-      
-      // Add tenant context
-      const tenantId = TokenManager.getTenantId();
-      if (tenantId) {
-        config.headers['X-Tenant-ID'] = tenantId;
-      }
-      
-      // Add request metadata
-      config.headers['X-Request-ID'] = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      config.headers['X-Request-Timestamp'] = new Date().toISOString();
-      
-      // Add user agent info
-      config.headers['X-User-Agent'] = navigator.userAgent;
-      
-      // Track request start time for performance monitoring
-      config.metadata = { startTime: performance.now() };
-      
-      return config;
-    } catch (error) {
-      console.error('Request interceptor error:', error);
-      return Promise.reject({
-        message: error.message,
-        code: 'REQUEST_INTERCEPTOR_ERROR',
-        config
-      });
-    }
-  },
-  (error) => {
-    console.error('Request interceptor setup error:', error);
-    return Promise.reject(error);
-  }
-);
-
-// ----------------------
-// Token Refresh Logic
-// ----------------------
-let isRefreshing = false;
-let refreshSubscribers = [];
-
-const onTokenRefreshed = (token) => {
-  refreshSubscribers.forEach(callback => callback(token));
-  refreshSubscribers = [];
-};
-
-const addRefreshSubscriber = (callback) => {
-  refreshSubscribers.push(callback);
-};
-
-const refreshAccessToken = async () => {
-  if (isRefreshing) {
-    return new Promise((resolve) => {
-      addRefreshSubscriber(resolve);
-    });
-  }
-
-  isRefreshing = true;
+/**
+ * Fetch user profile with caching and retry logic
+ * GET /api/v1/users/profile
+ */
+export async function fetchUserProfile(options = {}) {
+  const { refresh = false, timeout = 15000 } = options;
   
   try {
-    console.log('🔄 Refreshing access token...');
-    
-    const refreshToken = TokenManager.getRefreshToken();
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
-
-    const response = await api.post(
-      '/auth/refresh', // Using relative path since api baseURL is already set
-      { refreshToken },
-      {
-        timeout: 10000,
-        headers: {
-          'X-Client-Platform': 'web',
-          'X-Bypass-Rate-Limit': 'true' // Don't rate limit token refresh
-        }
-      }
-    );
-
-    const { token, refreshToken: newRefreshToken, expiresIn } = response.data;
-    
-    if (!token) {
-      throw new Error('No token received from refresh endpoint');
-    }
-
-    // Calculate expiry
-    const expiry = new Date(Date.now() + (expiresIn || 3600) * 1000).toISOString();
-    
-    // Update tokens
-    TokenManager.setTokens(token, newRefreshToken, expiry);
-    
-    // Update default header
-    api.defaults.headers.common.Authorization = `Bearer ${token}`;
-    
-    console.log('✅ Token refreshed successfully');
-    
-    // Notify subscribers
-    onTokenRefreshed(token);
-    
-    return token;
-  } catch (error) {
-    console.error('❌ Token refresh failed:', error);
-    
-    // Clear tokens and notify subscribers of failure
-    TokenManager.clearAll();
-    onTokenRefreshed(null);
-    
-    // Emit logout event
-    apiEvents.emit('auth:logout', { reason: 'token_refresh_failed', error: error.message });
-    
-    throw {
-      message: 'Session expired. Please log in again.',
-      code: 'SESSION_EXPIRED',
-      originalError: error
+    const config = {
+      timeout,
+      headers: {
+        'Cache-Control': refresh ? 'no-cache' : 'max-age=60',
+      },
     };
-  } finally {
-    isRefreshing = false;
-  }
-};
 
-// ----------------------
-// Response Interceptor with Enhanced Error Handling
-// ----------------------
-api.interceptors.response.use(
-  (response) => {
-    // Calculate request duration
-    const duration = performance.now() - (response.config.metadata?.startTime || 0);
+    const response = await api.get(USER_ENDPOINTS.PROFILE, config);
     
-    // Log successful API calls in development
-    if (import.meta.env.DEV) {
-      console.log(`✅ API ${response.config.method?.toUpperCase()} ${response.config.url}`, {
-        status: response.status,
-        duration: `${duration.toFixed(2)}ms`
-      });
+    // Cache user info in TokenManager
+    if (response.data?.user) {
+      TokenManager.setUserInfo(response.data.user);
     }
     
-    // Emit success event
-    apiEvents.emit('request:success', {
-      url: response.config.url,
-      method: response.config.method,
-      duration,
-      status: response.status
+    // Cache organization if available
+    if (response.data?.organization) {
+      TokenManager.setOrganization(response.data.organization);
+    }
+    
+    // Emit profile loaded event
+    apiEvents.emit('user:profile:loaded', response.data);
+    
+    return {
+      success: true,
+      data: response.data,
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    trackError(error, {
+      context: 'fetchUserProfile',
+      endpoint: USER_ENDPOINTS.PROFILE,
     });
     
-    // Check for token in response and update
-    if (response.data?.token) {
-      TokenManager.setTokens(response.data.token);
-      api.defaults.headers.common.Authorization = `Bearer ${response.data.token}`;
-    }
-    
-    return response;
-  },
-  async (error) => {
-    const originalRequest = error.config;
-    
-    // Calculate request duration
-    const duration = performance.now() - (originalRequest?.metadata?.startTime || 0);
-    
-    // Enhanced error logging
-    const errorLog = {
-      url: originalRequest?.url,
-      method: originalRequest?.method,
-      status: error.response?.status,
-      duration: `${duration.toFixed(2)}ms`,
-      message: error.message,
-      code: error.code,
-      response: error.response?.data
+    return {
+      success: false,
+      error: error.message || 'Failed to fetch user profile',
+      code: error.code || 'PROFILE_FETCH_ERROR',
+      details: error.details,
     };
+  }
+}
+
+/**
+ * Fetch user's organizations with caching
+ * GET /api/v1/users/organizations
+ */
+export async function fetchOrganizations(options = {}) {
+  const { includeMembers = false, includeStats = false, timeout = 10000 } = options;
+  
+  try {
+    const params = {};
+    if (includeMembers) params.includeMembers = true;
+    if (includeStats) params.includeStats = true;
     
-    console.error('🔴 API Error:', errorLog);
+    const response = await api.get(USER_ENDPOINTS.ORGANIZATIONS, {
+      params,
+      timeout,
+      headers: {
+        'Cache-Control': 'max-age=300', // Cache for 5 minutes
+      },
+    });
     
-    // Handle 401 Unauthorized - Token Refresh
-    if (error.response?.status === 401 && 
-        originalRequest && 
-        !originalRequest._retry && 
-        !originalRequest.url?.includes('/auth/')) {
-      
-      originalRequest._retry = true;
-      
-      try {
-        const newToken = await refreshAccessToken();
-        if (newToken) {
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          // Retry original request with new token
-          return api(originalRequest);
-        }
-      } catch (refreshError) {
-        // Redirect to login if refresh fails
-        if (!window.location.pathname.includes('/auth') && 
-            !window.location.pathname.includes('/login')) {
-          window.location.href = '/login?session=expired';
-        }
-        return Promise.reject(refreshError);
+    // Cache current organization if not already cached
+    const currentOrgId = TokenManager.getTenantId();
+    if (currentOrgId && response.data?.organizations) {
+      const currentOrg = response.data.organizations.find(org => org.id === currentOrgId);
+      if (currentOrg && !TokenManager.getOrganization()) {
+        TokenManager.setOrganization(currentOrg);
       }
     }
     
-    // Handle 429 Rate Limit
-    if (error.response?.status === 429) {
-      const retryAfter = error.response.headers['retry-after'] || 5;
-      
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve(api(originalRequest));
-        }, retryAfter * 1000);
-      });
-    }
+    apiEvents.emit('user:organizations:loaded', response.data);
     
-    // Handle Network Errors
-    if (!error.response) {
-      return Promise.reject({
-        message: 'Network error. Please check your connection.',
-        code: 'NETWORK_ERROR',
-        status: 0,
-        originalError: error
-      });
-    }
-    
-    // Handle 500 Server Errors
-    if (error.response?.status >= 500) {
-      return Promise.reject({
-        message: 'Server error. Please try again later.',
-        code: 'SERVER_ERROR',
-        status: error.response.status,
-        originalError: error
-      });
-    }
-    
-    // Standardize error response format
-    const apiError = {
-      message: error.response?.data?.message || 
-               error.response?.data?.error?.message || 
-               error.response?.data?.error || 
-               error.message || 
-               'An unexpected error occurred',
-      status: error.response?.status,
-      code: error.response?.data?.code || error.code || 'UNKNOWN_ERROR',
-      details: error.response?.data || {},
-      url: originalRequest?.url,
-      timestamp: new Date().toISOString(),
-      errorId: `err_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+    return {
+      success: true,
+      data: response.data,
+      organizations: response.data?.organizations || [],
+      count: response.data?.count || 0,
     };
+  } catch (error) {
+    trackError(error, {
+      context: 'fetchOrganizations',
+      endpoint: USER_ENDPOINTS.ORGANIZATIONS,
+    });
     
-    // Emit error event
-    apiEvents.emit('request:error', apiError);
-    
-    // Track error in production
-    if (import.meta.env.PROD) {
-      trackError(apiError, {
-        context: 'api_response',
-        url: originalRequest?.url,
-        method: originalRequest?.method,
-      });
+    return {
+      success: false,
+      error: error.message || 'Failed to fetch organizations',
+      code: error.code || 'ORGANIZATIONS_FETCH_ERROR',
+      details: error.details,
+    };
+  }
+}
+
+/**
+ * Switch organization context with validation
+ * POST /api/v1/users/switch-organization
+ */
+export async function switchOrganization(organizationId, options = {}) {
+  const { validate = true, timeout = 10000 } = options;
+  
+  if (!organizationId) {
+    return {
+      success: false,
+      error: 'Organization ID is required',
+      code: 'INVALID_ORGANIZATION_ID',
+    };
+  }
+  
+  try {
+    const payload = { organizationId };
+    if (validate) {
+      payload.validate = true;
     }
     
-    return Promise.reject(apiError);
+    const response = await api.post(USER_ENDPOINTS.SWITCH_ORGANIZATION, payload, { timeout });
+    
+    // Update token if provided
+    if (response.data?.token) {
+      TokenManager.setTokens(response.data.token);
+    }
+    
+    // Update tenant context
+    TokenManager.setTenantContext(organizationId);
+    
+    // Update cached organization if provided
+    if (response.data?.organization) {
+      TokenManager.setOrganization(response.data.organization);
+    }
+    
+    // Emit organization switched event
+    apiEvents.emit('user:organization:switched', {
+      organizationId,
+      organization: response.data?.organization,
+      timestamp: new Date().toISOString(),
+    });
+    
+    // Refresh user profile after organization switch
+    setTimeout(() => {
+      fetchUserProfile({ refresh: true }).catch(() => {
+        // Silently fail if profile refresh fails
+      });
+    }, 500);
+    
+    return {
+      success: true,
+      data: response.data,
+      organization: response.data?.organization,
+      message: response.data?.message || 'Organization switched successfully',
+    };
+  } catch (error) {
+    trackError(error, {
+      context: 'switchOrganization',
+      endpoint: USER_ENDPOINTS.SWITCH_ORGANIZATION,
+      organizationId,
+    });
+    
+    return {
+      success: false,
+      error: error.message || 'Failed to switch organization',
+      code: error.code || 'ORGANIZATION_SWITCH_ERROR',
+      details: error.details,
+      organizationId,
+    };
   }
-);
+}
+
+/**
+ * Update user profile with validation and optimistic updates
+ * PATCH /api/v1/users/profile
+ */
+export async function updateUserProfile(profileData, options = {}) {
+  const { optimistic = true, timeout = 15000 } = options;
+  
+  if (!profileData || typeof profileData !== 'object') {
+    return {
+      success: false,
+      error: 'Invalid profile data',
+      code: 'INVALID_PROFILE_DATA',
+    };
+  }
+  
+  try {
+    // Store current user data for rollback
+    const currentUser = TokenManager.getUserInfo();
+    
+    // Optimistic update
+    if (optimistic && currentUser) {
+      const updatedUser = { ...currentUser, ...profileData };
+      TokenManager.setUserInfo(updatedUser);
+      apiEvents.emit('user:profile:optimistic-update', updatedUser);
+    }
+    
+    const response = await api.patch(USER_ENDPOINTS.UPDATE_PROFILE, profileData, { timeout });
+    
+    // Update cached user info with server response
+    if (response.data?.user) {
+      TokenManager.setUserInfo(response.data.user);
+      apiEvents.emit('user:profile:updated', response.data.user);
+    }
+    
+    return {
+      success: true,
+      data: response.data,
+      user: response.data?.user,
+      message: response.data?.message || 'Profile updated successfully',
+    };
+  } catch (error) {
+    // Rollback optimistic update on error
+    if (optimistic && currentUser) {
+      TokenManager.setUserInfo(currentUser);
+      apiEvents.emit('user:profile:rollback', currentUser);
+    }
+    
+    trackError(error, {
+      context: 'updateUserProfile',
+      endpoint: USER_ENDPOINTS.UPDATE_PROFILE,
+      profileData,
+    });
+    
+    return {
+      success: false,
+      error: error.message || 'Failed to update profile',
+      code: error.code || 'PROFILE_UPDATE_ERROR',
+      details: error.details,
+    };
+  }
+}
 
 // ----------------------
-// API Endpoints (Keep your existing endpoints)
-// ----------------------
-export const API_ENDPOINTS = {
-  // ... (keep your existing endpoints exactly as they are)
-  AUTH: {
-    REGISTER: '/auth/register',
-    LOGIN: '/auth/login',
-    REFRESH: '/auth/refresh',
-    ME: '/auth/me',
-    LOGOUT: '/auth/logout',
-    GOOGLE: '/auth/google',
-    GOOGLE_CALLBACK: '/auth/google/callback',
-    FORGOT_PASSWORD: '/auth/forgot-password',
-    RESET_PASSWORD: '/auth/reset-password',
-    VERIFY_EMAIL: '/auth/verify-email',
-    RESEND_VERIFICATION: '/auth/resend-verification',
-  },
-  // ... rest of your endpoints
-};
-
-// ----------------------
-// API Service Functions
+// Additional User Operations
 // ----------------------
 
 /**
- * Health check with retry logic
+ * Change user password with security validation
+ * POST /api/v1/users/change-password
  */
-export const checkServerHealth = async (maxRetries = 3) => {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const response = await api.get('/health', { 
-        timeout: 5000,
-        headers: { 'X-Bypass-Rate-Limit': 'true' }
-      });
-      return {
-        healthy: true,
-        status: response.data?.status,
-        timestamp: response.data?.timestamp,
-        version: response.data?.version,
-        uptime: response.data?.uptime,
-      };
-    } catch (error) {
-      if (i === maxRetries - 1) {
-        return {
-          healthy: false,
-          error: error.message,
-          attempts: maxRetries,
-        };
-      }
-      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
-    }
+export async function changePassword(passwordData, options = {}) {
+  const { timeout = 10000 } = options;
+  
+  if (!passwordData?.currentPassword || !passwordData?.newPassword) {
+    return {
+      success: false,
+      error: 'Current and new password are required',
+      code: 'INVALID_PASSWORD_DATA',
+    };
   }
-};
+  
+  if (passwordData.newPassword.length < 8) {
+    return {
+      success: false,
+      error: 'New password must be at least 8 characters',
+      code: 'PASSWORD_TOO_SHORT',
+    };
+  }
+  
+  try {
+    const response = await api.post(USER_ENDPOINTS.CHANGE_PASSWORD, passwordData, { timeout });
+    
+    apiEvents.emit('user:password:changed');
+    
+    return {
+      success: true,
+      data: response.data,
+      message: response.data?.message || 'Password changed successfully',
+    };
+  } catch (error) {
+    trackError(error, {
+      context: 'changePassword',
+      endpoint: USER_ENDPOINTS.CHANGE_PASSWORD,
+    });
+    
+    return {
+      success: false,
+      error: error.message || 'Failed to change password',
+      code: error.code || 'PASSWORD_CHANGE_ERROR',
+      details: error.details,
+    };
+  }
+}
+
+/**
+ * Upload user avatar with progress tracking
+ * POST /api/v1/users/avatar
+ */
+export async function uploadAvatar(file, options = {}) {
+  const { onProgress, timeout = 30000 } = options;
+  
+  if (!file || !(file instanceof File)) {
+    return {
+      success: false,
+      error: 'Invalid file provided',
+      code: 'INVALID_FILE',
+    };
+  }
+  
+  // Validate file type
+  const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  if (!validTypes.includes(file.type)) {
+    return {
+      success: false,
+      error: 'Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed',
+      code: 'INVALID_FILE_TYPE',
+    };
+  }
+  
+  // Validate file size (max 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    return {
+      success: false,
+      error: 'File size must be less than 5MB',
+      code: 'FILE_TOO_LARGE',
+    };
+  }
+  
+  try {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    
+    const config = {
+      timeout,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    };
+    
+    // Add progress tracking if callback provided
+    if (onProgress && typeof onProgress === 'function') {
+      config.onUploadProgress = (progressEvent) => {
+        const percentCompleted = Math.round(
+          (progressEvent.loaded * 100) / progressEvent.total
+        );
+        onProgress(percentCompleted);
+      };
+    }
+    
+    const response = await api.post(USER_ENDPOINTS.UPLOAD_AVATAR, formData, config);
+    
+    // Update cached user info with new avatar
+    if (response.data?.avatarUrl) {
+      const user = TokenManager.getUserInfo();
+      if (user) {
+        user.avatarUrl = response.data.avatarUrl;
+        TokenManager.setUserInfo(user);
+        apiEvents.emit('user:avatar:updated', response.data.avatarUrl);
+      }
+    }
+    
+    return {
+      success: true,
+      data: response.data,
+      avatarUrl: response.data?.avatarUrl,
+      message: response.data?.message || 'Avatar uploaded successfully',
+    };
+  } catch (error) {
+    trackError(error, {
+      context: 'uploadAvatar',
+      endpoint: USER_ENDPOINTS.UPLOAD_AVATAR,
+      file: { name: file.name, type: file.type, size: file.size },
+    });
+    
+    return {
+      success: false,
+      error: error.message || 'Failed to upload avatar',
+      code: error.code || 'AVATAR_UPLOAD_ERROR',
+      details: error.details,
+    };
+  }
+}
+
+/**
+ * Get user activity with pagination
+ * GET /api/v1/users/activity
+ */
+export async function getUserActivity(options = {}) {
+  const { 
+    page = 1, 
+    limit = 20, 
+    type, 
+    startDate, 
+    endDate, 
+    timeout = 10000 
+  } = options;
+  
+  try {
+    const params = { page, limit };
+    if (type) params.type = type;
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    
+    const response = await api.get(USER_ENDPOINTS.ACTIVITY, {
+      params,
+      timeout,
+    });
+    
+    return {
+      success: true,
+      data: response.data,
+      activities: response.data?.activities || [],
+      pagination: response.data?.pagination || { page, limit, total: 0 },
+    };
+  } catch (error) {
+    trackError(error, {
+      context: 'getUserActivity',
+      endpoint: USER_ENDPOINTS.ACTIVITY,
+      params: options,
+    });
+    
+    return {
+      success: false,
+      error: error.message || 'Failed to fetch user activity',
+      code: error.code || 'ACTIVITY_FETCH_ERROR',
+      details: error.details,
+    };
+  }
+}
+
+/**
+ * Update user preferences
+ * PATCH /api/v1/users/preferences
+ */
+export async function updateUserPreferences(preferences, options = {}) {
+  const { timeout = 10000 } = options;
+  
+  if (!preferences || typeof preferences !== 'object') {
+    return {
+      success: false,
+      error: 'Invalid preferences data',
+      code: 'INVALID_PREFERENCES',
+    };
+  }
+  
+  try {
+    const response = await api.patch(USER_ENDPOINTS.PREFERENCES, { preferences }, { timeout });
+    
+    // Update cached user info
+    const user = TokenManager.getUserInfo();
+    if (user && response.data?.preferences) {
+      user.preferences = response.data.preferences;
+      TokenManager.setUserInfo(user);
+    }
+    
+    apiEvents.emit('user:preferences:updated', response.data?.preferences);
+    
+    return {
+      success: true,
+      data: response.data,
+      preferences: response.data?.preferences,
+      message: response.data?.message || 'Preferences updated successfully',
+    };
+  } catch (error) {
+    trackError(error, {
+      context: 'updateUserPreferences',
+      endpoint: USER_ENDPOINTS.PREFERENCES,
+      preferences,
+    });
+    
+    return {
+      success: false,
+      error: error.message || 'Failed to update preferences',
+      code: error.code || 'PREFERENCES_UPDATE_ERROR',
+      details: error.details,
+    };
+  }
+}
 
 // ----------------------
 // Utility Functions
 // ----------------------
 
 /**
- * Error tracking utility
+ * Get current user info from cache or API
  */
-export const trackError = (error, context = {}) => {
-  const errorData = {
-    timestamp: new Date().toISOString(),
-    error: error?.message || error,
-    stack: error?.stack,
-    code: error?.code,
-    status: error?.status,
-    ...context
-  };
+export async function getCurrentUser(options = {}) {
+  const { refresh = false } = options;
   
-  console.error('🔴 Tracked Error:', errorData);
-  
-  // In production, send to error tracking service
-  if (import.meta.env.PROD) {
-    // Send to backend error tracking
-    fetch('/api/v1/errors/log', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(errorData),
-    }).catch(() => {
-      // Silently fail if error tracking is unavailable
-    });
-    
-    // Google Analytics
-    if (window.gtag) {
-      window.gtag('event', 'exception', {
-        description: error?.message || 'Unknown error',
-        fatal: true,
-      });
-    }
-  }
-};
-
-/**
- * Debounce function for rate limiting
- */
-export const debounce = (func, wait) => {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
+  // Return cached user if available and not refreshing
+  const cachedUser = TokenManager.getUserInfo();
+  if (cachedUser && !refresh) {
+    return {
+      success: true,
+      data: { user: cachedUser },
+      user: cachedUser,
+      cached: true,
+      timestamp: new Date().toISOString(),
     };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-};
-
-// ----------------------
-// Export API Instance & Utilities
-// ----------------------
-
-// Debounced health check for background monitoring
-export const debouncedHealthCheck = debounce(() => {
-  checkServerHealth().then(health => {
-    if (!health.healthy) {
-      apiEvents.emit('server:unhealthy', health);
-    }
-  });
-}, 60000); // Check every minute
-
-// Start background monitoring only in browser
-if (typeof window !== 'undefined') {
-  // Clean up old rate limit timestamps periodically
-  setInterval(() => {
-    const now = Date.now();
-    requestTimestamps = requestTimestamps.filter(time => now - time < REQUEST_WINDOW * 2);
-  }, 60000);
+  }
   
-  // Initial health check
-  setTimeout(() => {
-    if (TokenManager.getToken()) {
-      debouncedHealthCheck();
-    }
-  }, 10000);
+  // Fetch fresh data
+  return await fetchUserProfile({ refresh: true });
 }
 
+/**
+ * Clear user cache
+ */
+export function clearUserCache() {
+  TokenManager.setUserInfo(null);
+  TokenManager.setOrganization(null);
+  apiEvents.emit('user:cache:cleared');
+}
+
+/**
+ * Check if user has specific permission
+ */
+export function hasPermission(permission, organizationId = null) {
+  const user = TokenManager.getUserInfo();
+  const org = TokenManager.getOrganization();
+  
+  if (!user || !user.permissions) return false;
+  
+  // Check global permissions
+  if (user.permissions.includes(permission)) return true;
+  
+  // Check organization-specific permissions
+  if (organizationId && user.organizationPermissions) {
+    const orgPerms = user.organizationPermissions[organizationId];
+    return orgPerms && orgPerms.includes(permission);
+  }
+  
+  // Check current organization permissions
+  if (org?.id && user.organizationPermissions?.[org.id]) {
+    return user.organizationPermissions[org.id].includes(permission);
+  }
+  
+  return false;
+}
+
+// ----------------------
+// Event Listeners
+// ----------------------
+
+// Auto-refresh profile on organization switch
+apiEvents.on('user:organization:switched', () => {
+  fetchUserProfile({ refresh: true }).catch(() => {
+    // Silently fail if auto-refresh fails
+  });
+});
+
+// Clear cache on logout
+apiEvents.on('auth:logout', () => {
+  clearUserCache();
+});
+
 // Export everything
-export default api;
-export {
-  TokenManager,
-  trackError,
-  debounce,
-  checkServerHealth,
-  API_ENDPOINTS,
-  apiEvents,
+export default {
+  fetchUserProfile,
+  fetchOrganizations,
+  switchOrganization,
+  updateUserProfile,
+  changePassword,
+  uploadAvatar,
+  getUserActivity,
+  updateUserPreferences,
+  getCurrentUser,
+  clearUserCache,
+  hasPermission,
+  USER_ENDPOINTS,
 };
