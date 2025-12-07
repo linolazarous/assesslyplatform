@@ -80,27 +80,90 @@ export const createEventEmitter = () => {
 export const apiEvents = createEventEmitter();
 
 /* -----------------------
-   Token Management
+   Token Management (Updated for App.jsx compatibility)
    ----------------------- */
 const TOKEN_STORAGE_KEYS = {
   TOKEN: 'assessly_token',
   REFRESH_TOKEN: 'assessly_refresh_token',
   USER: 'assessly_user',
   ORGANIZATION: 'assessly_organization',
+  TENANT_ID: 'assessly_tenant_id',
+  TOKEN_EXPIRY: 'assessly_token_expiry',
+  SESSION_ID: 'assessly_session_id'
+};
+
+// JWT decoding helper
+const decodeJwt = (token) => {
+  if (!token || typeof token !== 'string') return null;
+
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    console.error('JWT decode error:', error);
+    return null;
+  }
+};
+
+const isTokenValid = (token) => {
+  if (!token) return false;
+  
+  const decoded = decodeJwt(token);
+  if (!decoded || !decoded.exp) return false;
+  
+  // Check expiration with 5-minute buffer
+  const buffer = 5 * 60 * 1000;
+  return Date.now() + buffer < decoded.exp * 1000;
 };
 
 export const TokenManager = {
   getToken() {
-    try { return localStorage.getItem(TOKEN_STORAGE_KEYS.TOKEN); } catch { return null; }
+    try { 
+      return localStorage.getItem(TOKEN_STORAGE_KEYS.TOKEN); 
+    } catch { 
+      return null; 
+    }
   },
   
-  setToken(token, refreshToken = null) {
+  getRefreshToken() {
+    try { 
+      return localStorage.getItem(TOKEN_STORAGE_KEYS.REFRESH_TOKEN); 
+    } catch { 
+      return null; 
+    }
+  },
+  
+  setTokens(token, refreshToken = null, expiry = null) {
     try {
       if (token) {
         localStorage.setItem(TOKEN_STORAGE_KEYS.TOKEN, token);
         api.defaults.headers.common.Authorization = `Bearer ${token}`;
+        
+        // Set expiry if provided
+        if (expiry) {
+          localStorage.setItem(TOKEN_STORAGE_KEYS.TOKEN_EXPIRY, expiry);
+        } else {
+          // Try to extract expiry from JWT
+          const decoded = decodeJwt(token);
+          if (decoded?.exp) {
+            const expiryDate = new Date(decoded.exp * 1000).toISOString();
+            localStorage.setItem(TOKEN_STORAGE_KEYS.TOKEN_EXPIRY, expiryDate);
+          }
+        }
       } else {
         localStorage.removeItem(TOKEN_STORAGE_KEYS.TOKEN);
+        localStorage.removeItem(TOKEN_STORAGE_KEYS.TOKEN_EXPIRY);
         delete api.defaults.headers.common.Authorization;
       }
       
@@ -110,13 +173,13 @@ export const TokenManager = {
       
       return true;
     } catch (e) { 
-      console.warn('TokenManager.setToken error', e); 
+      console.warn('TokenManager.setTokens error', e); 
       return false; 
     }
   },
   
-  getRefreshToken() {
-    try { return localStorage.getItem(TOKEN_STORAGE_KEYS.REFRESH_TOKEN); } catch { return null; }
+  setToken(token) {
+    return this.setTokens(token);
   },
   
   setRefreshToken(token) {
@@ -128,16 +191,22 @@ export const TokenManager = {
       }
       return true;
     } catch (e) { 
-      console.warn(e); 
+      console.warn('TokenManager.setRefreshToken error', e); 
       return false; 
     }
   },
   
-  getUser() {
+  getUserInfo() {
     try {
       const v = localStorage.getItem(TOKEN_STORAGE_KEYS.USER);
       return v ? JSON.parse(v) : null;
-    } catch { return null; }
+    } catch { 
+      return null; 
+    }
+  },
+  
+  getUser() {
+    return this.getUserInfo();
   },
   
   setUser(user) {
@@ -149,7 +218,7 @@ export const TokenManager = {
       }
       return true;
     } catch (e) { 
-      console.warn(e); 
+      console.warn('TokenManager.setUser error', e); 
       return false; 
     }
   },
@@ -158,7 +227,9 @@ export const TokenManager = {
     try {
       const v = localStorage.getItem(TOKEN_STORAGE_KEYS.ORGANIZATION);
       return v ? JSON.parse(v) : null;
-    } catch { return null; }
+    } catch { 
+      return null; 
+    }
   },
   
   setOrganization(organization) {
@@ -170,8 +241,48 @@ export const TokenManager = {
       }
       return true;
     } catch (e) { 
-      console.warn(e); 
+      console.warn('TokenManager.setOrganization error', e); 
       return false; 
+    }
+  },
+  
+  getTenantId() {
+    try {
+      const org = this.getOrganization();
+      if (org && org.id) {
+        return org.id;
+      }
+      return localStorage.getItem(TOKEN_STORAGE_KEYS.TENANT_ID);
+    } catch (error) {
+      console.warn('Failed to get tenant ID:', error);
+      return null;
+    }
+  },
+  
+  setTenantContext(organizationId) {
+    try {
+      if (organizationId) {
+        localStorage.setItem(TOKEN_STORAGE_KEYS.TENANT_ID, organizationId);
+      } else {
+        localStorage.removeItem(TOKEN_STORAGE_KEYS.TENANT_ID);
+      }
+      return true;
+    } catch (error) {
+      console.warn('Failed to set tenant context:', error);
+      return false;
+    }
+  },
+  
+  isTokenExpired() {
+    try {
+      const token = this.getToken();
+      if (!token) return true;
+      
+      // Check JWT expiry
+      return !isTokenValid(token);
+    } catch (error) {
+      console.warn('Failed to check token expiry:', error);
+      return true; // Assume expired if we can't check
     }
   },
   
@@ -183,9 +294,14 @@ export const TokenManager = {
       delete api.defaults.headers.common.Authorization;
       return true;
     } catch (e) { 
-      console.warn('TokenManager.clearAll', e); 
+      console.warn('TokenManager.clearAll error', e); 
       return false; 
     }
+  },
+  
+  // Backward compatibility methods
+  clearTokens() {
+    return this.clearAll();
   }
 };
 
@@ -201,9 +317,15 @@ api.interceptors.request.use(
     }
     
     // Add organization context if available
-    const organization = TokenManager.getOrganization();
-    if (organization && organization.id) {
-      config.headers['X-Organization-ID'] = organization.id;
+    const tenantId = TokenManager.getTenantId();
+    if (tenantId) {
+      config.headers['X-Organization-ID'] = tenantId;
+    }
+    
+    // Add session ID for tracking
+    const sessionId = localStorage.getItem(TOKEN_STORAGE_KEYS.SESSION_ID);
+    if (sessionId) {
+      config.headers['X-Session-ID'] = sessionId;
     }
     
     // Add request metadata
@@ -336,7 +458,7 @@ export const API_ENDPOINTS = {
     GET: (id) => `/organizations/${id}`,
     UPDATE: (id) => `/organizations/${id}`,
     MEMBERS: (id) => `/organizations/${id}/members`,
-    INVITE: (id) => `/organizations/${id}/invite`,
+    INVITE: (id) => `/organizations/${id}/invite',
   },
   ASSESSMENTS: {
     BASE: '/assessments',
@@ -401,16 +523,9 @@ export const API_ENDPOINTS = {
    API Service Functions
    ----------------------- */
 export const AuthAPI = {
-  // Register a new organization and user
   register: (payload) => api.post(API_ENDPOINTS.AUTH.REGISTER, payload),
-  
-  // Login with email/password
   login: (payload) => api.post(API_ENDPOINTS.AUTH.LOGIN, payload),
-  
-  // Get current user info
   me: () => api.get(API_ENDPOINTS.AUTH.ME),
-  
-  // Logout
   logout: async () => {
     try {
       await api.post(API_ENDPOINTS.AUTH.LOGOUT);
@@ -420,186 +535,84 @@ export const AuthAPI = {
     TokenManager.clearAll();
     return Promise.resolve();
   },
-  
-  // Forgot password
   forgotPassword: (email) => api.post(API_ENDPOINTS.AUTH.FORGOT_PASSWORD, { email }),
-  
-  // Reset password
   resetPassword: (token, newPassword) => api.post(API_ENDPOINTS.AUTH.RESET_PASSWORD, { token, password: newPassword }),
-  
-  // Google OAuth
-  googleLogin: () => {
-    if (typeof window !== 'undefined') {
-      window.location.href = `${API_BASE_URL}${API_ENDPOINTS.AUTH.GOOGLE}`;
-    }
-  },
-  
-  // Refresh token
   refreshToken: (refreshToken) => api.post(API_ENDPOINTS.AUTH.REFRESH, { refreshToken }),
 };
 
 export const UsersAPI = {
-  // List users (organization-scoped)
   list: () => api.get(API_ENDPOINTS.USERS.LIST),
-  
-  // Get user by ID
   get: (id) => api.get(API_ENDPOINTS.USERS.GET(id)),
-  
-  // Update user
   update: (id, payload) => api.put(API_ENDPOINTS.USERS.UPDATE(id), payload),
-  
-  // Get user profile
   getProfile: () => api.get(API_ENDPOINTS.USERS.PROFILE),
-  
-  // Update user preferences
   updatePreferences: (payload) => api.put(API_ENDPOINTS.USERS.PREFERENCES, payload),
 };
 
 export const OrganizationsAPI = {
-  // Create organization
   create: (payload) => api.post(API_ENDPOINTS.ORGANIZATIONS.CREATE, payload),
-  
-  // List organizations (for current user)
   list: () => api.get(API_ENDPOINTS.ORGANIZATIONS.LIST),
-  
-  // Get organization by ID
   get: (id) => api.get(API_ENDPOINTS.ORGANIZATIONS.GET(id)),
-  
-  // Update organization
   update: (id, payload) => api.put(API_ENDPOINTS.ORGANIZATIONS.UPDATE(id), payload),
-  
-  // Get organization members
   getMembers: (id) => api.get(API_ENDPOINTS.ORGANIZATIONS.MEMBERS(id)),
-  
-  // Invite member to organization
   inviteMember: (id, payload) => api.post(API_ENDPOINTS.ORGANIZATIONS.INVITE(id), payload),
 };
 
 export const AssessmentsAPI = {
-  // Create assessment
   create: (payload) => api.post(API_ENDPOINTS.ASSESSMENTS.CREATE, payload),
-  
-  // List assessments
   list: (params = {}) => api.get(API_ENDPOINTS.ASSESSMENTS.LIST, { params }),
-  
-  // Get assessment by ID
   get: (id) => api.get(API_ENDPOINTS.ASSESSMENTS.GET(id)),
-  
-  // Update assessment
   update: (id, payload) => api.put(API_ENDPOINTS.ASSESSMENTS.UPDATE(id), payload),
-  
-  // Delete assessment
   delete: (id) => api.delete(API_ENDPOINTS.ASSESSMENTS.DELETE(id)),
-  
-  // Publish assessment
   publish: (id) => api.post(API_ENDPOINTS.ASSESSMENTS.PUBLISH(id)),
-  
-  // Unpublish assessment
   unpublish: (id) => api.post(API_ENDPOINTS.ASSESSMENTS.UNPUBLISH(id)),
-  
-  // Get assessment templates
   getTemplates: () => api.get(API_ENDPOINTS.ASSESSMENTS.TEMPLATES),
-  
-  // Get assessment categories
   getCategories: () => api.get(API_ENDPOINTS.ASSESSMENTS.CATEGORIES),
 };
 
 export const QuestionsAPI = {
-  // Create question in assessment
   create: (assessmentId, payload) => api.post(API_ENDPOINTS.QUESTIONS.CREATE(assessmentId), payload),
-  
-  // List questions in assessment
   list: (assessmentId, params = {}) => api.get(API_ENDPOINTS.QUESTIONS.LIST(assessmentId), { params }),
-  
-  // Get question by ID
   get: (assessmentId, questionId) => api.get(API_ENDPOINTS.QUESTIONS.GET(assessmentId, questionId)),
-  
-  // Update question
   update: (assessmentId, questionId, payload) => api.put(API_ENDPOINTS.QUESTIONS.UPDATE(assessmentId, questionId), payload),
-  
-  // Delete question
   delete: (assessmentId, questionId) => api.delete(API_ENDPOINTS.QUESTIONS.DELETE(assessmentId, questionId)),
 };
 
 export const ResponsesAPI = {
-  // Create response
   create: (payload) => api.post(API_ENDPOINTS.RESPONSES.CREATE, payload),
-  
-  // List responses
   list: (params = {}) => api.get(API_ENDPOINTS.RESPONSES.LIST, { params }),
-  
-  // Get response by ID
   get: (id) => api.get(API_ENDPOINTS.RESPONSES.GET(id)),
-  
-  // Update response
   update: (id, payload) => api.put(API_ENDPOINTS.RESPONSES.UPDATE(id), payload),
-  
-  // Delete response
   delete: (id) => api.delete(API_ENDPOINTS.RESPONSES.DELETE(id)),
-  
-  // Submit response for grading
   submit: (id) => api.post(API_ENDPOINTS.RESPONSES.SUBMIT(id)),
-  
-  // Get response score
   getScore: (id) => api.get(API_ENDPOINTS.RESPONSES.SCORE(id)),
-  
-  // Analyze response
   analyze: (id) => api.get(API_ENDPOINTS.RESPONSES.ANALYZE(id)),
-  
-  // Get responses by assessment
   getByAssessment: (assessmentId, params = {}) => api.get(API_ENDPOINTS.RESPONSES.BY_ASSESSMENT(assessmentId), { params }),
 };
 
 export const SubscriptionsAPI = {
-  // Get subscription plans
   getPlans: () => api.get(API_ENDPOINTS.SUBSCRIPTIONS.PLANS),
-  
-  // Get current subscription
   getCurrent: () => api.get(API_ENDPOINTS.SUBSCRIPTIONS.CURRENT),
-  
-  // Upgrade subscription
   upgrade: (planId) => api.post(API_ENDPOINTS.SUBSCRIPTIONS.UPGRADE, { planId }),
-  
-  // Cancel subscription
   cancel: () => api.post(API_ENDPOINTS.SUBSCRIPTIONS.CANCEL),
-  
-  // Get invoices
   getInvoices: () => api.get(API_ENDPOINTS.SUBSCRIPTIONS.INVOICES),
 };
 
 export const AnalyticsAPI = {
-  // Get dashboard analytics
   getDashboard: () => api.get(API_ENDPOINTS.ANALYTICS.DASHBOARD),
-  
-  // Get assessment statistics
   getAssessmentStats: (assessmentId) => api.get(API_ENDPOINTS.ANALYTICS.ASSESSMENT_STATS(assessmentId)),
-  
-  // Get question analysis
   getQuestionAnalysis: (assessmentId) => api.get(API_ENDPOINTS.ANALYTICS.QUESTION_ANALYSIS(assessmentId)),
-  
-  // Get response trends
   getTrends: (assessmentId) => api.get(API_ENDPOINTS.ANALYTICS.TRENDS(assessmentId)),
 };
 
 export const HealthAPI = {
-  // Check service health
   check: () => api.get(API_ENDPOINTS.HEALTH.CHECK),
-  
-  // Get metrics
   getMetrics: () => api.get(API_ENDPOINTS.HEALTH.METRICS),
-  
-  // Get service status
   getStatus: () => api.get(API_ENDPOINTS.HEALTH.STATUS),
 };
 
 export const UtilsAPI = {
-  // Get countries list
   getCountries: () => api.get(API_ENDPOINTS.UTILS.COUNTRIES),
-  
-  // Get timezones list
   getTimezones: () => api.get(API_ENDPOINTS.UTILS.TIMEZONES),
-  
-  // Get currencies list
   getCurrencies: () => api.get(API_ENDPOINTS.UTILS.CURRENCIES),
 };
 
