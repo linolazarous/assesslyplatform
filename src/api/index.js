@@ -131,7 +131,7 @@ export const API_ENDPOINTS = {
     MEMBERS: (id) => `/organizations/${id}/members`,
     INVITE: (id) => `/organizations/${id}/invite`,
     ACCEPT_INVITE: '/organizations/accept-invite',
-    LEAVE: (id) => `/organizations/${id}/leave',
+    LEAVE: (id) => `/organizations/${id}/leave`,
   },
   USERS: {
     BASE: '/users',
