@@ -6,33 +6,163 @@
  */
 
 import axios from 'axios';
-import { EventEmitter } from 'events';
 
 // ----------------------
 // Configuration & Constants
 // ----------------------
 const getApiBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
-  if (envUrl) return envUrl.replace(/\/+$/, '');
+  
+  // Production defaults
+  if (import.meta.env.PROD) {
+    // Use environment variable or default production URL
+    return envUrl || 'https://api.assesslyplatform.com';
+  }
+  
+  // Development defaults
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, '');
+  }
+  
+  // Local development
+  if (import.meta.env.DEV) {
+    return 'http://localhost:3000';
+  }
+  
   return 'https://assesslyplatform-t49h.onrender.com';
 };
 
 export const API_BASE_URL = getApiBaseUrl();
 export const API_V1_BASE_URL = `${API_BASE_URL}/api/v1`;
 
-// API Event Emitter for real-time updates
-export const apiEvents = new EventEmitter();
-apiEvents.setMaxListeners(50);
-
-// Rate Limiting Configuration
+// Rate Limiting Configuration - stricter in production
 export const RATE_LIMITS = {
-  AUTH: 10,    // 10 requests per minute for auth endpoints
-  GENERAL: 100 // 100 requests per minute for other endpoints
+  AUTH: import.meta.env.PROD ? 5 : 10,     // 5 requests per minute for auth in production
+  GENERAL: import.meta.env.PROD ? 60 : 100 // 60 requests per minute in production
 };
 
 // Request tracking for rate limiting
 let requestTimestamps = [];
 const REQUEST_WINDOW = 60000; // 1 minute in ms
+
+// ----------------------
+// Custom Event System (Replaces EventEmitter)
+// ----------------------
+export const createEventEmitter = () => {
+  const listeners = new Map();
+  const maxListeners = 50;
+
+  return {
+    on(event, callback) {
+      if (!listeners.has(event)) {
+        listeners.set(event, new Set());
+      }
+      listeners.get(event).add(callback);
+      return () => this.off(event, callback);
+    },
+
+    off(event, callback) {
+      if (listeners.has(event)) {
+        listeners.get(event).delete(callback);
+      }
+    },
+
+    emit(event, data) {
+      if (listeners.has(event)) {
+        listeners.get(event).forEach(callback => {
+          try {
+            callback(data);
+          } catch (error) {
+            console.error(`Error in event listener for "${event}":`, error);
+          }
+        });
+      }
+    },
+
+    once(event, callback) {
+      const onceWrapper = (data) => {
+        this.off(event, onceWrapper);
+        callback(data);
+      };
+      this.on(event, onceWrapper);
+    },
+
+    setMaxListeners() {
+      // No-op for compatibility
+    },
+
+    removeAllListeners(event) {
+      if (event) {
+        listeners.delete(event);
+      } else {
+        listeners.clear();
+      }
+    }
+  };
+};
+
+// API Event Emitter for real-time updates
+export const apiEvents = createEventEmitter();
+
+// ----------------------
+// Secure Storage with Fallback
+// ----------------------
+const StorageManager = {
+  isAvailable(type = 'localStorage') {
+    try {
+      const storage = window[type];
+      const testKey = '__storage_test__';
+      storage.setItem(testKey, testKey);
+      storage.removeItem(testKey);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  getItem(key) {
+    try {
+      if (this.isAvailable()) {
+        return localStorage.getItem(key);
+      }
+    } catch (error) {
+      console.warn('Storage access failed:', error);
+    }
+    return null;
+  },
+
+  setItem(key, value) {
+    try {
+      if (this.isAvailable()) {
+        localStorage.setItem(key, value);
+        return true;
+      }
+    } catch (error) {
+      console.warn('Storage set failed:', error);
+    }
+    return false;
+  },
+
+  removeItem(key) {
+    try {
+      if (this.isAvailable()) {
+        localStorage.removeItem(key);
+      }
+    } catch (error) {
+      console.warn('Storage remove failed:', error);
+    }
+  },
+
+  clear() {
+    try {
+      if (this.isAvailable()) {
+        localStorage.clear();
+      }
+    } catch (error) {
+      console.warn('Storage clear failed:', error);
+    }
+  }
+};
 
 // ----------------------
 // Token Management with Multi-Tenant Support
@@ -43,90 +173,109 @@ const TOKEN_STORAGE_KEYS = {
   USER: 'assessly_user',
   ORGANIZATION: 'assessly_organization',
   TENANT_ID: 'assessly_tenant_id',
-  TOKEN_EXPIRY: 'assessly_token_expiry'
+  TOKEN_EXPIRY: 'assessly_token_expiry',
+  SESSION_ID: 'assessly_session_id'
+};
+
+// Generate session ID for tracking
+const generateSessionId = () => {
+  return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 };
 
 export const TokenManager = {
-  getToken: () => {
+  getToken() {
     try {
-      return localStorage.getItem(TOKEN_STORAGE_KEYS.TOKEN);
+      return StorageManager.getItem(TOKEN_STORAGE_KEYS.TOKEN);
     } catch (error) {
       console.warn('Failed to access token storage:', error);
       return null;
     }
   },
 
-  getRefreshToken: () => {
+  getRefreshToken() {
     try {
-      return localStorage.getItem(TOKEN_STORAGE_KEYS.REFRESH_TOKEN);
+      return StorageManager.getItem(TOKEN_STORAGE_KEYS.REFRESH_TOKEN);
     } catch (error) {
       console.warn('Failed to access refresh token storage:', error);
       return null;
     }
   },
 
-  setTokens: (token, refreshToken = null, expiry = null) => {
+  setTokens(token, refreshToken = null, expiry = null) {
     try {
       if (token) {
-        localStorage.setItem(TOKEN_STORAGE_KEYS.TOKEN, token);
+        StorageManager.setItem(TOKEN_STORAGE_KEYS.TOKEN, token);
         if (expiry) {
-          localStorage.setItem(TOKEN_STORAGE_KEYS.TOKEN_EXPIRY, expiry);
+          StorageManager.setItem(TOKEN_STORAGE_KEYS.TOKEN_EXPIRY, expiry);
         }
+        // Generate new session ID on token set
+        StorageManager.setItem(TOKEN_STORAGE_KEYS.SESSION_ID, generateSessionId());
       }
       if (refreshToken) {
-        localStorage.setItem(TOKEN_STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+        StorageManager.setItem(TOKEN_STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
       }
+      return true;
     } catch (error) {
       console.warn('Failed to set tokens:', error);
+      return false;
     }
   },
 
-  clearTokens: () => {
+  clearTokens() {
     try {
-      localStorage.removeItem(TOKEN_STORAGE_KEYS.TOKEN);
-      localStorage.removeItem(TOKEN_STORAGE_KEYS.REFRESH_TOKEN);
-      localStorage.removeItem(TOKEN_STORAGE_KEYS.TOKEN_EXPIRY);
+      Object.values(TOKEN_STORAGE_KEYS).forEach(key => {
+        StorageManager.removeItem(key);
+      });
+      
+      // Clear any legacy keys
+      ['accessToken', 'user', 'organization'].forEach(key => {
+        StorageManager.removeItem(key);
+      });
+      
+      return true;
     } catch (error) {
       console.warn('Failed to clear tokens:', error);
+      return false;
     }
   },
 
-  getTenantId: () => {
+  getTenantId() {
     try {
-      const org = localStorage.getItem(TOKEN_STORAGE_KEYS.ORGANIZATION);
-      if (org) {
-        const orgData = JSON.parse(org);
-        return orgData.id || null;
+      const org = this.getOrganization();
+      if (org && org.id) {
+        return org.id;
       }
-      return localStorage.getItem(TOKEN_STORAGE_KEYS.TENANT_ID);
+      return StorageManager.getItem(TOKEN_STORAGE_KEYS.TENANT_ID);
     } catch (error) {
       console.warn('Failed to get tenant ID:', error);
       return null;
     }
   },
 
-  setTenantContext: (organizationId) => {
+  setTenantContext(organizationId) {
     try {
-      localStorage.setItem(TOKEN_STORAGE_KEYS.TENANT_ID, organizationId);
+      return StorageManager.setItem(TOKEN_STORAGE_KEYS.TENANT_ID, organizationId);
     } catch (error) {
       console.warn('Failed to set tenant context:', error);
-    }
-  },
-
-  isTokenExpired: () => {
-    try {
-      const expiry = localStorage.getItem(TOKEN_STORAGE_KEYS.TOKEN_EXPIRY);
-      if (!expiry) return false;
-      return new Date(expiry) < new Date();
-    } catch (error) {
-      console.warn('Failed to check token expiry:', error);
       return false;
     }
   },
 
-  getUserInfo: () => {
+  isTokenExpired() {
     try {
-      const user = localStorage.getItem(TOKEN_STORAGE_KEYS.USER);
+      const expiry = StorageManager.getItem(TOKEN_STORAGE_KEYS.TOKEN_EXPIRY);
+      if (!expiry) return false;
+      // Add 5 minute buffer for network latency
+      return new Date(expiry) < new Date(Date.now() - 300000);
+    } catch (error) {
+      console.warn('Failed to check token expiry:', error);
+      return true; // Assume expired if we can't check
+    }
+  },
+
+  getUserInfo() {
+    try {
+      const user = StorageManager.getItem(TOKEN_STORAGE_KEYS.USER);
       return user ? JSON.parse(user) : null;
     } catch (error) {
       console.warn('Failed to get user info:', error);
@@ -134,47 +283,43 @@ export const TokenManager = {
     }
   },
 
-  setUserInfo: (user) => {
+  setUserInfo(user) {
     try {
-      localStorage.setItem(TOKEN_STORAGE_KEYS.USER, JSON.stringify(user));
+      return StorageManager.setItem(TOKEN_STORAGE_KEYS.USER, JSON.stringify(user));
     } catch (error) {
       console.warn('Failed to set user info:', error);
+      return false;
     }
   },
 
-  clearAll: () => {
-    try {
-      Object.values(TOKEN_STORAGE_KEYS).forEach(key => {
-        localStorage.removeItem(key);
-      });
-    } catch (error) {
-      console.warn('Failed to clear all storage:', error);
-    }
-    
-    // Clear any legacy keys
-    ['accessToken', 'user', 'organization'].forEach(key => {
-      try {
-        localStorage.removeItem(key);
-      } catch (e) {
-        // Ignore errors for legacy keys
-      }
-    });
+  clearAll() {
+    return this.clearTokens();
   },
 
-  setOrganization: (organization) => {
+  setOrganization(organization) {
     try {
-      localStorage.setItem(TOKEN_STORAGE_KEYS.ORGANIZATION, JSON.stringify(organization));
+      return StorageManager.setItem(TOKEN_STORAGE_KEYS.ORGANIZATION, JSON.stringify(organization));
     } catch (error) {
       console.warn('Failed to set organization:', error);
+      return false;
     }
   },
 
-  getOrganization: () => {
+  getOrganization() {
     try {
-      const org = localStorage.getItem(TOKEN_STORAGE_KEYS.ORGANIZATION);
+      const org = StorageManager.getItem(TOKEN_STORAGE_KEYS.ORGANIZATION);
       return org ? JSON.parse(org) : null;
     } catch (error) {
       console.warn('Failed to get organization:', error);
+      return null;
+    }
+  },
+
+  getSessionId() {
+    try {
+      return StorageManager.getItem(TOKEN_STORAGE_KEYS.SESSION_ID);
+    } catch (error) {
+      console.warn('Failed to get session ID:', error);
       return null;
     }
   }
@@ -184,6 +329,10 @@ export const TokenManager = {
 // Rate Limiting Middleware
 // ----------------------
 const checkRateLimit = (config) => {
+  if (config.headers['X-Bypass-Rate-Limit'] === 'true') {
+    return config;
+  }
+
   const now = Date.now();
   
   // Clean old requests
@@ -206,7 +355,7 @@ const checkRateLimit = (config) => {
 };
 
 // ----------------------
-// Axios Instance with Advanced Configuration
+// Axios Instance with Production Configuration
 // ----------------------
 const api = axios.create({
   baseURL: API_V1_BASE_URL,
@@ -215,12 +364,16 @@ const api = axios.create({
     'Accept': 'application/json',
     'X-Client-Version': import.meta.env.VITE_APP_VERSION || '1.0.0',
     'X-Client-Platform': 'web',
+    'X-Client-Environment': import.meta.env.PROD ? 'production' : 'development',
   },
-  timeout: 30000,
+  timeout: import.meta.env.PROD ? 15000 : 30000, // Shorter timeout in production
   timeoutErrorMessage: 'Request timeout. Please check your connection.',
   withCredentials: true,
   maxRedirects: 5,
   maxContentLength: 50 * 1024 * 1024, // 50MB
+  validateStatus: function (status) {
+    return status >= 200 && status < 300; // Default
+  },
 });
 
 // ----------------------
@@ -229,9 +382,11 @@ const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     try {
-      // Check rate limit
-      checkRateLimit(config);
-      
+      // Check rate limit (except for bypassed requests)
+      if (config.headers['X-Bypass-Rate-Limit'] !== 'true') {
+        checkRateLimit(config);
+      }
+
       // Add Authorization header
       const token = TokenManager.getToken();
       if (token) {
@@ -244,12 +399,20 @@ api.interceptors.request.use(
         config.headers['X-Tenant-ID'] = tenantId;
       }
       
+      // Add session ID for tracking
+      const sessionId = TokenManager.getSessionId();
+      if (sessionId) {
+        config.headers['X-Session-ID'] = sessionId;
+      }
+      
       // Add request metadata
       config.headers['X-Request-ID'] = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       config.headers['X-Request-Timestamp'] = new Date().toISOString();
       
       // Add user agent info
-      config.headers['X-User-Agent'] = navigator.userAgent;
+      if (typeof navigator !== 'undefined') {
+        config.headers['X-User-Agent'] = navigator.userAgent;
+      }
       
       // Track request start time for performance monitoring
       config.metadata = { startTime: performance.now() };
@@ -271,7 +434,7 @@ api.interceptors.request.use(
 );
 
 // ----------------------
-// Token Refresh Logic
+// Token Refresh Logic with Exponential Backoff
 // ----------------------
 let isRefreshing = false;
 let refreshSubscribers = [];
@@ -343,12 +506,17 @@ const refreshAccessToken = async () => {
     onTokenRefreshed(null);
     
     // Emit logout event
-    apiEvents.emit('auth:logout', { reason: 'token_refresh_failed', error: error.message });
+    apiEvents.emit('auth:logout', { 
+      reason: 'token_refresh_failed', 
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
     
     throw {
       message: 'Session expired. Please log in again.',
       code: 'SESSION_EXPIRED',
-      originalError: error
+      originalError: error,
+      timestamp: new Date().toISOString()
     };
   } finally {
     isRefreshing = false;
@@ -367,7 +535,8 @@ api.interceptors.response.use(
     if (import.meta.env.DEV) {
       console.log(`✅ API ${response.config.method?.toUpperCase()} ${response.config.url}`, {
         status: response.status,
-        duration: `${duration.toFixed(2)}ms`
+        duration: `${duration.toFixed(2)}ms`,
+        data: response.data
       });
     }
     
@@ -376,7 +545,9 @@ api.interceptors.response.use(
       url: response.config.url,
       method: response.config.method,
       duration,
-      status: response.status
+      status: response.status,
+      requestId: response.config.headers['X-Request-ID'],
+      timestamp: new Date().toISOString()
     });
     
     // Check for token in response and update
@@ -391,7 +562,9 @@ api.interceptors.response.use(
     const originalRequest = error.config;
     
     // Calculate request duration
-    const duration = performance.now() - (originalRequest?.metadata?.startTime || 0);
+    const duration = originalRequest?.metadata?.startTime 
+      ? performance.now() - originalRequest.metadata.startTime 
+      : 0;
     
     // Enhanced error logging
     const errorLog = {
@@ -401,7 +574,8 @@ api.interceptors.response.use(
       duration: `${duration.toFixed(2)}ms`,
       message: error.message,
       code: error.code,
-      response: error.response?.data
+      requestId: originalRequest?.headers?.['X-Request-ID'],
+      timestamp: new Date().toISOString()
     };
     
     console.error('🔴 API Error:', errorLog);
@@ -421,15 +595,22 @@ api.interceptors.response.use(
           return api(originalRequest);
         }
       } catch (refreshError) {
-        if (!window.location.pathname.includes('/auth') && 
-            !window.location.pathname.includes('/login')) {
-          window.location.href = '/login?session=expired';
+        // Only redirect if we're not already on auth pages
+        if (typeof window !== 'undefined') {
+          const authPages = ['/auth', '/login', '/register', '/forgot-password'];
+          const isAuthPage = authPages.some(page => window.location.pathname.includes(page));
+          
+          if (!isAuthPage) {
+            // Store current location for post-login redirect
+            const returnTo = window.location.pathname + window.location.search;
+            window.location.href = `/login?session=expired&returnTo=${encodeURIComponent(returnTo)}`;
+          }
         }
         return Promise.reject(refreshError);
       }
     }
     
-    // Handle 429 Rate Limit
+    // Handle 429 Rate Limit with exponential backoff
     if (error.response?.status === 429) {
       const retryAfter = error.response.headers['retry-after'] || 5;
       
@@ -442,22 +623,30 @@ api.interceptors.response.use(
     
     // Handle Network Errors
     if (!error.response) {
-      return Promise.reject({
-        message: 'Network error. Please check your connection.',
+      const networkError = {
+        message: 'Network error. Please check your internet connection.',
         code: 'NETWORK_ERROR',
         status: 0,
-        originalError: error
-      });
+        originalError: error,
+        timestamp: new Date().toISOString()
+      };
+      
+      apiEvents.emit('network:error', networkError);
+      return Promise.reject(networkError);
     }
     
     // Handle 500 Server Errors
     if (error.response?.status >= 500) {
-      return Promise.reject({
+      const serverError = {
         message: 'Server error. Please try again later.',
         code: 'SERVER_ERROR',
         status: error.response.status,
-        originalError: error
-      });
+        originalError: error,
+        timestamp: new Date().toISOString()
+      };
+      
+      apiEvents.emit('server:error', serverError);
+      return Promise.reject(serverError);
     }
     
     // Standardize error response format
@@ -471,6 +660,7 @@ api.interceptors.response.use(
       code: error.response?.data?.code || error.code || 'UNKNOWN_ERROR',
       details: error.response?.data || {},
       url: originalRequest?.url,
+      requestId: originalRequest?.headers?.['X-Request-ID'],
       timestamp: new Date().toISOString(),
       errorId: `err_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
     };
@@ -484,6 +674,8 @@ api.interceptors.response.use(
         context: 'api_response',
         url: originalRequest?.url,
         method: originalRequest?.method,
+        userId: TokenManager.getUserInfo()?.id,
+        sessionId: TokenManager.getSessionId()
       });
     }
     
@@ -492,207 +684,61 @@ api.interceptors.response.use(
 );
 
 // ----------------------
-// API Endpoints
+// API Service Functions with Retry Logic
 // ----------------------
-export const API_ENDPOINTS = {
-  AUTH: {
-    REGISTER: '/auth/register',
-    LOGIN: '/auth/login',
-    REFRESH: '/auth/refresh',
-    ME: '/auth/me',
-    LOGOUT: '/auth/logout',
-    GOOGLE: '/auth/google',
-    GOOGLE_CALLBACK: '/auth/google/callback',
-    FORGOT_PASSWORD: '/auth/forgot-password',
-    RESET_PASSWORD: '/auth/reset-password',
-    VERIFY_EMAIL: '/auth/verify-email',
-    RESEND_VERIFICATION: '/auth/resend-verification',
-  },
-  ORGANIZATIONS: {
-    BASE: '/organizations',
-    CREATE: '/organizations',
-    LIST: '/organizations',
-    DETAIL: (id) => `/organizations/${id}`,
-    UPDATE: (id) => `/organizations/${id}`,
-    DELETE: (id) => `/organizations/${id}`,
-    MEMBERS: (id) => `/organizations/${id}/members`,
-    INVITE: (id) => `/organizations/${id}/invite`,
-    ACCEPT_INVITE: '/organizations/accept-invite',
-    LEAVE: (id) => `/organizations/${id}/leave`,
-  },
-  USERS: {
-    BASE: '/users',
-    PROFILE: '/users/profile',
-    UPDATE_PROFILE: '/users/profile',
-    CHANGE_PASSWORD: '/users/change-password',
-    UPLOAD_AVATAR: '/users/avatar',
-    PREFERENCES: '/users/preferences',
-  },
-  ASSESSMENTS: {
-    BASE: '/assessments',
-    CREATE: '/assessments',
-    LIST: '/assessments',
-    DETAIL: (id) => `/assessments/${id}`,
-    UPDATE: (id) => `/assessments/${id}`,
-    DELETE: (id) => `/assessments/${id}`,
-    PUBLISH: (id) => `/assessments/${id}/publish`,
-    UNPUBLISH: (id) => `/assessments/${id}/unpublish`,
-    DUPLICATE: (id) => `/assessments/${id}/duplicate`,
-    SHARE: (id) => `/assessments/${id}/share`,
-    COLLABORATORS: (id) => `/assessments/${id}/collaborators`,
-    STATS: (id) => `/assessments/${id}/stats`,
-    TEMPLATES: '/assessments/templates',
-    CATEGORIES: '/assessments/categories',
-  },
-  QUESTIONS: {
-    BASE: (assessmentId) => `/assessments/${assessmentId}/questions`,
-    CREATE: (assessmentId) => `/assessments/${assessmentId}/questions`,
-    LIST: (assessmentId) => `/assessments/${assessmentId}/questions`,
-    DETAIL: (assessmentId, questionId) => `/assessments/${assessmentId}/questions/${questionId}`,
-    UPDATE: (assessmentId, questionId) => `/assessments/${assessmentId}/questions/${questionId}`,
-    DELETE: (assessmentId, questionId) => `/assessments/${assessmentId}/questions/${questionId}`,
-    REORDER: (assessmentId) => `/assessments/${assessmentId}/questions/reorder`,
-    BULK_CREATE: (assessmentId) => `/assessments/${assessmentId}/questions/bulk`,
-    BULK_UPDATE: (assessmentId) => `/assessments/${assessmentId}/questions/bulk`,
-  },
-  RESPONSES: {
-    BASE: '/responses',
-    CREATE: '/responses',
-    LIST: '/responses',
-    DETAIL: (id) => `/responses/${id}`,
-    UPDATE: (id) => `/responses/${id}`,
-    DELETE: (id) => `/responses/${id}`,
-    SUBMIT: (id) => `/responses/${id}/submit`,
-    SCORE: (id) => `/responses/${id}/score`,
-    ANALYZE: (id) => `/responses/${id}/analyze`,
-    BY_ASSESSMENT: (assessmentId) => `/responses/assessment/${assessmentId}`,
-    EXPORT: (assessmentId) => `/responses/export/${assessmentId}`,
-    STATS: (assessmentId) => `/responses/stats/${assessmentId}`,
-  },
-  INVITATIONS: {
-    BASE: '/invitations',
-    CREATE: '/invitations',
-    LIST: '/invitations',
-    DETAIL: (id) => `/invitations/${id}`,
-    UPDATE: (id) => `/invitations/${id}`,
-    DELETE: (id) => `/invitations/${id}`,
-    ACCEPT: (id) => `/invitations/${id}/accept`,
-    REJECT: (id) => `/invitations/${id}/reject`,
-    RESEND: (id) => `/invitations/${id}/resend`,
-    BY_ORGANIZATION: (orgId) => `/invitations/organization/${orgId}`,
-  },
-  ANALYTICS: {
-    BASE: '/analytics',
-    DASHBOARD: '/analytics/dashboard',
-    ASSESSMENT_STATS: (assessmentId) => `/analytics/assessment/${assessmentId}`,
-    RESPONSE_TRENDS: (assessmentId) => `/analytics/assessment/${assessmentId}/trends`,
-    QUESTION_ANALYSIS: (assessmentId) => `/analytics/assessment/${assessmentId}/questions`,
-    EXPORT: (assessmentId) => `/analytics/assessment/${assessmentId}/export`,
-  },
-  FILES: {
-    BASE: '/files',
-    UPLOAD: '/files/upload',
-    DELETE: (id) => `/files/${id}`,
-    DOWNLOAD: (id) => `/files/${id}/download`,
-    PRESIGNED_URL: (id) => `/files/${id}/presigned-url`,
-    LIST: '/files',
-  },
-  NOTIFICATIONS: {
-    BASE: '/notifications',
-    LIST: '/notifications',
-    MARK_READ: (id) => `/notifications/${id}/read`,
-    MARK_ALL_READ: '/notifications/mark-all-read',
-    UNREAD_COUNT: '/notifications/unread-count',
-    SETTINGS: '/notifications/settings',
-  },
-  REPORTS: {
-    BASE: '/reports',
-    GENERATE: '/reports/generate',
-    LIST: '/reports',
-    DETAIL: (id) => `/reports/${id}`,
-    DELETE: (id) => `/reports/${id}`,
-    DOWNLOAD: (id) => `/reports/${id}/download`,
-    SHARE: (id) => `/reports/${id}/share`,
-  },
-  INTEGRATIONS: {
-    BASE: '/integrations',
-    LIST: '/integrations',
-    CONNECT: (type) => `/integrations/${type}/connect`,
-    DISCONNECT: (type) => `/integrations/${type}/disconnect`,
-    STATUS: (type) => `/integrations/${type}/status`,
-    SYNC: (type) => `/integrations/${type}/sync`,
-  },
-  SUBSCRIPTIONS: {
-    BASE: '/subscriptions',
-    PLANS: '/subscriptions/plans',
-    SUBSCRIBE: '/subscriptions/subscribe',
-    CANCEL: '/subscriptions/cancel',
-    UPGRADE: '/subscriptions/upgrade',
-    INVOICES: '/subscriptions/invoices',
-    CURRENT: '/subscriptions/current',
-  },
-  SUPPORT: {
-    BASE: '/support',
-    TICKETS: '/support/tickets',
-    CREATE_TICKET: '/support/tickets',
-    TICKET_DETAIL: (id) => `/support/tickets/${id}`,
-    MESSAGES: (ticketId) => `/support/tickets/${ticketId}/messages`,
-    SEND_MESSAGE: (ticketId) => `/support/tickets/${ticketId}/messages`,
-    CLOSE: (ticketId) => `/support/tickets/${ticketId}/close`,
-    CATEGORIES: '/support/categories',
-    PRIORITIES: '/support/priorities',
-  },
-  HEALTH: {
-    CHECK: '/health',
-    METRICS: '/health/metrics',
-    STATUS: '/health/status',
-  },
-  UTILS: {
-    VALIDATE_EMAIL: '/utils/validate-email',
-    GENERATE_SLUG: '/utils/generate-slug',
-    COUNTRIES: '/utils/countries',
-    TIMEZONES: '/utils/timezones',
-    LANGUAGES: '/utils/languages',
-    CURRENCIES: '/utils/currencies',
-  }
-};
 
-// ----------------------
-// API Service Functions
-// ----------------------
+/**
+ * Execute request with retry logic
+ */
+export const executeWithRetry = async (requestFn, maxRetries = 3, baseDelay = 1000) => {
+  let lastError;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await requestFn();
+    } catch (error) {
+      lastError = error;
+      
+      // Don't retry on certain errors
+      if ([400, 401, 403, 404, 422].includes(error.status) || error.code === 'SESSION_EXPIRED') {
+        throw error;
+      }
+      
+      if (attempt < maxRetries) {
+        // Exponential backoff with jitter
+        const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000;
+        console.log(`Retry attempt ${attempt}/${maxRetries} after ${delay.toFixed(0)}ms`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw lastError;
+};
 
 /**
  * Health check with retry logic
  */
-export const checkServerHealth = async (maxRetries = 3) => {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const response = await api.get('/health', { 
-        timeout: 5000,
-        headers: { 'X-Bypass-Rate-Limit': 'true' }
-      });
-      return {
-        healthy: true,
-        status: response.data?.status,
-        timestamp: response.data?.timestamp,
-        version: response.data?.version,
-        uptime: response.data?.uptime,
-      };
-    } catch (error) {
-      if (i === maxRetries - 1) {
-        return {
-          healthy: false,
-          error: error.message,
-          attempts: maxRetries,
-        };
-      }
-      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
-    }
-  }
+export const checkServerHealth = async (maxRetries = 2) => {
+  return executeWithRetry(async () => {
+    const response = await api.get('/health', { 
+      timeout: 5000,
+      headers: { 'X-Bypass-Rate-Limit': 'true' }
+    });
+    
+    return {
+      healthy: true,
+      status: response.data?.status,
+      timestamp: response.data?.timestamp,
+      version: response.data?.version,
+      uptime: response.data?.uptime,
+      latency: response.headers?.['x-response-time'],
+    };
+  }, maxRetries);
 };
 
 // ----------------------
-// Utility Functions
+// Error Tracking & Analytics
 // ----------------------
 
 /**
@@ -705,59 +751,97 @@ export const trackError = (error, context = {}) => {
     stack: error?.stack,
     code: error?.code,
     status: error?.status,
+    url: window.location?.href,
+    userAgent: navigator?.userAgent,
     ...context
   };
   
   console.error('🔴 Tracked Error:', errorData);
   
-  // In production, send to error tracking service
-  if (import.meta.env.PROD) {
-    // Send to backend error tracking
+  // Send to backend error tracking (if available)
+  if (typeof fetch !== 'undefined') {
     fetch('/api/v1/errors/log', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-Client-Version': import.meta.env.VITE_APP_VERSION || '1.0.0',
       },
       body: JSON.stringify(errorData),
     }).catch(() => {
       // Silently fail if error tracking is unavailable
     });
-    
-    // Google Analytics
-    if (window.gtag) {
-      window.gtag('event', 'exception', {
-        description: error?.message || 'Unknown error',
-        fatal: true,
-      });
-    }
+  }
+  
+  // Google Analytics (if available)
+  if (typeof window !== 'undefined' && window.gtag) {
+    window.gtag('event', 'exception', {
+      description: error?.message?.substring(0, 100) || 'Unknown error',
+      fatal: error?.fatal !== false,
+    });
+  }
+};
+
+/**
+ * Performance tracking
+ */
+export const trackPerformance = (metric, value, tags = {}) => {
+  const perfData = {
+    metric,
+    value,
+    timestamp: new Date().toISOString(),
+    url: window.location?.pathname,
+    ...tags
+  };
+  
+  if (import.meta.env.PROD && typeof fetch !== 'undefined') {
+    // Send to backend metrics endpoint
+    fetch('/api/v1/metrics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(perfData),
+      keepalive: true // Use keepalive for performance metrics
+    }).catch(() => {
+      // Ignore errors for performance tracking
+    });
   }
 };
 
 /**
  * Debounce function for rate limiting
  */
-export const debounce = (func, wait) => {
+export const debounce = (func, wait, immediate = false) => {
   let timeout;
   return function executedFunction(...args) {
+    const context = this;
     const later = () => {
-      clearTimeout(timeout);
-      func(...args);
+      timeout = null;
+      if (!immediate) func.apply(context, args);
     };
+    const callNow = immediate && !timeout;
     clearTimeout(timeout);
     timeout = setTimeout(later, wait);
+    if (callNow) func.apply(context, args);
   };
 };
 
 // Debounced health check for background monitoring
 export const debouncedHealthCheck = debounce(() => {
-  checkServerHealth().then(health => {
-    if (!health.healthy) {
-      apiEvents.emit('server:unhealthy', health);
-    }
-  });
-}, 60000); // Check every minute
+  if (TokenManager.getToken()) {
+    checkServerHealth(1).then(health => {
+      if (!health.healthy) {
+        apiEvents.emit('server:unhealthy', health);
+      } else {
+        trackPerformance('health_check', health.latency || 0);
+      }
+    }).catch(() => {
+      // Silent fail for background health checks
+    });
+  }
+}, 300000); // Check every 5 minutes
 
-// Start background monitoring only in browser
+// ----------------------
+// Initialize in Browser Environment
+// ----------------------
 if (typeof window !== 'undefined') {
   // Clean up old rate limit timestamps periodically
   setInterval(() => {
@@ -765,12 +849,21 @@ if (typeof window !== 'undefined') {
     requestTimestamps = requestTimestamps.filter(time => now - time < REQUEST_WINDOW * 2);
   }, 60000);
   
-  // Initial health check
-  setTimeout(() => {
-    if (TokenManager.getToken()) {
+  // Initial health check after page load
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      if (TokenManager.getToken()) {
+        debouncedHealthCheck();
+      }
+    }, 10000);
+  });
+  
+  // Handle page visibility changes
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && TokenManager.getToken()) {
       debouncedHealthCheck();
     }
-  }, 10000);
+  });
 }
 
 // Export the API instance as default
