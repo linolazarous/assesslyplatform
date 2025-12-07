@@ -1,113 +1,230 @@
 // src/api/index.js
-// -----------------------------------------------------------------------------
-// PRODUCTION-READY API CLIENT FOR ASSESSLY PLATFORM
-// -----------------------------------------------------------------------------
+// Production-ready API client for Assessly Frontend
+// Exports: default api, TokenManager, apiEvents, trackError, setAuthToken, AuthAPI, UsersAPI
 
-import axios from "axios";
+import axios from 'axios';
 
-/**
- * Automatically choose correct API URL based on environment.
- * - Local dev  → VITE_API_BASE_URL or http://localhost:5000
- * - Production → Render backend URL (update when custom domain ready)
- */
-const API_BASE_URL =
+/* -----------------------
+   Base URL selection
+   ----------------------- */
+export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.PROD
-    ? "https://assessly-gedp.onrender.com"
-    : "http://localhost:5000");
+    ? 'https://assessly-gedp.onrender.com'
+    : 'http://localhost:5000');
 
-/**
- * Axios instance
- * - Credentials disabled → JWT via Authorization header only
- * - JSON structured communication
- */
+export const API_PREFIX = import.meta.env.VITE_API_PREFIX || ''; // e.g. '/api/v1' if needed
+export const API_ROOT = `${API_BASE_URL}${API_PREFIX}`.replace(/\/+$/, ''); // no trailing slash
+
+/* -----------------------
+   Axios instance
+   ----------------------- */
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_ROOT,
   headers: {
-    "Content-Type": "application/json",
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
   },
-  timeout: 15000,
+  timeout: import.meta.env.PROD ? 15000 : 30000,
 });
 
-// -----------------------------------------------------------------------------
-// TOKEN MANAGEMENT
-// -----------------------------------------------------------------------------
-export const setAuthToken = (token) => {
-  if (token) {
-    localStorage.setItem("token", token);
-    api.defaults.headers.common.Authorization = `Bearer ${token}`;
-  } else {
-    localStorage.removeItem("token");
-    delete api.defaults.headers.common.Authorization;
+/* -----------------------
+   Lightweight Event Emitter
+   ----------------------- */
+const createEventEmitter = () => {
+  const map = new Map();
+  return {
+    on(event, cb) {
+      if (!map.has(event)) map.set(event, new Set());
+      map.get(event).add(cb);
+      return () => this.off(event, cb);
+    },
+    off(event, cb) {
+      if (!map.has(event)) return;
+      map.get(event).delete(cb);
+    },
+    emit(event, payload) {
+      if (!map.has(event)) return;
+      for (const cb of Array.from(map.get(event))) {
+        try { cb(payload); } catch (e) { console.error('Event listener error', e); }
+      }
+    },
+    removeAll(event) {
+      if (event) map.delete(event);
+      else map.clear();
+    }
+  };
+};
+
+export const apiEvents = createEventEmitter();
+
+/* -----------------------
+   TokenManager - small, reliable
+   ----------------------- */
+const TOKEN_KEY = 'assessly_token';
+const REFRESH_KEY = 'assessly_refresh';
+const USER_KEY = 'assessly_user';
+
+export const TokenManager = {
+  getToken() {
+    try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+  },
+  setToken(token) {
+    try {
+      if (token) localStorage.setItem(TOKEN_KEY, token);
+      else localStorage.removeItem(TOKEN_KEY);
+      // keep axios default header in sync
+      if (token) api.defaults.headers.common.Authorization = `Bearer ${token}`;
+      else delete api.defaults.headers.common.Authorization;
+      return true;
+    } catch (e) { console.warn('TokenManager.setToken error', e); return false; }
+  },
+  getRefreshToken() {
+    try { return localStorage.getItem(REFRESH_KEY); } catch { return null; }
+  },
+  setRefreshToken(t) {
+    try { if (t) localStorage.setItem(REFRESH_KEY, t); else localStorage.removeItem(REFRESH_KEY); return true; }
+    catch (e) { console.warn(e); return false; }
+  },
+  getUser() {
+    try {
+      const v = localStorage.getItem(USER_KEY);
+      return v ? JSON.parse(v) : null;
+    } catch { return null; }
+  },
+  setUser(u) {
+    try { if (u) localStorage.setItem(USER_KEY, JSON.stringify(u)); else localStorage.removeItem(USER_KEY); return true; }
+    catch (e) { console.warn(e); return false; }
+  },
+  clearAll() {
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(REFRESH_KEY);
+      localStorage.removeItem(USER_KEY);
+      delete api.defaults.headers.common.Authorization;
+      return true;
+    } catch (e) { console.warn('TokenManager.clearAll', e); return false; }
   }
 };
 
-// Load token at startup (auto-login)
-const existingToken = localStorage.getItem("token");
-if (existingToken) setAuthToken(existingToken);
+/* Ensure axios header matches any stored token at startup */
+if (typeof window !== 'undefined') {
+  const existing = TokenManager.getToken();
+  if (existing) api.defaults.headers.common.Authorization = `Bearer ${existing}`;
+}
 
-// -----------------------------------------------------------------------------
-// GLOBAL RESPONSE HANDLING
-// -----------------------------------------------------------------------------
+/* Helper to set auth token programmatically */
+export const setAuthToken = (token) => TokenManager.setToken(token);
+
+/* -----------------------
+   trackError: safe error tracking
+   - logs to console
+   - attempts backend POST to /errors/log (non-blocking)
+   - emits apiEvents 'error:tracked'
+   ----------------------- */
+export const trackError = (error, context = {}) => {
+  try {
+    const payload = {
+      timestamp: new Date().toISOString(),
+      message: typeof error === 'string' ? error : (error?.message || 'Unknown error'),
+      stack: error?.stack || null,
+      status: error?.status || null,
+      code: error?.code || null,
+      url: (typeof window !== 'undefined' && window.location && window.location.href) || null,
+      user: TokenManager.getUser()?.id || null,
+      ...context,
+    };
+
+    // Console + event
+    console.error('Tracked Error:', payload);
+    apiEvents.emit('error:tracked', payload);
+
+    // Try to report to backend but never block (fire-and-forget)
+    if (typeof fetch !== 'undefined') {
+      fetch(`${API_ROOT}/errors/log`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => { /* swallow */ });
+    }
+  } catch (e) {
+    // never throw from tracking
+    console.error('trackError failure', e);
+  }
+};
+
+/* -----------------------
+   Global response interceptor
+   - normalizes errors
+   - handles 401 by clearing tokens and emitting event
+   ----------------------- */
 api.interceptors.response.use(
   (res) => res,
   (err) => {
+    // Network error (no response)
     if (!err.response) {
-      console.error("Network Error", err);
-      return Promise.reject({ message: "Network error. Try again." });
+      const netErr = { message: 'Network error', code: 'NETWORK_ERROR', original: err };
+      apiEvents.emit('request:error', netErr);
+      trackError(netErr, { phase: 'response' });
+      return Promise.reject(netErr);
     }
 
-    const { status, data } = err.response;
+    const status = err.response.status;
+    const data = err.response.data || {};
 
+    const normalized = {
+      message: data.message || data.error || err.message || 'Server error',
+      status,
+      code: data.code || err.code || null,
+      details: data,
+    };
+
+    // 401 -> clear tokens and emit
     if (status === 401) {
-      console.warn("Unauthorized — clearing session");
-      setAuthToken(null);
-      window.location.replace("/login");
+      TokenManager.clearAll();
+      apiEvents.emit('auth:unauthorized', normalized);
     }
 
-    return Promise.reject(
-      data?.message || data?.error || "Unexpected server error"
-    );
+    // emit & track
+    apiEvents.emit('request:error', normalized);
+    trackError(normalized, { phase: 'response' });
+
+    return Promise.reject(normalized);
   }
 );
 
-// -----------------------------------------------------------------------------
-// API ENDPOINTS
-// 🔹 Modify if your backend routes differ
-// -----------------------------------------------------------------------------
-
-// AUTH
+/* -----------------------
+   Simple Auth & API helpers
+   Keep these small — adapt endpoints if your backend is prefixed with /api/v1
+   ----------------------- */
 export const AuthAPI = {
-  login: (payload) => api.post("/auth/login", payload),
-  register: (payload) => api.post("/auth/register", payload),
-  me: () => api.get("/auth/me"),
-  logout: () => {
-    setAuthToken(null);
+  login: (payload) => api.post('/auth/login', payload),
+  register: (payload) => api.post('/auth/register', payload),
+  me: () => api.get('/auth/me'),
+  logout: async () => {
+    try {
+      // Try server logout if available, but clear locally regardless
+      await api.post('/auth/logout').catch(() => {});
+    } catch (_) {}
+    TokenManager.clearAll();
     return Promise.resolve();
-  },
+  }
 };
 
-// USERS
 export const UsersAPI = {
-  list: () => api.get("/users"),
-  details: (id) => api.get(`/users/${id}`),
+  list: () => api.get('/users'),
+  get: (id) => api.get(`/users/${id}`),
+  update: (id, payload) => api.put(`/users/${id}`, payload)
 };
 
-// QUIZZES
-export const QuizzesAPI = {
-  list: () => api.get("/quizzes"),
-  questions: (quizId) => api.get(`/quizzes/${quizId}/questions`),
-  submit: (quizId, answers) =>
-    api.post(`/quizzes/${quizId}/submit`, { answers }),
+/* Export commonly-used utilities so import { TokenManager, apiEvents, trackError } from './api' works */
+export {
+  api as default,
+  TokenManager,
+  apiEvents,
+  trackError,
+  setAuthToken,
+  AuthAPI,
+  UsersAPI,
 };
-
-// COURSES (optional)
-export const CoursesAPI = {
-  list: () => api.get("/courses"),
-  details: (id) => api.get(`/courses/${id}`),
-};
-
-// -----------------------------------------------------------------------------
-// EXPORT DEFAULT
-// -----------------------------------------------------------------------------
-export default api;
