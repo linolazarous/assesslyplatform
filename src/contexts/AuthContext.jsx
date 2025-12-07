@@ -49,18 +49,43 @@ import { useSnackbar } from "notistack";
 // ================================
 // CONSTANTS & CONFIG
 // ================================
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL ||
-  "https://assesslyplatform-t49h.onrender.com";
-const API_V1_BASE = `${API_BASE.replace(/\/+$/, "")}/api/v1`;
+
+// Get API base URL - IMPORTANT FIX: Use proper API URL from environment
+const getApiBase = () => {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  
+  // Production defaults - ensure it ends with /api/v1
+  if (import.meta.env.PROD) {
+    if (envUrl) {
+      return envUrl.endsWith('/api/v1') ? envUrl : `${envUrl.replace(/\/+$/, '')}/api/v1`;
+    }
+    return 'https://assesslyplatform-t49h.onrender.com/api/v1';
+  }
+  
+  // Development defaults
+  if (envUrl) {
+    return envUrl.endsWith('/api/v1') ? envUrl : `${envUrl.replace(/\/+$/, '')}/api/v1`;
+  }
+  
+  // Local development
+  if (import.meta.env.DEV) {
+    return 'http://localhost:3000/api/v1';
+  }
+  
+  // Fallback
+  return 'https://assesslyplatform-t49h.onrender.com/api/v1';
+};
+
+const API_V1_BASE = getApiBase();
 
 // Token storage keys
 const STORAGE_KEYS = {
-  TOKEN: "assessly_token",
-  REFRESH_TOKEN: "assessly_refresh_token",
-  USER: "assessly_user",
-  ORGANIZATION: "assessly_current_org",
-  SESSION: "assessly_session",
+  TOKEN: 'assessly_token',
+  REFRESH_TOKEN: 'assessly_refresh_token',
+  USER: 'assessly_user',
+  ORGANIZATION: 'assessly_current_org',
+  SESSION: 'assessly_session',
+  TOKEN_EXPIRY: 'assessly_token_expiry',
 };
 
 // Role hierarchy (higher number = higher privilege)
@@ -88,7 +113,7 @@ const DEFAULT_PERMISSIONS = {
 };
 
 const AuthContext = createContext(null);
-const OrganizationContext = createContext(null); // Create organization context
+const OrganizationContext = createContext(null);
 
 // ================================
 // JWT UTILITIES
@@ -138,7 +163,7 @@ const axios = axiosLib.create({
     "Content-Type": "application/json",
     Accept: "application/json",
     "X-Client": "assessly-web",
-    "X-Client-Version": "1.0.0",
+    "X-Client-Version": import.meta.env.VITE_APP_VERSION || "1.0.0",
   },
 });
 
@@ -161,28 +186,47 @@ axios.interceptors.request.use(
       }
     }
     
+    // Add session ID if available
+    const sessionId = localStorage.getItem(STORAGE_KEYS.SESSION);
+    if (sessionId) {
+      config.headers["X-Session-ID"] = sessionId;
+    }
+    
     config.metadata = { startTime: Date.now(), url: config.url };
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Response interceptor for logging and error handling
+// Response interceptor for enhanced error handling
 axios.interceptors.response.use(
   (response) => {
     const { startTime, url } = response.config.metadata || {};
     if (startTime) {
       const duration = Date.now() - startTime;
-      console.debug(`API ${response.config.method?.toUpperCase()} ${url} - ${duration}ms`);
+      if (import.meta.env.DEV) {
+        console.debug(`✅ API ${response.config.method?.toUpperCase()} ${url} - ${duration}ms`);
+      }
     }
     return response;
   },
-  (error) => {
-    const { startTime, url } = error.config?.metadata || {};
+  async (error) => {
+    const originalRequest = error.config;
+    const { startTime, url } = originalRequest?.metadata || {};
+    
     if (startTime) {
       const duration = Date.now() - startTime;
-      console.error(`API ${error.config?.method?.toUpperCase()} ${url} - ${duration}ms - Error: ${error.message}`);
+      console.error(`🔴 API ${originalRequest?.method?.toUpperCase()} ${url} - ${duration}ms - Error: ${error.message}`);
     }
+    
+    // Handle network errors
+    if (!error.response) {
+      const networkError = new Error('Network error. Please check your connection.');
+      networkError.code = 'NETWORK_ERROR';
+      networkError.status = 0;
+      return Promise.reject(networkError);
+    }
+    
     return Promise.reject(error);
   }
 );
@@ -196,7 +240,6 @@ export const useAuth = () => {
   return ctx;
 };
 
-// Add the missing useOrganization hook
 export const useOrganization = () => {
   const ctx = useContext(OrganizationContext);
   if (!ctx) throw new Error("useOrganization must be used inside OrganizationProvider");
@@ -226,12 +269,23 @@ export const AuthProvider = ({ children }) => {
   const refreshTimeoutRef = useRef(null);
   const activityTimeoutRef = useRef(null);
   const retryCountRef = useRef(0);
+  const sessionIdRef = useRef(null);
 
   // ================================
   // SESSION MANAGEMENT
   // ================================
+  const generateSessionId = useCallback(() => {
+    const sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    localStorage.setItem(STORAGE_KEYS.SESSION, sessionId);
+    sessionIdRef.current = sessionId;
+    return sessionId;
+  }, []);
+
   const updateSessionActivity = useCallback(() => {
     setSessionActivity(Date.now());
+    if (sessionIdRef.current) {
+      localStorage.setItem('assessly_last_activity', Date.now().toString());
+    }
   }, []);
 
   // Auto logout after inactivity
@@ -241,16 +295,15 @@ export const AuthProvider = ({ children }) => {
     };
 
     // Listen for user activity
-    window.addEventListener("mousemove", handleUserActivity);
-    window.addEventListener("keydown", handleUserActivity);
-    window.addEventListener("click", handleUserActivity);
-    window.addEventListener("scroll", handleUserActivity);
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+    events.forEach(event => {
+      window.addEventListener(event, handleUserActivity, { passive: true });
+    });
 
     return () => {
-      window.removeEventListener("mousemove", handleUserActivity);
-      window.removeEventListener("keydown", handleUserActivity);
-      window.removeEventListener("click", handleUserActivity);
-      window.removeEventListener("scroll", handleUserActivity);
+      events.forEach(event => {
+        window.removeEventListener(event, handleUserActivity);
+      });
     };
   }, [updateSessionActivity]);
 
@@ -262,8 +315,11 @@ export const AuthProvider = ({ children }) => {
 
     const checkTimeout = () => {
       if (Date.now() - sessionActivity > SESSION_TIMEOUT) {
-        enqueueSnackbar("Session expired due to inactivity", { variant: "warning" });
-        logout();
+        enqueueSnackbar("Session expired due to inactivity", { 
+          variant: "warning",
+          autoHideDuration: 3000,
+        });
+        logout("Session expired due to inactivity");
       }
     };
 
@@ -274,20 +330,32 @@ export const AuthProvider = ({ children }) => {
   // ================================
   // TOKEN MANAGEMENT
   // ================================
-  const saveTokens = useCallback((accessToken, refreshTokenValue) => {
+  const saveTokens = useCallback((accessToken, refreshTokenValue, expiry = null) => {
     localStorage.setItem(STORAGE_KEYS.TOKEN, accessToken);
     if (refreshTokenValue) {
       localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshTokenValue);
     }
+    if (expiry) {
+      localStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, expiry);
+    }
     setToken(accessToken);
     setRefreshToken(refreshTokenValue);
-  }, []);
+    
+    // Generate session ID on first token save
+    if (!sessionIdRef.current) {
+      generateSessionId();
+    }
+  }, [generateSessionId]);
 
   const clearTokens = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEYS.TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+    Object.values(STORAGE_KEYS).forEach(key => {
+      localStorage.removeItem(key);
+    });
+    localStorage.removeItem("assessly_remember_me");
+    localStorage.removeItem('assessly_last_activity');
     setToken(null);
     setRefreshToken(null);
+    sessionIdRef.current = null;
   }, []);
 
   // ================================
@@ -296,12 +364,14 @@ export const AuthProvider = ({ children }) => {
   const decodeAndSetUser = useCallback((jwtToken, refreshTokenValue = null) => {
     const decoded = decodeJwt(jwtToken);
     if (!decoded) {
+      console.error("Failed to decode JWT token");
       clearTokens();
       return false;
     }
 
     // Validate token expiration
     if (!isTokenValid(jwtToken)) {
+      console.warn("Token expired or invalid");
       if (refreshTokenValue) {
         // Try to refresh
         refreshAccessToken(refreshTokenValue);
@@ -356,7 +426,10 @@ export const AuthProvider = ({ children }) => {
 
     setCurrentUser(userData);
     setClaims(claimsData);
-    saveTokens(jwtToken, refreshTokenValue);
+    
+    // Calculate token expiry
+    const expiry = exp ? new Date(exp * 1000).toISOString() : null;
+    saveTokens(jwtToken, refreshTokenValue, expiry);
 
     // Save to localStorage
     localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
@@ -371,55 +444,67 @@ export const AuthProvider = ({ children }) => {
       
       // Set current organization if not set
       if (!currentOrganization && orgList.length > 0) {
-        setCurrentOrganization(orgList[0]);
-        localStorage.setItem(STORAGE_KEYS.ORGANIZATION, JSON.stringify(orgList[0]));
+        const defaultOrg = orgList[0];
+        setCurrentOrganization(defaultOrg);
+        localStorage.setItem(STORAGE_KEYS.ORGANIZATION, JSON.stringify(defaultOrg));
       }
     }
 
     updateSessionActivity();
     setAuthError(null);
     return true;
-  }, [clearTokens, saveTokens, currentOrganization, updateSessionActivity]);
+  }, [clearTokens, saveTokens, currentOrganization, updateSessionActivity, refreshAccessToken]);
 
   // ================================
   // TOKEN REFRESH
   // ================================
   const refreshAccessToken = useCallback(async (customRefreshToken = null) => {
-    if (isRefreshing) return false;
+    if (isRefreshing) {
+      console.log("Token refresh already in progress");
+      return false;
+    }
     
     setIsRefreshing(true);
     const refreshTokenToUse = customRefreshToken || refreshToken;
     
     if (!refreshTokenToUse) {
+      console.warn("No refresh token available");
       setIsRefreshing(false);
       return false;
     }
 
     try {
+      console.log("🔄 Refreshing access token...");
+      
       const response = await axios.post("/auth/refresh", {
         refresh_token: refreshTokenToUse,
       }, {
-        skipAuthRefresh: true, // Custom flag to prevent recursion
         timeout: 10000,
+        headers: {
+          'X-Bypass-Rate-Limit': 'true'
+        }
       });
 
       const { access_token, refresh_token } = response.data;
       
-      if (access_token) {
-        decodeAndSetUser(access_token, refresh_token || refreshTokenToUse);
-        retryCountRef.current = 0;
-        setIsRefreshing(false);
-        return true;
+      if (!access_token) {
+        throw new Error("Invalid token response: No access token");
       }
+
+      decodeAndSetUser(access_token, refresh_token || refreshTokenToUse);
+      retryCountRef.current = 0;
+      setIsRefreshing(false);
       
-      throw new Error("Invalid token response");
+      console.log("✅ Token refreshed successfully");
+      return true;
     } catch (error) {
-      console.error("Token refresh failed:", error);
+      console.error("❌ Token refresh failed:", error);
       retryCountRef.current++;
       
       // Exponential backoff
       if (retryCountRef.current <= 3) {
-        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
+        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 30000);
+        console.log(`Retrying token refresh in ${delay}ms (attempt ${retryCountRef.current}/3)`);
         await new Promise(resolve => setTimeout(resolve, delay));
         return refreshAccessToken(refreshTokenToUse);
       }
@@ -429,7 +514,8 @@ export const AuthProvider = ({ children }) => {
         variant: "error",
         autoHideDuration: 5000,
       });
-      logout();
+      
+      logout("Session expired");
       setIsRefreshing(false);
       return false;
     }
@@ -446,6 +532,11 @@ export const AuthProvider = ({ children }) => {
         
         // Skip if already retrying or not a 401
         if (error.response?.status !== 401 || originalRequest._retry) {
+          return Promise.reject(error);
+        }
+        
+        // Skip for auth endpoints to avoid loops
+        if (originalRequest.url?.includes('/auth/')) {
           return Promise.reject(error);
         }
         
@@ -480,7 +571,9 @@ export const AuthProvider = ({ children }) => {
     
     if (refreshTime <= 0) {
       // Token already expired or close to expiry
-      refreshAccessToken();
+      if (!isRefreshing) {
+        refreshAccessToken();
+      }
       return;
     }
     
@@ -491,15 +584,17 @@ export const AuthProvider = ({ children }) => {
     
     // Schedule refresh
     refreshTimeoutRef.current = setTimeout(() => {
-      refreshAccessToken();
-    }, refreshTime);
+      if (!isRefreshing) {
+        refreshAccessToken();
+      }
+    }, Math.max(refreshTime, 1000)); // Ensure at least 1 second
     
     return () => {
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
       }
     };
-  }, [token, claims.exp, refreshAccessToken]);
+  }, [token, claims.exp, refreshAccessToken, isRefreshing]);
 
   // ================================
   // AUTH METHODS
@@ -536,12 +631,14 @@ export const AuthProvider = ({ children }) => {
       return { 
         ok: true, 
         user: currentUser,
-        requiresTwoFactor: response.data.requires_2fa,
-        twoFactorMethods: response.data.two_factor_methods,
+        requiresTwoFactor: response.data.requires_2fa || false,
+        twoFactorMethods: response.data.two_factor_methods || [],
       };
     } catch (error) {
       const message = error.response?.data?.message || 
                      error.response?.data?.error?.message || 
+                     error.response?.data?.error ||
+                     error.message || 
                      "Login failed. Please check your credentials.";
       
       setAuthError(message);
@@ -554,6 +651,7 @@ export const AuthProvider = ({ children }) => {
         ok: false, 
         error: message,
         requiresTwoFactor: false,
+        twoFactorMethods: [],
       };
     } finally {
       setIsLoading(false);
@@ -566,15 +664,15 @@ export const AuthProvider = ({ children }) => {
     
     try {
       const response = await axios.post("/auth/register", {
-        name: userData.name.trim(),
-        email: userData.email.trim().toLowerCase(),
-        password: userData.password,
+        name: userData.name?.trim() || '',
+        email: userData.email?.trim().toLowerCase() || '',
+        password: userData.password || '',
         role: userData.role || "candidate",
-        phone: userData.phone,
-        job_title: userData.jobTitle,
-        department: userData.department,
-        organization_name: userData.organizationName,
-        invite_code: userData.inviteCode,
+        phone: userData.phone || '',
+        job_title: userData.jobTitle || '',
+        department: userData.department || '',
+        organization_name: userData.organizationName || '',
+        invite_code: userData.inviteCode || '',
       });
 
       const { access_token, refresh_token, user, requires_verification } = response.data;
@@ -590,12 +688,14 @@ export const AuthProvider = ({ children }) => {
       
       return { 
         ok: true, 
-        user,
-        requiresVerification: requires_verification,
+        user: user || currentUser,
+        requiresVerification: requires_verification || false,
       };
     } catch (error) {
       const message = error.response?.data?.message || 
                      error.response?.data?.error?.message || 
+                     error.response?.data?.error ||
+                     error.message || 
                      "Registration failed. Please try again.";
       
       setAuthError(message);
@@ -608,14 +708,11 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [decodeAndSetUser, enqueueSnackbar]);
+  }, [decodeAndSetUser, enqueueSnackbar, currentUser]);
 
   const logout = useCallback((message = "Logged out successfully") => {
     // Clear all local storage
-    Object.values(STORAGE_KEYS).forEach(key => {
-      localStorage.removeItem(key);
-    });
-    localStorage.removeItem("assessly_remember_me");
+    clearTokens();
     
     // Clear state
     setCurrentUser(null);
@@ -651,7 +748,7 @@ export const AuthProvider = ({ children }) => {
     
     // Navigate to login
     navigate("/login", { replace: true });
-  }, [enqueueSnackbar, navigate]);
+  }, [enqueueSnackbar, navigate, clearTokens]);
 
   const forgotPassword = useCallback(async (email) => {
     try {
@@ -662,6 +759,9 @@ export const AuthProvider = ({ children }) => {
       return { ok: true };
     } catch (error) {
       const message = error.response?.data?.message || 
+                     error.response?.data?.error?.message || 
+                     error.response?.data?.error ||
+                     error.message || 
                      "Failed to send reset instructions";
       throw new Error(message);
     }
@@ -677,6 +777,9 @@ export const AuthProvider = ({ children }) => {
       return { ok: true };
     } catch (error) {
       const message = error.response?.data?.message || 
+                     error.response?.data?.error?.message || 
+                     error.response?.data?.error ||
+                     error.message || 
                      "Failed to reset password";
       throw new Error(message);
     }
@@ -686,7 +789,10 @@ export const AuthProvider = ({ children }) => {
   // ORGANIZATION MANAGEMENT
   // ================================
   const updateCurrentOrganization = useCallback((organization) => {
-    if (!organization || !organization.id) return;
+    if (!organization || !organization.id) {
+      console.warn("Invalid organization object provided");
+      return;
+    }
     
     setCurrentOrganization(organization);
     localStorage.setItem(STORAGE_KEYS.ORGANIZATION, JSON.stringify(organization));
@@ -715,14 +821,21 @@ export const AuthProvider = ({ children }) => {
       const { access_token } = response.data;
       if (access_token) {
         decodeAndSetUser(access_token, refreshToken);
+        return { ok: true };
       }
       
-      return { ok: true };
+      throw new Error("No access token received");
     } catch (error) {
-      enqueueSnackbar("Failed to switch organization", { 
+      const message = error.response?.data?.message || 
+                     error.response?.data?.error?.message || 
+                     error.message || 
+                     "Failed to switch organization";
+      
+      enqueueSnackbar(message, { 
         variant: "error",
+        autoHideDuration: 3000,
       });
-      return { ok: false, error: error.message };
+      return { ok: false, error: message };
     }
   }, [decodeAndSetUser, refreshToken, enqueueSnackbar]);
 
@@ -731,9 +844,15 @@ export const AuthProvider = ({ children }) => {
   // ================================
   const hasPermission = useCallback((permission) => {
     if (!claims.permissions) return false;
-    return claims.permissions.includes(permission) || 
-           claims.permissions.includes("*") ||
-           claims.permissions.includes(`${permission.split(":")[0]}:*`);
+    if (claims.permissions.includes("*")) return true;
+    
+    // Check for wildcard permissions
+    const [resource, action] = permission.split(":");
+    if (resource && action) {
+      if (claims.permissions.includes(`${resource}:*`)) return true;
+    }
+    
+    return claims.permissions.includes(permission);
   }, [claims]);
 
   const hasAnyPermission = useCallback((permissions) => {
@@ -864,6 +983,7 @@ export const AuthProvider = ({ children }) => {
       sessionDuration: sessionActivity ? Date.now() - sessionActivity : null,
       organizationCount: organizations.length,
       currentOrgRole: claims.orgs?.[currentOrganization?.id]?.role,
+      sessionId: sessionIdRef.current,
     },
   }), [
     currentUser,
@@ -946,12 +1066,14 @@ export const AuthProvider = ({ children }) => {
         autoHideDuration={6000}
         onClose={() => setAuthError(null)}
         anchorOrigin={{ vertical: "top", horizontal: "center" }}
+        TransitionComponent={Slide}
       >
         <Alert 
           severity="error" 
           variant="filled"
           onClose={() => setAuthError(null)}
           sx={{ width: "100%" }}
+          icon={<Error />}
         >
           {authError}
         </Alert>
@@ -968,16 +1090,18 @@ AuthProvider.propTypes = {
 // ORGANIZATION PROVIDER
 // ================================
 export const OrganizationProvider = ({ children }) => {
-  const { currentOrganization, updateCurrentOrganization, organizations } = useAuth();
+  const { currentOrganization, updateCurrentOrganization, organizations, isLoading } = useAuth();
   
   const value = useMemo(() => ({
     currentOrganization,
     updateCurrentOrganization,
     organizations,
+    isLoading,
     isOrganizationSet: !!currentOrganization,
     getOrganization: (id) => organizations.find(org => org.id === id),
     switchOrganization: (organization) => updateCurrentOrganization(organization),
-  }), [currentOrganization, updateCurrentOrganization, organizations]);
+    hasMultipleOrganizations: organizations.length > 1,
+  }), [currentOrganization, updateCurrentOrganization, organizations, isLoading]);
 
   return (
     <OrganizationContext.Provider value={value}>
