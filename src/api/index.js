@@ -452,13 +452,13 @@ export const API_ENDPOINTS = {
     PREFERENCES: '/users/preferences',
   },
   ORGANIZATIONS: {
-  BASE: '/organizations',
-  CREATE: '/organizations',
-  LIST: '/organizations',
-  GET: (id) => `/organizations/${id}`,
-  UPDATE: (id) => `/organizations/${id}`,
-  MEMBERS: (id) => `/organizations/${id}/members`,
-  INVITE: (id) => `/organizations/${id}/invite`,
+    BASE: '/organizations',
+    CREATE: '/organizations',
+    LIST: '/organizations',
+    GET: (id) => `/organizations/${id}`,
+    UPDATE: (id) => `/organizations/${id}`,
+    MEMBERS: (id) => `/organizations/${id}/members`,
+    INVITE: (id) => `/organizations/${id}/invite`,
   },
   ASSESSMENTS: {
     BASE: '/assessments',
@@ -664,12 +664,7 @@ if (typeof window !== 'undefined') {
    ----------------------- */
 export {
   api as default,
-  API_BASE_URL,
-  TokenManager,
-  apiEvents,
-  createEventEmitter,
-  setAuthToken,
-  trackError,
+  // Don't re-export individual items that are already exported above
   API_ENDPOINTS,
   AuthAPI,
   UsersAPI,
@@ -682,3 +677,6 @@ export {
   HealthAPI,
   UtilsAPI,
 };
+
+// Note: API_BASE_URL, TokenManager, apiEvents, createEventEmitter, and setAuthToken
+// are already exported above, so we don't need to re-export them here.
