@@ -8,909 +8,406 @@ import { OrganizationService } from './index'; // Import the service if it exist
  * Handles CRUD, membership, settings, domains, and analytics
  */
 
-const organizationApi = {
-  // ===================== ADMIN DASHBOARD STATISTICS =====================
-  
-  /**
-   * Fetch comprehensive organization statistics for admin dashboard
-   * @param {Object} params - Query parameters
-   * @param {string} params.period - Time period (day, week, month, quarter, year)
-   * @param {string} params.startDate - Start date filter
-   * @param {string} params.endDate - End date filter
-   * @param {Array<string>} params.statuses - Filter by organization statuses
-   * @param {Array<string>} params.plans - Filter by subscription plans
-   * @returns {Promise<Object>} Comprehensive statistics
-   */
-  fetchOrganizationStats: async (params = {}) => {
-    try {
-      // Check admin permissions
-      if (!TokenManager.hasPermission('admin:organizations') && 
-          !TokenManager.hasPermission('super_admin')) {
-        throw new Error('Unauthorized: Admin access required');
-      }
-      
-      const response = await api.get('/api/v1/admin/organizations/stats', {
-        params: {
-          period: params.period || 'month',
-          includeDetails: true,
-          includeTrends: true,
-          ...params
-        }
-      });
-      
-      validateResponse(response.data, [
-        'totalOrganizations',
-        'activeOrganizations',
-        'growthRate',
-        'revenue',
-        'metrics'
-      ]);
-      
-      // Emit stats fetched event
-      apiEvents.emit('organizations:stats_fetched', {
-        total: response.data.totalOrganizations,
-        active: response.data.activeOrganizations,
-        ...response.data
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Fetch organization stats error:', error);
-      
-      // Development mock data
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('[OrganizationAPI] Using mock organization stats for development');
-        return generateMockOrganizationStats(params);
-      }
-      
-      apiEvents.emit('organizations:stats_error', { error, params });
-      throw error;
+// ===================== ADMIN DASHBOARD STATISTICS =====================
+
+/**
+ * Fetch comprehensive organization statistics for admin dashboard
+ * @param {Object} params - Query parameters
+ * @param {string} params.period - Time period (day, week, month, quarter, year)
+ * @param {string} params.startDate - Start date filter
+ * @param {string} params.endDate - End date filter
+ * @param {Array<string>} params.statuses - Filter by organization statuses
+ * @param {Array<string>} params.plans - Filter by subscription plans
+ * @returns {Promise<Object>} Comprehensive statistics
+ */
+export const fetchOrganizationStats = async (params = {}) => {
+  try {
+    // Check admin permissions
+    if (!TokenManager.hasPermission('admin:organizations') && 
+        !TokenManager.hasPermission('super_admin')) {
+      throw new Error('Unauthorized: Admin access required');
     }
-  },
-  
-  /**
-   * Fetch organization growth trends over time
-   * @param {Object} params - Query parameters
-   * @param {string} params.granularity - Data granularity (day, week, month)
-   * @param {string} params.startDate - Start date filter
-   * @param {string} params.endDate - End date filter
-   * @param {Array<string>} params.plans - Filter by subscription plans
-   * @returns {Promise<Object>} Growth trend data
-   */
-  fetchOrganizationGrowth: async (params = {}) => {
-    try {
-      if (!TokenManager.hasPermission('admin:organizations') && 
-          !TokenManager.hasPermission('super_admin')) {
-        throw new Error('Unauthorized: Admin access required');
+    
+    const response = await api.get('/api/v1/admin/organizations/stats', {
+      params: {
+        period: params.period || 'month',
+        includeDetails: true,
+        includeTrends: true,
+        ...params
       }
-      
-      const response = await api.get('/api/v1/admin/organizations/growth', {
-        params: {
-          granularity: params.granularity || 'month',
-          includePredictions: true,
-          ...params
-        }
-      });
-      
-      validateResponse(response.data, ['timeline', 'growthRate', 'predictions']);
-      
-      apiEvents.emit('organizations:growth_fetched', {
-        timeline: response.data.timeline?.length || 0,
-        growthRate: response.data.growthRate
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Fetch organization growth error:', error);
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('[OrganizationAPI] Using mock organization growth data for development');
-        return generateMockOrganizationGrowth(params);
-      }
-      
-      throw error;
+    });
+    
+    validateResponse(response.data, [
+      'totalOrganizations',
+      'activeOrganizations',
+      'growthRate',
+      'revenue',
+      'metrics'
+    ]);
+    
+    // Emit stats fetched event
+    apiEvents.emit('organizations:stats_fetched', {
+      total: response.data.totalOrganizations,
+      active: response.data.activeOrganizations,
+      ...response.data
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('[OrganizationAPI] Fetch organization stats error:', error);
+    
+    // Development mock data
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[OrganizationAPI] Using mock organization stats for development');
+      return generateMockOrganizationStats(params);
     }
-  },
-  
-  // ===================== ORGANIZATION CRUD OPERATIONS =====================
-  
-  /**
-   * Get organization by ID with detailed information
-   * @param {string} organizationId - Organization ID
-   * @param {Object} options - Additional options
-   * @param {boolean} options.includeMembers - Include member list
-   * @param {boolean} options.includeStats - Include statistics
-   * @param {boolean} options.includeSettings - Include settings
-   * @returns {Promise<Object>} Organization details
-   */
-  getOrganization: async (organizationId, options = {}) => {
-    try {
-      // Check access permissions
-      const userOrgs = TokenManager.getUserInfo()?.organizations || [];
-      const userRole = TokenManager.getRole();
-      
-      // Super admin can access any organization
-      if (userRole !== 'super_admin' && !userOrgs.includes(organizationId)) {
-        throw new Error('Unauthorized: Access to this organization is restricted');
-      }
-      
-      const response = await api.get(`/api/v1/organizations/${organizationId}`, {
-        params: {
-          includeMembers: options.includeMembers || false,
-          includeStats: options.includeStats || false,
-          includeSettings: options.includeSettings || false,
-          includeBilling: options.includeBilling || false
-        }
-      });
-      
-      validateResponse(response.data, ['id', 'name', 'status', 'createdAt']);
-      
-      // Update current organization context if this is the user's org
-      const currentOrg = TokenManager.getOrganization();
-      if (currentOrg && currentOrg.id === organizationId) {
-        TokenManager.setOrganization(response.data);
-      }
-      
-      apiEvents.emit('organizations:fetched', {
-        id: organizationId,
-        name: response.data.name,
-        ...response.data
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Get organization error:', error);
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('[OrganizationAPI] Using mock organization data for development');
-        return generateMockOrganization(organizationId, options);
-      }
-      
-      throw error;
+    
+    apiEvents.emit('organizations:stats_error', { error, params });
+    throw error;
+  }
+};
+
+/**
+ * Fetch organization growth trends over time
+ * @param {Object} params - Query parameters
+ * @param {string} params.granularity - Data granularity (day, week, month)
+ * @param {string} params.startDate - Start date filter
+ * @param {string} params.endDate - End date filter
+ * @param {Array<string>} params.plans - Filter by subscription plans
+ * @returns {Promise<Object>} Growth trend data
+ */
+export const fetchOrganizationGrowth = async (params = {}) => {
+  try {
+    if (!TokenManager.hasPermission('admin:organizations') && 
+        !TokenManager.hasPermission('super_admin')) {
+      throw new Error('Unauthorized: Admin access required');
     }
-  },
-  
-  /**
-   * Get current organization context
-   * @returns {Promise<Object>} Current organization
-   */
-  getCurrentOrganization: async () => {
-    try {
-      const orgId = TokenManager.getTenantId();
-      if (!orgId) {
-        throw new Error('No organization context set');
+    
+    const response = await api.get('/api/v1/admin/organizations/growth', {
+      params: {
+        granularity: params.granularity || 'month',
+        includePredictions: true,
+        ...params
       }
-      
-      return await organizationApi.getOrganization(orgId, {
-        includeMembers: true,
-        includeSettings: true,
-        includeStats: true
-      });
-    } catch (error) {
-      console.error('[OrganizationAPI] Get current organization error:', error);
-      throw error;
+    });
+    
+    validateResponse(response.data, ['timeline', 'growthRate', 'predictions']);
+    
+    apiEvents.emit('organizations:growth_fetched', {
+      timeline: response.data.timeline?.length || 0,
+      growthRate: response.data.growthRate
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('[OrganizationAPI] Fetch organization growth error:', error);
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[OrganizationAPI] Using mock organization growth data for development');
+      return generateMockOrganizationGrowth(params);
     }
-  },
-  
-  /**
-   * Create new organization
-   * @param {Object} organizationData - Organization creation data
-   * @param {string} organizationData.name - Organization name
-   * @param {string} organizationData.email - Admin email
-   * @param {string} organizationData.plan - Subscription plan
-   * @param {Object} organizationData.settings - Initial settings
-   * @param {Object} organizationData.billing - Billing information
-   * @returns {Promise<Object>} Created organization
-   */
-  createOrganization: async (organizationData) => {
-    try {
-      validateResponse(organizationData, ['name', 'email']);
-      
-      const response = await api.post('/api/v1/organizations', {
-        ...organizationData,
-        createdBy: TokenManager.getUserInfo()?.id,
-        timestamp: new Date().toISOString()
-      });
-      
-      validateResponse(response.data, ['id', 'name', 'adminToken']);
-      
-      // If user is automatically added as admin, update local context
-      if (response.data.userAdded) {
-        TokenManager.setOrganization(response.data.organization);
-        TokenManager.setTenantContext(response.data.organization.id);
+    
+    throw error;
+  }
+};
+
+/**
+ * Get organization by ID with detailed information
+ * @param {string} organizationId - Organization ID
+ * @param {Object} options - Additional options
+ * @param {boolean} options.includeMembers - Include member list
+ * @param {boolean} options.includeStats - Include statistics
+ * @param {boolean} options.includeSettings - Include settings
+ * @returns {Promise<Object>} Organization details
+ */
+export const getOrganization = async (organizationId, options = {}) => {
+  try {
+    // Check access permissions
+    const userOrgs = TokenManager.getUserInfo()?.organizations || [];
+    const userRole = TokenManager.getRole();
+    
+    // Super admin can access any organization
+    if (userRole !== 'super_admin' && !userOrgs.includes(organizationId)) {
+      throw new Error('Unauthorized: Access to this organization is restricted');
+    }
+    
+    const response = await api.get(`/api/v1/organizations/${organizationId}`, {
+      params: {
+        includeMembers: options.includeMembers || false,
+        includeStats: options.includeStats || false,
+        includeSettings: options.includeSettings || false,
+        includeBilling: options.includeBilling || false
       }
-      
-      apiEvents.emit('organizations:created', {
-        id: response.data.id,
-        name: response.data.name,
-        plan: response.data.plan
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Create organization error:', error);
-      apiEvents.emit('organizations:create_error', { data: organizationData, error });
-      throw error;
+    });
+    
+    validateResponse(response.data, ['id', 'name', 'status', 'createdAt']);
+    
+    // Update current organization context if this is the user's org
+    const currentOrg = TokenManager.getOrganization();
+    if (currentOrg && currentOrg.id === organizationId) {
+      TokenManager.setOrganization(response.data);
     }
-  },
-  
-  /**
-   * Update organization details
-   * @param {string} organizationId - Organization ID
-   * @param {Object} updates - Update data
-   * @param {string} updates.name - Organization name
-   * @param {string} updates.description - Organization description
-   * @param {string} updates.website - Organization website
-   * @param {Object} updates.branding - Branding updates
-   * @param {Object} updates.settings - Settings updates
-   * @returns {Promise<Object>} Updated organization
-   */
-  updateOrganization: async (organizationId, updates) => {
-    try {
-      // Check update permissions
-      if (!TokenManager.hasPermission('organization:update') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Update permission required');
+    
+    apiEvents.emit('organizations:fetched', {
+      id: organizationId,
+      name: response.data.name,
+      ...response.data
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('[OrganizationAPI] Get organization error:', error);
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[OrganizationAPI] Using mock organization data for development');
+      return generateMockOrganization(organizationId, options);
+    }
+    
+    throw error;
+  }
+};
+
+/**
+ * Get current organization context
+ * @returns {Promise<Object>} Current organization
+ */
+export const getCurrentOrganization = async () => {
+  try {
+    const orgId = TokenManager.getTenantId();
+    if (!orgId) {
+      throw new Error('No organization context set');
+    }
+    
+    return await getOrganization(orgId, {
+      includeMembers: true,
+      includeSettings: true,
+      includeStats: true
+    });
+  } catch (error) {
+    console.error('[OrganizationAPI] Get current organization error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Create new organization
+ * @param {Object} organizationData - Organization creation data
+ * @param {string} organizationData.name - Organization name
+ * @param {string} organizationData.email - Admin email
+ * @param {string} organizationData.plan - Subscription plan
+ * @param {Object} organizationData.settings - Initial settings
+ * @param {Object} organizationData.billing - Billing information
+ * @returns {Promise<Object>} Created organization
+ */
+export const createOrganization = async (organizationData) => {
+  try {
+    validateResponse(organizationData, ['name', 'email']);
+    
+    const response = await api.post('/api/v1/organizations', {
+      ...organizationData,
+      createdBy: TokenManager.getUserInfo()?.id,
+      timestamp: new Date().toISOString()
+    });
+    
+    validateResponse(response.data, ['id', 'name', 'adminToken']);
+    
+    // If user is automatically added as admin, update local context
+    if (response.data.userAdded) {
+      TokenManager.setOrganization(response.data.organization);
+      TokenManager.setTenantContext(response.data.organization.id);
+    }
+    
+    apiEvents.emit('organizations:created', {
+      id: response.data.id,
+      name: response.data.name,
+      plan: response.data.plan
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('[OrganizationAPI] Create organization error:', error);
+    apiEvents.emit('organizations:create_error', { data: organizationData, error });
+    throw error;
+  }
+};
+
+/**
+ * Update organization details
+ * @param {string} organizationId - Organization ID
+ * @param {Object} updates - Update data
+ * @param {string} updates.name - Organization name
+ * @param {string} updates.description - Organization description
+ * @param {string} updates.website - Organization website
+ * @param {Object} updates.branding - Branding updates
+ * @param {Object} updates.settings - Settings updates
+ * @returns {Promise<Object>} Updated organization
+ */
+export const updateOrganization = async (organizationId, updates) => {
+  try {
+    // Check update permissions
+    if (!TokenManager.hasPermission('organization:update') && 
+        !TokenManager.hasPermission('admin')) {
+      throw new Error('Unauthorized: Update permission required');
+    }
+    
+    const response = await api.put(`/api/v1/organizations/${organizationId}`, {
+      ...updates,
+      updatedBy: TokenManager.getUserInfo()?.id,
+      updatedAt: new Date().toISOString()
+    });
+    
+    validateResponse(response.data, ['id', 'name', 'updatedAt']);
+    
+    // Update local context if this is the current organization
+    const currentOrg = TokenManager.getOrganization();
+    if (currentOrg && currentOrg.id === organizationId) {
+      TokenManager.setOrganization(response.data);
+    }
+    
+    apiEvents.emit('organizations:updated', {
+      id: organizationId,
+      updates,
+      updatedBy: TokenManager.getUserInfo()?.id
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('[OrganizationAPI] Update organization error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get organization members with detailed information
+ * @param {string} organizationId - Organization ID
+ * @param {Object} params - Query parameters
+ * @returns {Promise<Object>} Organization members
+ */
+export const getOrganizationMembers = async (organizationId, params = {}) => {
+  try {
+    if (!TokenManager.hasPermission('organization:members:read') && 
+        !TokenManager.hasPermission('admin')) {
+      throw new Error('Unauthorized: Member read permission required');
+    }
+    
+    const response = await api.get(`/api/v1/organizations/${organizationId}/members`, {
+      params: {
+        page: params.page || 1,
+        limit: params.limit || 50,
+        includeActivity: true,
+        includeRoles: true,
+        ...params
       }
-      
-      const response = await api.put(`/api/v1/organizations/${organizationId}`, {
-        ...updates,
-        updatedBy: TokenManager.getUserInfo()?.id,
-        updatedAt: new Date().toISOString()
-      });
-      
-      validateResponse(response.data, ['id', 'name', 'updatedAt']);
-      
-      // Update local context if this is the current organization
-      const currentOrg = TokenManager.getOrganization();
-      if (currentOrg && currentOrg.id === organizationId) {
-        TokenManager.setOrganization(response.data);
+    });
+    
+    validateResponse(response.data, ['members', 'pagination', 'total']);
+    
+    return response.data;
+  } catch (error) {
+    console.error('[OrganizationAPI] Get organization members error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Invite member via email with customizable invitation
+ * @param {string} organizationId - Organization ID
+ * @param {Object} invitation - Invitation data
+ * @returns {Promise<Object>} Invitation result
+ */
+export const inviteMember = async (organizationId, invitation) => {
+  try {
+    if (!TokenManager.hasPermission('organization:members:invite') && 
+        !TokenManager.hasPermission('admin')) {
+      throw new Error('Unauthorized: Invitation permission required');
+    }
+    
+    validateResponse(invitation, ['email']);
+    
+    const response = await api.post(`/api/v1/organizations/${organizationId}/invite`, {
+      ...invitation,
+      invitedBy: TokenManager.getUserInfo()?.id,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+      invitationType: 'email'
+    });
+    
+    apiEvents.emit('organizations:member_invited', {
+      organizationId,
+      email: invitation.email,
+      role: invitation.role,
+      invitedBy: TokenManager.getUserInfo()?.id
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('[OrganizationAPI] Invite member error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get organization analytics
+ * @param {string} organizationId - Organization ID
+ * @param {Object} params - Analytics parameters
+ * @returns {Promise<Object>} Analytics data
+ */
+export const getOrganizationAnalytics = async (organizationId, params = {}) => {
+  try {
+    if (!TokenManager.hasPermission('organization:analytics:read') && 
+        !TokenManager.hasPermission('admin')) {
+      throw new Error('Unauthorized: Analytics read permission required');
+    }
+    
+    const response = await api.get(`/api/v1/organizations/${organizationId}/analytics`, {
+      params: {
+        period: params.period || 'month',
+        includeComparisons: true,
+        includeTrends: true,
+        ...params
       }
-      
-      apiEvents.emit('organizations:updated', {
-        id: organizationId,
-        updates,
-        updatedBy: TokenManager.getUserInfo()?.id
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Update organization error:', error);
-      throw error;
-    }
-  },
-  
-  /**
-   * Delete organization (soft delete)
-   * @param {string} organizationId - Organization ID
-   * @param {Object} options - Delete options
-   * @param {string} options.reason - Reason for deletion
-   * @param {boolean} options.permanent - Permanent deletion (admin only)
-   * @returns {Promise<Object>} Deletion result
-   */
-  deleteOrganization: async (organizationId, options = {}) => {
-    try {
-      // Check delete permissions
-      if (!TokenManager.hasPermission('organization:delete') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Delete permission required');
-      }
-      
-      const response = await api.delete(`/api/v1/organizations/${organizationId}`, {
-        data: {
-          reason: options.reason || 'User request',
-          permanent: options.permanent || false,
-          deletedBy: TokenManager.getUserInfo()?.id,
-          ...options
-        }
-      });
-      
-      // Clear organization context if this was the current org
-      const currentOrg = TokenManager.getOrganization();
-      if (currentOrg && currentOrg.id === organizationId) {
-        TokenManager.setOrganization(null);
-        TokenManager.setTenantContext(null);
-      }
-      
-      apiEvents.emit('organizations:deleted', {
-        id: organizationId,
-        reason: options.reason,
-        deletedBy: TokenManager.getUserInfo()?.id
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Delete organization error:', error);
-      throw error;
-    }
-  },
-  
-  // ===================== ORGANIZATION MEMBERSHIP =====================
-  
-  /**
-   * Get user's organizations with pagination
-   * @param {Object} params - Query parameters
-   * @returns {Promise<Object>} User's organizations
-   */
-  getUserOrganizations: async (params = {}) => {
-    try {
-      const response = await api.get('/api/v1/organizations/my', {
-        params: {
-          page: params.page || 1,
-          limit: params.limit || 20,
-          includeStats: true,
-          ...params
-        }
-      });
-      
-      validateResponse(response.data, ['organizations', 'pagination']);
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Get user organizations error:', error);
-      throw error;
-    }
-  },
-  
-  /**
-   * Get organization members with detailed information
-   * @param {string} organizationId - Organization ID
-   * @param {Object} params - Query parameters
-   * @returns {Promise<Object>} Organization members
-   */
-  getOrganizationMembers: async (organizationId, params = {}) => {
-    try {
-      if (!TokenManager.hasPermission('organization:members:read') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Member read permission required');
-      }
-      
-      const response = await api.get(`/api/v1/organizations/${organizationId}/members`, {
-        params: {
-          page: params.page || 1,
-          limit: params.limit || 50,
-          includeActivity: true,
-          includeRoles: true,
-          ...params
-        }
-      });
-      
-      validateResponse(response.data, ['members', 'pagination', 'total']);
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Get organization members error:', error);
-      throw error;
-    }
-  },
-  
-  /**
-   * Add member to organization
-   * @param {string} organizationId - Organization ID
-   * @param {Object} memberData - Member data
-   * @returns {Promise<Object>} Added member
-   */
-  addMember: async (organizationId, memberData) => {
-    try {
-      if (!TokenManager.hasPermission('organization:members:manage') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Member management permission required');
-      }
-      
-      validateResponse(memberData, ['email', 'role']);
-      
-      const response = await api.post(`/api/v1/organizations/${organizationId}/members`, {
-        ...memberData,
-        invitedBy: TokenManager.getUserInfo()?.id,
-        invitationToken: generateInvitationToken()
-      });
-      
-      apiEvents.emit('organizations:member_added', {
-        organizationId,
-        member: response.data,
-        invitedBy: TokenManager.getUserInfo()?.id
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Add member error:', error);
-      throw error;
-    }
-  },
-  
-  /**
-   * Update member role and permissions
-   * @param {string} organizationId - Organization ID
-   * @param {string} userId - User ID
-   * @param {Object} updates - Role updates
-   * @returns {Promise<Object>} Updated member
-   */
-  updateMemberRole: async (organizationId, userId, updates) => {
-    try {
-      if (!TokenManager.hasPermission('organization:members:manage') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Member management permission required');
-      }
-      
-      validateResponse(updates, ['role']);
-      
-      const response = await api.put(`/api/v1/organizations/${organizationId}/members/${userId}`, {
-        ...updates,
-        updatedBy: TokenManager.getUserInfo()?.id,
-        updatedAt: new Date().toISOString()
-      });
-      
-      apiEvents.emit('organizations:member_updated', {
-        organizationId,
-        userId,
-        role: updates.role,
-        updatedBy: TokenManager.getUserInfo()?.id
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Update member role error:', error);
-      throw error;
-    }
-  },
-  
-  /**
-   * Remove member from organization
-   * @param {string} organizationId - Organization ID
-   * @param {string} userId - User ID
-   * @param {Object} options - Removal options
-   * @returns {Promise<Object>} Removal result
-   */
-  removeMember: async (organizationId, userId, options = {}) => {
-    try {
-      if (!TokenManager.hasPermission('organization:members:manage') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Member management permission required');
-      }
-      
-      const response = await api.delete(`/api/v1/organizations/${organizationId}/members/${userId}`, {
-        data: {
-          reason: options.reason || 'Organization removal',
-          removedBy: TokenManager.getUserInfo()?.id,
-          notifyUser: options.notifyUser !== false,
-          ...options
-        }
-      });
-      
-      apiEvents.emit('organizations:member_removed', {
-        organizationId,
-        userId,
-        removedBy: TokenManager.getUserInfo()?.id,
-        reason: options.reason
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Remove member error:', error);
-      throw error;
-    }
-  },
-  
-  /**
-   * Invite member via email with customizable invitation
-   * @param {string} organizationId - Organization ID
-   * @param {Object} invitation - Invitation data
-   * @returns {Promise<Object>} Invitation result
-   */
-  inviteMember: async (organizationId, invitation) => {
-    try {
-      if (!TokenManager.hasPermission('organization:members:invite') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Invitation permission required');
-      }
-      
-      validateResponse(invitation, ['email']);
-      
-      const response = await api.post(`/api/v1/organizations/${organizationId}/invite`, {
-        ...invitation,
-        invitedBy: TokenManager.getUserInfo()?.id,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
-        invitationType: 'email'
-      });
-      
-      apiEvents.emit('organizations:member_invited', {
-        organizationId,
-        email: invitation.email,
-        role: invitation.role,
-        invitedBy: TokenManager.getUserInfo()?.id
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Invite member error:', error);
-      throw error;
-    }
-  },
-  
-  // ===================== ORGANIZATION SETTINGS =====================
-  
-  /**
-   * Get organization settings
-   * @param {string} organizationId - Organization ID
-   * @param {Object} options - Options
-   * @returns {Promise<Object>} Organization settings
-   */
-  getOrganizationSettings: async (organizationId, options = {}) => {
-    try {
-      if (!TokenManager.hasPermission('organization:settings:read') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Settings read permission required');
-      }
-      
-      const response = await api.get(`/api/v1/organizations/${organizationId}/settings`, {
-        params: {
-          includeDefaults: options.includeDefaults || false,
-          ...options
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Get organization settings error:', error);
-      throw error;
-    }
-  },
-  
-  /**
-   * Update organization settings
-   * @param {string} organizationId - Organization ID
-   * @param {Object} settings - Updated settings
-   * @returns {Promise<Object>} Updated settings
-   */
-  updateOrganizationSettings: async (organizationId, settings) => {
-    try {
-      if (!TokenManager.hasPermission('organization:settings:update') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Settings update permission required');
-      }
-      
-      const response = await api.put(`/api/v1/organizations/${organizationId}/settings`, {
-        ...settings,
-        updatedBy: TokenManager.getUserInfo()?.id,
-        updatedAt: new Date().toISOString()
-      });
-      
-      apiEvents.emit('organizations:settings_updated', {
-        organizationId,
-        settings: response.data,
-        updatedBy: TokenManager.getUserInfo()?.id
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Update organization settings error:', error);
-      throw error;
-    }
-  },
-  
-  // ===================== ORGANIZATION ANALYTICS =====================
-  
-  /**
-   * Get organization analytics
-   * @param {string} organizationId - Organization ID
-   * @param {Object} params - Analytics parameters
-   * @returns {Promise<Object>} Analytics data
-   */
-  getOrganizationAnalytics: async (organizationId, params = {}) => {
-    try {
-      if (!TokenManager.hasPermission('organization:analytics:read') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Analytics read permission required');
-      }
-      
-      const response = await api.get(`/api/v1/organizations/${organizationId}/analytics`, {
-        params: {
-          period: params.period || 'month',
-          includeComparisons: true,
-          includeTrends: true,
-          ...params
-        }
-      });
-      
-      validateResponse(response.data, ['metrics', 'trends', 'comparisons']);
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Get organization analytics error:', error);
-      throw error;
-    }
-  },
-  
-  /**
-   * Get organization usage statistics
-   * @param {string} organizationId - Organization ID
-   * @param {Object} params - Usage parameters
-   * @returns {Promise<Object>} Usage statistics
-   */
-  getUsageStatistics: async (organizationId, params = {}) => {
-    try {
-      if (!TokenManager.hasPermission('organization:usage:read') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Usage read permission required');
-      }
-      
-      const response = await api.get(`/api/v1/organizations/${organizationId}/usage`, {
-        params: {
-          detailed: params.detailed || false,
-          includeLimits: true,
-          includeProjections: true,
-          ...params
-        }
-      });
-      
-      validateResponse(response.data, ['usage', 'limits', 'projections']);
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Get usage statistics error:', error);
-      throw error;
-    }
-  },
-  
-  // ===================== ORGANIZATION DOMAINS =====================
-  
-  /**
-   * Get organization domains
-   * @param {string} organizationId - Organization ID
-   * @returns {Promise<Array>} Organization domains
-   */
-  getDomains: async (organizationId) => {
-    try {
-      if (!TokenManager.hasPermission('organization:domains:read') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Domains read permission required');
-      }
-      
-      const response = await api.get(`/api/v1/organizations/${organizationId}/domains`);
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Get domains error:', error);
-      throw error;
-    }
-  },
-  
-  /**
-   * Add domain to organization
-   * @param {string} organizationId - Organization ID
-   * @param {Object} domainData - Domain data
-   * @returns {Promise<Object>} Added domain
-   */
-  addDomain: async (organizationId, domainData) => {
-    try {
-      if (!TokenManager.hasPermission('organization:domains:manage') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Domains manage permission required');
-      }
-      
-      validateResponse(domainData, ['domain']);
-      
-      const response = await api.post(`/api/v1/organizations/${organizationId}/domains`, domainData);
-      
-      apiEvents.emit('organizations:domain_added', {
-        organizationId,
-        domain: response.data.domain,
-        status: response.data.status
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Add domain error:', error);
-      throw error;
-    }
-  },
-  
-  /**
-   * Verify domain ownership
-   * @param {string} organizationId - Organization ID
-   * @param {string} domainId - Domain ID
-   * @returns {Promise<Object>} Verification result
-   */
-  verifyDomain: async (organizationId, domainId) => {
-    try {
-      if (!TokenManager.hasPermission('organization:domains:manage') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Domains manage permission required');
-      }
-      
-      const response = await api.post(`/api/v1/organizations/${organizationId}/domains/${domainId}/verify`);
-      
-      apiEvents.emit('organizations:domain_verified', {
-        organizationId,
-        domainId,
-        verified: response.data.verified,
-        verificationMethod: response.data.method
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('[OrganizationAPI] Verify domain error:', error);
-      throw error;
-    }
-  },
-  
-  // ===================== ORGANIZATION EXPORT =====================
-  
-  /**
-   * Export organization data
-   * @param {string} organizationId - Organization ID
-   * @param {Object} options - Export options
-   * @returns {Promise<Object>} Export result with blob
-   */
-  exportOrganizationData: async (organizationId, options = {}) => {
-    try {
-      if (!TokenManager.hasPermission('organization:export') && 
-          !TokenManager.hasPermission('admin')) {
-        throw new Error('Unauthorized: Export permission required');
-      }
-      
-      const response = await api.get(`/api/v1/organizations/${organizationId}/export`, {
-        responseType: 'blob',
-        params: {
-          format: options.format || 'json',
-          include: options.include || ['members', 'assessments', 'settings'],
-          ...options
-        }
-      });
-      
-      const contentType = response.headers['content-type'];
-      const filename = response.headers['content-disposition']?.match(/filename="(.+)"/)?.[1] || 
-                     `organization_${organizationId}_export_${new Date().toISOString().split('T')[0]}.zip`;
-      
-      return {
-        blob: response.data,
-        filename,
-        contentType,
-        size: response.data.size,
-        url: URL.createObjectURL(response.data)
-      };
-    } catch (error) {
-      console.error('[OrganizationAPI] Export organization data error:', error);
-      throw error;
-    }
-  },
-  
-  // ===================== UTILITY FUNCTIONS =====================
-  
-  /**
-   * Get organization status options
-   * @returns {Array<Object>} Status options
-   */
-  getOrganizationStatuses: () => {
-    return [
-      { value: 'active', label: 'Active', color: 'green', icon: 'check-circle' },
-      { value: 'pending', label: 'Pending', color: 'orange', icon: 'clock' },
-      { value: 'suspended', label: 'Suspended', color: 'red', icon: 'pause-circle' },
-      { value: 'disabled', label: 'Disabled', color: 'gray', icon: 'x-circle' },
-      { value: 'trial', label: 'Trial', color: 'blue', icon: 'star' }
-    ];
-  },
-  
-  /**
-   * Get organization plan options
-   * @returns {Array<Object>} Plan options
-   */
-  getOrganizationPlans: () => {
-    return [
-      { value: 'free', label: 'Free', features: ['basic_assessments', 'limited_users'] },
-      { value: 'basic', label: 'Basic', price: 29, features: ['standard_assessments', 'basic_analytics'] },
-      { value: 'professional', label: 'Professional', price: 79, features: ['advanced_assessments', 'full_analytics', 'custom_branding'] },
-      { value: 'enterprise', label: 'Enterprise', price: 199, features: ['unlimited_assessments', 'advanced_analytics', 'custom_domains', 'dedicated_support'] }
-    ];
-  },
-  
-  /**
-   * Get organization member role options
-   * @returns {Array<Object>} Role options
-   */
-  getMemberRoles: () => {
-    return [
-      { value: 'admin', label: 'Admin', permissions: ['all'] },
-      { value: 'manager', label: 'Manager', permissions: ['assessments:manage', 'members:view'] },
-      { value: 'assessor', label: 'Assessor', permissions: ['assessments:create', 'results:view'] },
-      { value: 'viewer', label: 'Viewer', permissions: ['assessments:view', 'results:view'] }
-    ];
-  },
-  
-  /**
-   * Switch current organization context
-   * @param {string} organizationId - Organization ID
-   * @returns {Promise<Object>} Switch result
-   */
-  switchOrganization: async (organizationId) => {
-    try {
-      // Verify user has access to this organization
-      const org = await organizationApi.getOrganization(organizationId);
-      
-      // Update context
-      TokenManager.setOrganization(org);
-      TokenManager.setTenantContext(organizationId);
-      
-      // Update API headers
-      api.defaults.headers['X-Tenant-ID'] = organizationId;
-      api.defaults.headers['X-Organization-ID'] = organizationId;
-      
-      apiEvents.emit('organizations:switched', {
-        id: organizationId,
-        name: org.name,
-        previous: TokenManager.getOrganization()
-      });
-      
-      return {
-        success: true,
-        organization: org,
-        message: `Switched to ${org.name}`
-      };
-    } catch (error) {
-      console.error('[OrganizationAPI] Switch organization error:', error);
-      throw error;
-    }
-  },
-  
-  /**
-   * Subscribe to organization events
-   * @param {string} event - Event name
-   * @param {Function} callback - Event handler
-   */
-  on: (event, callback) => {
-    apiEvents.on(`organizations:${event}`, callback);
-  },
-  
-  /**
-   * Unsubscribe from organization events
-   * @param {string} event - Event name
-   * @param {Function} callback - Event handler
-   */
-  off: (event, callback) => {
-    apiEvents.off(`organizations:${event}`, callback);
-  },
-  
-  /**
-   * Initialize organization context
-   * @returns {Promise<Object>} Initialization status
-   */
-  initialize: async () => {
-    try {
-      const user = TokenManager.getUserInfo();
-      const orgId = TokenManager.getTenantId();
-      
-      if (!user || !orgId) {
-        return {
-          success: false,
-          message: 'User not authenticated or no organization selected'
-        };
-      }
-      
-      // Load organization details
-      const org = await organizationApi.getOrganization(orgId, {
-        includeSettings: true,
-        includeStats: true
-      });
-      
-      apiEvents.emit('organizations:initialized', {
-        user: user.id,
-        organization: org,
-        timestamp: new Date().toISOString()
-      });
-      
-      return {
-        success: true,
-        organization: org,
-        user: user,
-        permissions: TokenManager.getPermissions()
-      };
-    } catch (error) {
-      console.error('[OrganizationAPI] Initialize error:', error);
-      return {
-        success: false,
-        error: error.message,
-        organization: null
-      };
-    }
+    });
+    
+    validateResponse(response.data, ['metrics', 'trends', 'comparisons']);
+    
+    return response.data;
+  } catch (error) {
+    console.error('[OrganizationAPI] Get organization analytics error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Switch current organization context
+ * @param {string} organizationId - Organization ID
+ * @returns {Promise<Object>} Switch result
+ */
+export const switchOrganization = async (organizationId) => {
+  try {
+    // Verify user has access to this organization
+    const org = await getOrganization(organizationId);
+    
+    // Update context
+    TokenManager.setOrganization(org);
+    TokenManager.setTenantContext(organizationId);
+    
+    // Update API headers
+    api.defaults.headers['X-Tenant-ID'] = organizationId;
+    api.defaults.headers['X-Organization-ID'] = organizationId;
+    
+    apiEvents.emit('organizations:switched', {
+      id: organizationId,
+      name: org.name,
+      previous: TokenManager.getOrganization()
+    });
+    
+    return {
+      success: true,
+      organization: org,
+      message: `Switched to ${org.name}`
+    };
+  } catch (error) {
+    console.error('[OrganizationAPI] Switch organization error:', error);
+    throw error;
   }
 };
 
@@ -1053,11 +550,19 @@ function generateMockOrganization(id, options) {
   };
 }
 
-/**
- * Generate invitation token
- */
-function generateInvitationToken() {
-  return 'inv_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-}
+// ===================== DEFAULT EXPORT FOR BACKWARD COMPATIBILITY =====================
+
+const organizationApi = {
+  fetchOrganizationStats,
+  fetchOrganizationGrowth,
+  getOrganization,
+  getCurrentOrganization,
+  createOrganization,
+  updateOrganization,
+  getOrganizationMembers,
+  inviteMember,
+  getOrganizationAnalytics,
+  switchOrganization,
+};
 
 export default organizationApi;
