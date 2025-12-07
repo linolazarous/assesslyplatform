@@ -22,9 +22,8 @@ import {
 } from '@mui/material';
 import ErrorBoundary from './ErrorBoundary';
 import LoadingScreen from './components/ui/LoadingScreen';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AuthProvider, useAuth, OrganizationProvider, useOrganization } from './contexts/AuthContext';
 import { SnackbarProvider, useSnackbar } from './contexts/SnackbarContext';
-import { OrganizationProvider, useOrganization } from './contexts/OrganizationContext';
 import useThemeMode from './hooks/useThemeMode';
 import createTheme from './styles/theme';
 import { TokenManager, apiEvents, trackError } from './api';
@@ -817,3 +816,4 @@ if (import.meta.env.DEV) {
   );
   console.log('ℹ️  Development utilities available at window.__ASSESSLY_DEV__');
 }
+
