@@ -88,6 +88,7 @@ const DEFAULT_PERMISSIONS = {
 };
 
 const AuthContext = createContext(null);
+const OrganizationContext = createContext(null); // Create organization context
 
 // ================================
 // JWT UTILITIES
@@ -187,7 +188,7 @@ axios.interceptors.response.use(
 );
 
 // ================================
-// HOOK
+// HOOKS
 // ================================
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
@@ -195,8 +196,15 @@ export const useAuth = () => {
   return ctx;
 };
 
+// Add the missing useOrganization hook
+export const useOrganization = () => {
+  const ctx = useContext(OrganizationContext);
+  if (!ctx) throw new Error("useOrganization must be used inside OrganizationProvider");
+  return ctx;
+};
+
 // ================================
-// PROVIDER
+// PROVIDERS
 // ================================
 export const AuthProvider = ({ children }) => {
   const navigate = useNavigate();
@@ -953,6 +961,32 @@ export const AuthProvider = ({ children }) => {
 };
 
 AuthProvider.propTypes = {
+  children: PropTypes.node.isRequired,
+};
+
+// ================================
+// ORGANIZATION PROVIDER
+// ================================
+export const OrganizationProvider = ({ children }) => {
+  const { currentOrganization, updateCurrentOrganization, organizations } = useAuth();
+  
+  const value = useMemo(() => ({
+    currentOrganization,
+    updateCurrentOrganization,
+    organizations,
+    isOrganizationSet: !!currentOrganization,
+    getOrganization: (id) => organizations.find(org => org.id === id),
+    switchOrganization: (organization) => updateCurrentOrganization(organization),
+  }), [currentOrganization, updateCurrentOrganization, organizations]);
+
+  return (
+    <OrganizationContext.Provider value={value}>
+      {children}
+    </OrganizationContext.Provider>
+  );
+};
+
+OrganizationProvider.propTypes = {
   children: PropTypes.node.isRequired,
 };
 
