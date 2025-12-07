@@ -28,13 +28,11 @@ const getApiBaseUrl = () => {
   return 'https://assesslyplatform-t49h.onrender.com/api/v1';
 };
 
-export const API_BASE_URL = getApiBaseUrl();
-
 /* -----------------------
    Axios Instance
    ----------------------- */
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getApiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
@@ -52,7 +50,7 @@ const api = axios.create({
 /* -----------------------
    Lightweight Event Emitter
    ----------------------- */
-export const createEventEmitter = () => {
+const createEventEmitter = () => {
   const map = new Map();
   return {
     on(event, cb) {
@@ -76,8 +74,6 @@ export const createEventEmitter = () => {
     }
   };
 };
-
-export const apiEvents = createEventEmitter();
 
 /* -----------------------
    Token Management (Updated for App.jsx compatibility)
@@ -127,7 +123,7 @@ const isTokenValid = (token) => {
   return Date.now() + buffer < decoded.exp * 1000;
 };
 
-export const TokenManager = {
+const TokenManager = {
   getToken() {
     try { 
       return localStorage.getItem(TOKEN_STORAGE_KEYS.TOKEN); 
@@ -431,7 +427,7 @@ api.interceptors.response.use(
 /* -----------------------
    API Endpoints (Aligned with Documentation)
    ----------------------- */
-export const API_ENDPOINTS = {
+const API_ENDPOINTS = {
   AUTH: {
     REGISTER: '/auth/register',
     LOGIN: '/auth/login',
@@ -522,7 +518,7 @@ export const API_ENDPOINTS = {
 /* -----------------------
    API Service Functions
    ----------------------- */
-export const AuthAPI = {
+const AuthAPI = {
   register: (payload) => api.post(API_ENDPOINTS.AUTH.REGISTER, payload),
   login: (payload) => api.post(API_ENDPOINTS.AUTH.LOGIN, payload),
   me: () => api.get(API_ENDPOINTS.AUTH.ME),
@@ -540,7 +536,7 @@ export const AuthAPI = {
   refreshToken: (refreshToken) => api.post(API_ENDPOINTS.AUTH.REFRESH, { refreshToken }),
 };
 
-export const UsersAPI = {
+const UsersAPI = {
   list: () => api.get(API_ENDPOINTS.USERS.LIST),
   get: (id) => api.get(API_ENDPOINTS.USERS.GET(id)),
   update: (id, payload) => api.put(API_ENDPOINTS.USERS.UPDATE(id), payload),
@@ -548,7 +544,7 @@ export const UsersAPI = {
   updatePreferences: (payload) => api.put(API_ENDPOINTS.USERS.PREFERENCES, payload),
 };
 
-export const OrganizationsAPI = {
+const OrganizationsAPI = {
   create: (payload) => api.post(API_ENDPOINTS.ORGANIZATIONS.CREATE, payload),
   list: () => api.get(API_ENDPOINTS.ORGANIZATIONS.LIST),
   get: (id) => api.get(API_ENDPOINTS.ORGANIZATIONS.GET(id)),
@@ -557,7 +553,7 @@ export const OrganizationsAPI = {
   inviteMember: (id, payload) => api.post(API_ENDPOINTS.ORGANIZATIONS.INVITE(id), payload),
 };
 
-export const AssessmentsAPI = {
+const AssessmentsAPI = {
   create: (payload) => api.post(API_ENDPOINTS.ASSESSMENTS.CREATE, payload),
   list: (params = {}) => api.get(API_ENDPOINTS.ASSESSMENTS.LIST, { params }),
   get: (id) => api.get(API_ENDPOINTS.ASSESSMENTS.GET(id)),
@@ -569,7 +565,7 @@ export const AssessmentsAPI = {
   getCategories: () => api.get(API_ENDPOINTS.ASSESSMENTS.CATEGORIES),
 };
 
-export const QuestionsAPI = {
+const QuestionsAPI = {
   create: (assessmentId, payload) => api.post(API_ENDPOINTS.QUESTIONS.CREATE(assessmentId), payload),
   list: (assessmentId, params = {}) => api.get(API_ENDPOINTS.QUESTIONS.LIST(assessmentId), { params }),
   get: (assessmentId, questionId) => api.get(API_ENDPOINTS.QUESTIONS.GET(assessmentId, questionId)),
@@ -577,7 +573,7 @@ export const QuestionsAPI = {
   delete: (assessmentId, questionId) => api.delete(API_ENDPOINTS.QUESTIONS.DELETE(assessmentId, questionId)),
 };
 
-export const ResponsesAPI = {
+const ResponsesAPI = {
   create: (payload) => api.post(API_ENDPOINTS.RESPONSES.CREATE, payload),
   list: (params = {}) => api.get(API_ENDPOINTS.RESPONSES.LIST, { params }),
   get: (id) => api.get(API_ENDPOINTS.RESPONSES.GET(id)),
@@ -589,7 +585,7 @@ export const ResponsesAPI = {
   getByAssessment: (assessmentId, params = {}) => api.get(API_ENDPOINTS.RESPONSES.BY_ASSESSMENT(assessmentId), { params }),
 };
 
-export const SubscriptionsAPI = {
+const SubscriptionsAPI = {
   getPlans: () => api.get(API_ENDPOINTS.SUBSCRIPTIONS.PLANS),
   getCurrent: () => api.get(API_ENDPOINTS.SUBSCRIPTIONS.CURRENT),
   upgrade: (planId) => api.post(API_ENDPOINTS.SUBSCRIPTIONS.UPGRADE, { planId }),
@@ -597,20 +593,20 @@ export const SubscriptionsAPI = {
   getInvoices: () => api.get(API_ENDPOINTS.SUBSCRIPTIONS.INVOICES),
 };
 
-export const AnalyticsAPI = {
+const AnalyticsAPI = {
   getDashboard: () => api.get(API_ENDPOINTS.ANALYTICS.DASHBOARD),
   getAssessmentStats: (assessmentId) => api.get(API_ENDPOINTS.ANALYTICS.ASSESSMENT_STATS(assessmentId)),
   getQuestionAnalysis: (assessmentId) => api.get(API_ENDPOINTS.ANALYTICS.QUESTION_ANALYSIS(assessmentId)),
   getTrends: (assessmentId) => api.get(API_ENDPOINTS.ANALYTICS.TRENDS(assessmentId)),
 };
 
-export const HealthAPI = {
+const HealthAPI = {
   check: () => api.get(API_ENDPOINTS.HEALTH.CHECK),
   getMetrics: () => api.get(API_ENDPOINTS.HEALTH.METRICS),
   getStatus: () => api.get(API_ENDPOINTS.HEALTH.STATUS),
 };
 
-export const UtilsAPI = {
+const UtilsAPI = {
   getCountries: () => api.get(API_ENDPOINTS.UTILS.COUNTRIES),
   getTimezones: () => api.get(API_ENDPOINTS.UTILS.TIMEZONES),
   getCurrencies: () => api.get(API_ENDPOINTS.UTILS.CURRENCIES),
@@ -619,7 +615,7 @@ export const UtilsAPI = {
 /* -----------------------
    Helper Functions
    ----------------------- */
-export const trackError = (error, context = {}) => {
+const trackError = (error, context = {}) => {
   try {
     const payload = {
       timestamp: new Date().toISOString(),
@@ -637,7 +633,7 @@ export const trackError = (error, context = {}) => {
 
     // Optional: Send to backend error tracking
     if (typeof fetch !== 'undefined') {
-      fetch(`${API_BASE_URL}/errors/log`, {
+      fetch(`${getApiBaseUrl()}/errors/log`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -649,7 +645,10 @@ export const trackError = (error, context = {}) => {
   }
 };
 
-export const setAuthToken = (token) => TokenManager.setToken(token);
+const setAuthToken = (token) => TokenManager.setToken(token);
+
+// Create event emitter instance
+const apiEvents = createEventEmitter();
 
 // Initialize auth header from storage
 if (typeof window !== 'undefined') {
@@ -660,11 +659,16 @@ if (typeof window !== 'undefined') {
 }
 
 /* -----------------------
-   Export everything
+   Export everything - SINGLE EXPORT BLOCK
    ----------------------- */
 export {
   api as default,
-  // Don't re-export individual items that are already exported above
+  getApiBaseUrl as API_BASE_URL,
+  TokenManager,
+  apiEvents,
+  createEventEmitter,
+  setAuthToken,
+  trackError,
   API_ENDPOINTS,
   AuthAPI,
   UsersAPI,
@@ -677,6 +681,3 @@ export {
   HealthAPI,
   UtilsAPI,
 };
-
-// Note: API_BASE_URL, TokenManager, apiEvents, createEventEmitter, and setAuthToken
-// are already exported above, so we don't need to re-export them here.
