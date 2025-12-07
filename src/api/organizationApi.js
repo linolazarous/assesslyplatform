@@ -1,6 +1,5 @@
 // src/api/organizationApi.js
 import { api, retryWithBackoff, validateResponse, API_ENDPOINTS, apiEvents, TokenManager } from './index';
-import { OrganizationService } from './index'; // Import the service if it exists
 
 /**
  * Organization API Service for Assessly Platform
@@ -57,7 +56,7 @@ export const fetchOrganizationStats = async (params = {}) => {
     console.error('[OrganizationAPI] Fetch organization stats error:', error);
     
     // Development mock data
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
       console.warn('[OrganizationAPI] Using mock organization stats for development');
       return generateMockOrganizationStats(params);
     }
@@ -102,7 +101,7 @@ export const fetchOrganizationGrowth = async (params = {}) => {
   } catch (error) {
     console.error('[OrganizationAPI] Fetch organization growth error:', error);
     
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
       console.warn('[OrganizationAPI] Using mock organization growth data for development');
       return generateMockOrganizationGrowth(params);
     }
@@ -158,7 +157,7 @@ export const getOrganization = async (organizationId, options = {}) => {
   } catch (error) {
     console.error('[OrganizationAPI] Get organization error:', error);
     
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
       console.warn('[OrganizationAPI] Using mock organization data for development');
       return generateMockOrganization(organizationId, options);
     }
