@@ -2,24 +2,69 @@
 /**
  * User Management API for Assessly Platform
  * Multi-tenant aware user operations with advanced error handling
+ * Aligned with Assessly API v1.0.0 documentation
  */
 
 import api, { TokenManager, apiEvents, trackError } from './index';
 
 // ----------------------
-// API Endpoints
+// API Endpoints (Aligned with Assessly API)
 // ----------------------
 export const USER_ENDPOINTS = {
+  // Base endpoints
+  BASE: '/users',
   PROFILE: '/users/profile',
+  PREFERENCES: '/users/preferences',
+  
+  // Organization-related
   ORGANIZATIONS: '/users/organizations',
   SWITCH_ORGANIZATION: '/users/switch-organization',
-  UPDATE_PROFILE: '/users/profile',
+  
+  // Security
   CHANGE_PASSWORD: '/users/change-password',
-  UPLOAD_AVATAR: '/users/avatar',
-  PREFERENCES: '/users/preferences',
-  NOTIFICATIONS: '/users/notifications',
   SESSIONS: '/users/sessions',
+  
+  // Media
+  AVATAR: '/users/avatar',
+  
+  // Activity & Notifications
   ACTIVITY: '/users/activity',
+  NOTIFICATIONS: '/users/notifications',
+};
+
+// ----------------------
+// Helper Functions
+// ----------------------
+
+/**
+ * Create consistent API response
+ */
+const createResponse = (success, data = null, message = '', meta = {}) => ({
+  success,
+  data,
+  message,
+  ...meta,
+  timestamp: new Date().toISOString(),
+});
+
+/**
+ * Handle API errors consistently
+ */
+const handleApiError = (error, context, meta = {}) => {
+  trackError(error, { context, ...meta });
+  
+  const apiError = error.response?.data;
+  return createResponse(
+    false,
+    null,
+    apiError?.message || error.message || 'An unexpected error occurred',
+    {
+      status: error.response?.status,
+      code: apiError?.code,
+      errors: apiError?.errors,
+      ...meta,
+    }
+  );
 };
 
 // ----------------------
@@ -27,8 +72,9 @@ export const USER_ENDPOINTS = {
 // ----------------------
 
 /**
- * Fetch user profile with caching and retry logic
+ * Fetch user profile
  * GET /api/v1/users/profile
+ * @returns {Promise<{success: boolean, data: User}>}
  */
 export async function fetchUserProfile(options = {}) {
   const { refresh = false, timeout = 15000 } = options;
@@ -38,182 +84,51 @@ export async function fetchUserProfile(options = {}) {
       timeout,
       headers: {
         'Cache-Control': refresh ? 'no-cache' : 'max-age=60',
+        'X-Tenant-ID': TokenManager.getTenantId(),
       },
     };
 
     const response = await api.get(USER_ENDPOINTS.PROFILE, config);
     
-    // Cache user info in TokenManager
-    if (response.data?.user) {
-      TokenManager.setUserInfo(response.data.user);
-    }
-    
-    // Cache organization if available
-    if (response.data?.organization) {
-      TokenManager.setOrganization(response.data.organization);
+    // Cache user info
+    if (response.data) {
+      TokenManager.setUserInfo(response.data);
+      
+      // Cache organization if available in user object
+      if (response.data.organization) {
+        TokenManager.setTenantContext(response.data.organization);
+      }
     }
     
     // Emit profile loaded event
     apiEvents.emit('user:profile:loaded', response.data);
     
-    return {
-      success: true,
-      data: response.data,
-      timestamp: new Date().toISOString(),
-    };
+    return createResponse(
+      true,
+      response.data,
+      'Profile loaded successfully',
+      { fromCache: !refresh }
+    );
   } catch (error) {
-    trackError(error, {
-      context: 'fetchUserProfile',
+    return handleApiError(error, 'fetchUserProfile', {
       endpoint: USER_ENDPOINTS.PROFILE,
     });
-    
-    return {
-      success: false,
-      error: error.message || 'Failed to fetch user profile',
-      code: error.code || 'PROFILE_FETCH_ERROR',
-      details: error.details,
-    };
   }
 }
 
 /**
- * Fetch user's organizations with caching
- * GET /api/v1/users/organizations
- */
-export async function fetchOrganizations(options = {}) {
-  const { includeMembers = false, includeStats = false, timeout = 10000 } = options;
-  
-  try {
-    const params = {};
-    if (includeMembers) params.includeMembers = true;
-    if (includeStats) params.includeStats = true;
-    
-    const response = await api.get(USER_ENDPOINTS.ORGANIZATIONS, {
-      params,
-      timeout,
-      headers: {
-        'Cache-Control': 'max-age=300', // Cache for 5 minutes
-      },
-    });
-    
-    // Cache current organization if not already cached
-    const currentOrgId = TokenManager.getTenantId();
-    if (currentOrgId && response.data?.organizations) {
-      const currentOrg = response.data.organizations.find(org => org.id === currentOrgId);
-      if (currentOrg && !TokenManager.getOrganization()) {
-        TokenManager.setOrganization(currentOrg);
-      }
-    }
-    
-    apiEvents.emit('user:organizations:loaded', response.data);
-    
-    return {
-      success: true,
-      data: response.data,
-      organizations: response.data?.organizations || [],
-      count: response.data?.count || 0,
-    };
-  } catch (error) {
-    trackError(error, {
-      context: 'fetchOrganizations',
-      endpoint: USER_ENDPOINTS.ORGANIZATIONS,
-    });
-    
-    return {
-      success: false,
-      error: error.message || 'Failed to fetch organizations',
-      code: error.code || 'ORGANIZATIONS_FETCH_ERROR',
-      details: error.details,
-    };
-  }
-}
-
-/**
- * Switch organization context with validation
- * POST /api/v1/users/switch-organization
- */
-export async function switchOrganization(organizationId, options = {}) {
-  const { validate = true, timeout = 10000 } = options;
-  
-  if (!organizationId) {
-    return {
-      success: false,
-      error: 'Organization ID is required',
-      code: 'INVALID_ORGANIZATION_ID',
-    };
-  }
-  
-  try {
-    const payload = { organizationId };
-    if (validate) {
-      payload.validate = true;
-    }
-    
-    const response = await api.post(USER_ENDPOINTS.SWITCH_ORGANIZATION, payload, { timeout });
-    
-    // Update token if provided
-    if (response.data?.token) {
-      TokenManager.setTokens(response.data.token);
-    }
-    
-    // Update tenant context
-    TokenManager.setTenantContext(organizationId);
-    
-    // Update cached organization if provided
-    if (response.data?.organization) {
-      TokenManager.setOrganization(response.data.organization);
-    }
-    
-    // Emit organization switched event
-    apiEvents.emit('user:organization:switched', {
-      organizationId,
-      organization: response.data?.organization,
-      timestamp: new Date().toISOString(),
-    });
-    
-    // Refresh user profile after organization switch
-    setTimeout(() => {
-      fetchUserProfile({ refresh: true }).catch(() => {
-        // Silently fail if profile refresh fails
-      });
-    }, 500);
-    
-    return {
-      success: true,
-      data: response.data,
-      organization: response.data?.organization,
-      message: response.data?.message || 'Organization switched successfully',
-    };
-  } catch (error) {
-    trackError(error, {
-      context: 'switchOrganization',
-      endpoint: USER_ENDPOINTS.SWITCH_ORGANIZATION,
-      organizationId,
-    });
-    
-    return {
-      success: false,
-      error: error.message || 'Failed to switch organization',
-      code: error.code || 'ORGANIZATION_SWITCH_ERROR',
-      details: error.details,
-      organizationId,
-    };
-  }
-}
-
-/**
- * Update user profile with validation and optimistic updates
+ * Update user profile
  * PATCH /api/v1/users/profile
+ * @param {Object} profileData - Partial User object
+ * @returns {Promise<{success: boolean, data: User}>}
  */
 export async function updateUserProfile(profileData, options = {}) {
   const { optimistic = true, timeout = 15000 } = options;
   
   if (!profileData || typeof profileData !== 'object') {
-    return {
-      success: false,
-      error: 'Invalid profile data',
+    return createResponse(false, null, 'Invalid profile data', {
       code: 'INVALID_PROFILE_DATA',
-    };
+    });
   }
   
   try {
@@ -227,20 +142,28 @@ export async function updateUserProfile(profileData, options = {}) {
       apiEvents.emit('user:profile:optimistic-update', updatedUser);
     }
     
-    const response = await api.patch(USER_ENDPOINTS.UPDATE_PROFILE, profileData, { timeout });
+    const response = await api.patch(
+      USER_ENDPOINTS.UPDATE_PROFILE, 
+      profileData, 
+      { 
+        timeout,
+        headers: {
+          'X-Tenant-ID': TokenManager.getTenantId(),
+        },
+      }
+    );
     
-    // Update cached user info with server response
-    if (response.data?.user) {
-      TokenManager.setUserInfo(response.data.user);
-      apiEvents.emit('user:profile:updated', response.data.user);
+    // Update cached user info
+    if (response.data) {
+      TokenManager.setUserInfo(response.data);
+      apiEvents.emit('user:profile:updated', response.data);
     }
     
-    return {
-      success: true,
-      data: response.data,
-      user: response.data?.user,
-      message: response.data?.message || 'Profile updated successfully',
-    };
+    return createResponse(
+      true,
+      response.data,
+      response.data?.message || 'Profile updated successfully'
+    );
   } catch (error) {
     // Rollback optimistic update on error
     if (optimistic && currentUser) {
@@ -248,105 +171,47 @@ export async function updateUserProfile(profileData, options = {}) {
       apiEvents.emit('user:profile:rollback', currentUser);
     }
     
-    trackError(error, {
-      context: 'updateUserProfile',
+    return handleApiError(error, 'updateUserProfile', {
       endpoint: USER_ENDPOINTS.UPDATE_PROFILE,
       profileData,
     });
-    
-    return {
-      success: false,
-      error: error.message || 'Failed to update profile',
-      code: error.code || 'PROFILE_UPDATE_ERROR',
-      details: error.details,
-    };
-  }
-}
-
-// ----------------------
-// Additional User Operations
-// ----------------------
-
-/**
- * Change user password with security validation
- * POST /api/v1/users/change-password
- */
-export async function changePassword(passwordData, options = {}) {
-  const { timeout = 10000 } = options;
-  
-  if (!passwordData?.currentPassword || !passwordData?.newPassword) {
-    return {
-      success: false,
-      error: 'Current and new password are required',
-      code: 'INVALID_PASSWORD_DATA',
-    };
-  }
-  
-  if (passwordData.newPassword.length < 8) {
-    return {
-      success: false,
-      error: 'New password must be at least 8 characters',
-      code: 'PASSWORD_TOO_SHORT',
-    };
-  }
-  
-  try {
-    const response = await api.post(USER_ENDPOINTS.CHANGE_PASSWORD, passwordData, { timeout });
-    
-    apiEvents.emit('user:password:changed');
-    
-    return {
-      success: true,
-      data: response.data,
-      message: response.data?.message || 'Password changed successfully',
-    };
-  } catch (error) {
-    trackError(error, {
-      context: 'changePassword',
-      endpoint: USER_ENDPOINTS.CHANGE_PASSWORD,
-    });
-    
-    return {
-      success: false,
-      error: error.message || 'Failed to change password',
-      code: error.code || 'PASSWORD_CHANGE_ERROR',
-      details: error.details,
-    };
   }
 }
 
 /**
- * Upload user avatar with progress tracking
+ * Upload user avatar
  * POST /api/v1/users/avatar
+ * @param {File} file - Image file
+ * @returns {Promise<{success: boolean, data: {avatarUrl: string}}>}
  */
 export async function uploadAvatar(file, options = {}) {
   const { onProgress, timeout = 30000 } = options;
   
   if (!file || !(file instanceof File)) {
-    return {
-      success: false,
-      error: 'Invalid file provided',
+    return createResponse(false, null, 'Invalid file provided', {
       code: 'INVALID_FILE',
-    };
+    });
   }
   
   // Validate file type
   const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
   if (!validTypes.includes(file.type)) {
-    return {
-      success: false,
-      error: 'Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed',
-      code: 'INVALID_FILE_TYPE',
-    };
+    return createResponse(
+      false, 
+      null, 
+      'Only JPEG, PNG, GIF, and WebP images are allowed',
+      { code: 'INVALID_FILE_TYPE' }
+    );
   }
   
   // Validate file size (max 5MB)
   if (file.size > 5 * 1024 * 1024) {
-    return {
-      success: false,
-      error: 'File size must be less than 5MB',
-      code: 'FILE_TOO_LARGE',
-    };
+    return createResponse(
+      false,
+      null,
+      'File size must be less than 5MB',
+      { code: 'FILE_TOO_LARGE' }
+    );
   }
   
   try {
@@ -357,56 +222,261 @@ export async function uploadAvatar(file, options = {}) {
       timeout,
       headers: {
         'Content-Type': 'multipart/form-data',
+        'X-Tenant-ID': TokenManager.getTenantId(),
       },
     };
     
-    // Add progress tracking if callback provided
-    if (onProgress && typeof onProgress === 'function') {
+    // Add progress tracking
+    if (typeof onProgress === 'function') {
       config.onUploadProgress = (progressEvent) => {
         const percentCompleted = Math.round(
-          (progressEvent.loaded * 100) / progressEvent.total
+          (progressEvent.loaded * 100) / (progressEvent.total || 1)
         );
         onProgress(percentCompleted);
       };
     }
     
-    const response = await api.post(USER_ENDPOINTS.UPLOAD_AVATAR, formData, config);
+    const response = await api.post(USER_ENDPOINTS.AVATAR, formData, config);
     
-    // Update cached user info with new avatar
+    // Update cached user info
     if (response.data?.avatarUrl) {
       const user = TokenManager.getUserInfo();
       if (user) {
-        user.avatarUrl = response.data.avatarUrl;
+        user.avatar = response.data.avatarUrl;
         TokenManager.setUserInfo(user);
         apiEvents.emit('user:avatar:updated', response.data.avatarUrl);
       }
     }
     
-    return {
-      success: true,
-      data: response.data,
-      avatarUrl: response.data?.avatarUrl,
-      message: response.data?.message || 'Avatar uploaded successfully',
-    };
+    return createResponse(
+      true,
+      response.data,
+      'Avatar uploaded successfully'
+    );
   } catch (error) {
-    trackError(error, {
-      context: 'uploadAvatar',
-      endpoint: USER_ENDPOINTS.UPLOAD_AVATAR,
-      file: { name: file.name, type: file.type, size: file.size },
+    return handleApiError(error, 'uploadAvatar', {
+      endpoint: USER_ENDPOINTS.AVATAR,
+      fileInfo: { name: file.name, type: file.type, size: file.size },
+    });
+  }
+}
+
+// ----------------------
+// Organization Management
+// ----------------------
+
+/**
+ * Get user's organizations
+ * GET /api/v1/users/organizations
+ * @returns {Promise<{success: boolean, data: Organization[], pagination: Pagination}>}
+ */
+export async function fetchOrganizations(options = {}) {
+  const { includeMembers = false, includeStats = false, timeout = 10000 } = options;
+  
+  try {
+    const params = {};
+    if (includeMembers) params.includeMembers = true;
+    if (includeStats) params.includeStats = true;
+    
+    const response = await api.get(USER_ENDPOINTS.ORGANIZATIONS, {
+      params,
+      timeout,
+      headers: {
+        'Cache-Control': 'max-age=300',
+      },
     });
     
-    return {
-      success: false,
-      error: error.message || 'Failed to upload avatar',
-      code: error.code || 'AVATAR_UPLOAD_ERROR',
-      details: error.details,
-    };
+    // Cache current organization if available
+    const currentOrgId = TokenManager.getTenantId();
+    if (currentOrgId && response.data?.organizations) {
+      const currentOrg = response.data.organizations.find(org => org.id === currentOrgId);
+      if (currentOrg) {
+        TokenManager.setTenantContext(currentOrg.id);
+      }
+    }
+    
+    apiEvents.emit('user:organizations:loaded', response.data);
+    
+    return createResponse(
+      true,
+      response.data,
+      'Organizations loaded successfully',
+      {
+        organizations: response.data?.organizations || [],
+        count: response.data?.organizations?.length || 0,
+        pagination: response.data?.pagination,
+      }
+    );
+  } catch (error) {
+    return handleApiError(error, 'fetchOrganizations', {
+      endpoint: USER_ENDPOINTS.ORGANIZATIONS,
+    });
   }
 }
 
 /**
- * Get user activity with pagination
+ * Switch organization context
+ * POST /api/v1/users/switch-organization
+ * @param {string} organizationId
+ * @returns {Promise<{success: boolean, data: {organizationId: string, token?: string}}>}
+ */
+export async function switchOrganization(organizationId, options = {}) {
+  const { validate = true, timeout = 10000 } = options;
+  
+  if (!organizationId) {
+    return createResponse(false, null, 'Organization ID is required', {
+      code: 'INVALID_ORGANIZATION_ID',
+    });
+  }
+  
+  try {
+    const payload = { organizationId };
+    if (validate) payload.validate = true;
+    
+    const response = await api.post(
+      USER_ENDPOINTS.SWITCH_ORGANIZATION, 
+      payload, 
+      { timeout }
+    );
+    
+    // Update token if provided
+    if (response.data?.token) {
+      TokenManager.setTokens(response.data.token);
+    }
+    
+    // Update tenant context
+    TokenManager.setTenantContext(organizationId);
+    
+    // Clear user cache since organization context changed
+    TokenManager.setUserInfo(null);
+    
+    // Emit organization switched event
+    apiEvents.emit('user:organization:switched', {
+      organizationId,
+      organization: response.data?.organization,
+    });
+    
+    return createResponse(
+      true,
+      response.data,
+      response.data?.message || 'Organization switched successfully'
+    );
+  } catch (error) {
+    return handleApiError(error, 'switchOrganization', {
+      endpoint: USER_ENDPOINTS.SWITCH_ORGANIZATION,
+      organizationId,
+    });
+  }
+}
+
+// ----------------------
+// Security & Preferences
+// ----------------------
+
+/**
+ * Change user password
+ * POST /api/v1/users/change-password
+ * @param {Object} passwordData - { currentPassword, newPassword }
+ * @returns {Promise<{success: boolean}>}
+ */
+export async function changePassword(passwordData, options = {}) {
+  const { timeout = 10000 } = options;
+  
+  if (!passwordData?.currentPassword || !passwordData?.newPassword) {
+    return createResponse(false, null, 'Current and new password are required', {
+      code: 'INVALID_PASSWORD_DATA',
+    });
+  }
+  
+  if (passwordData.newPassword.length < 8) {
+    return createResponse(
+      false,
+      null,
+      'Password must be at least 8 characters',
+      { code: 'PASSWORD_TOO_SHORT' }
+    );
+  }
+  
+  try {
+    const response = await api.post(
+      USER_ENDPOINTS.CHANGE_PASSWORD, 
+      passwordData, 
+      { 
+        timeout,
+        headers: {
+          'X-Tenant-ID': TokenManager.getTenantId(),
+        },
+      }
+    );
+    
+    apiEvents.emit('user:password:changed');
+    
+    return createResponse(
+      true,
+      response.data,
+      response.data?.message || 'Password changed successfully'
+    );
+  } catch (error) {
+    return handleApiError(error, 'changePassword', {
+      endpoint: USER_ENDPOINTS.CHANGE_PASSWORD,
+    });
+  }
+}
+
+/**
+ * Update user preferences
+ * PATCH /api/v1/users/preferences
+ * @param {Object} preferences - User preferences object
+ * @returns {Promise<{success: boolean, data: User}>}
+ */
+export async function updateUserPreferences(preferences, options = {}) {
+  const { timeout = 10000 } = options;
+  
+  if (!preferences || typeof preferences !== 'object') {
+    return createResponse(false, null, 'Invalid preferences data', {
+      code: 'INVALID_PREFERENCES',
+    });
+  }
+  
+  try {
+    const response = await api.patch(
+      USER_ENDPOINTS.PREFERENCES, 
+      { preferences }, 
+      { 
+        timeout,
+        headers: {
+          'X-Tenant-ID': TokenManager.getTenantId(),
+        },
+      }
+    );
+    
+    // Update cached user info
+    const user = TokenManager.getUserInfo();
+    if (user && response.data?.preferences) {
+      user.preferences = response.data.preferences;
+      TokenManager.setUserInfo(user);
+    }
+    
+    apiEvents.emit('user:preferences:updated', response.data?.preferences);
+    
+    return createResponse(
+      true,
+      response.data,
+      response.data?.message || 'Preferences updated successfully'
+    );
+  } catch (error) {
+    return handleApiError(error, 'updateUserPreferences', {
+      endpoint: USER_ENDPOINTS.PREFERENCES,
+      preferences,
+    });
+  }
+}
+
+/**
+ * Get user activity logs
  * GET /api/v1/users/activity
+ * @param {Object} options - Pagination and filtering options
+ * @returns {Promise<{success: boolean, data: {activities: Array, pagination: Pagination}}>}
  */
 export async function getUserActivity(options = {}) {
   const { 
@@ -427,76 +497,95 @@ export async function getUserActivity(options = {}) {
     const response = await api.get(USER_ENDPOINTS.ACTIVITY, {
       params,
       timeout,
+      headers: {
+        'X-Tenant-ID': TokenManager.getTenantId(),
+      },
     });
     
-    return {
-      success: true,
-      data: response.data,
-      activities: response.data?.activities || [],
-      pagination: response.data?.pagination || { page, limit, total: 0 },
-    };
+    return createResponse(
+      true,
+      response.data,
+      'Activity logs loaded successfully',
+      {
+        activities: response.data?.activities || [],
+        pagination: response.data?.pagination || { page, limit, total: 0, pages: 1 },
+      }
+    );
   } catch (error) {
-    trackError(error, {
-      context: 'getUserActivity',
+    return handleApiError(error, 'getUserActivity', {
       endpoint: USER_ENDPOINTS.ACTIVITY,
       params: options,
     });
-    
-    return {
-      success: false,
-      error: error.message || 'Failed to fetch user activity',
-      code: error.code || 'ACTIVITY_FETCH_ERROR',
-      details: error.details,
-    };
   }
 }
 
 /**
- * Update user preferences
- * PATCH /api/v1/users/preferences
+ * Get active user sessions
+ * GET /api/v1/users/sessions
+ * @returns {Promise<{success: boolean, data: Array}>}
  */
-export async function updateUserPreferences(preferences, options = {}) {
+export async function getUserSessions(options = {}) {
   const { timeout = 10000 } = options;
   
-  if (!preferences || typeof preferences !== 'object') {
-    return {
-      success: false,
-      error: 'Invalid preferences data',
-      code: 'INVALID_PREFERENCES',
-    };
+  try {
+    const response = await api.get(USER_ENDPOINTS.SESSIONS, {
+      timeout,
+      headers: {
+        'X-Tenant-ID': TokenManager.getTenantId(),
+      },
+    });
+    
+    return createResponse(
+      true,
+      response.data,
+      'Sessions loaded successfully',
+      {
+        sessions: response.data?.sessions || [],
+        count: response.data?.sessions?.length || 0,
+      }
+    );
+  } catch (error) {
+    return handleApiError(error, 'getUserSessions', {
+      endpoint: USER_ENDPOINTS.SESSIONS,
+    });
+  }
+}
+
+/**
+ * Revoke user session
+ * DELETE /api/v1/users/sessions/:sessionId
+ * @param {string} sessionId
+ * @returns {Promise<{success: boolean}>}
+ */
+export async function revokeSession(sessionId, options = {}) {
+  const { timeout = 10000 } = options;
+  
+  if (!sessionId) {
+    return createResponse(false, null, 'Session ID is required', {
+      code: 'INVALID_SESSION_ID',
+    });
   }
   
   try {
-    const response = await api.patch(USER_ENDPOINTS.PREFERENCES, { preferences }, { timeout });
-    
-    // Update cached user info
-    const user = TokenManager.getUserInfo();
-    if (user && response.data?.preferences) {
-      user.preferences = response.data.preferences;
-      TokenManager.setUserInfo(user);
-    }
-    
-    apiEvents.emit('user:preferences:updated', response.data?.preferences);
-    
-    return {
-      success: true,
-      data: response.data,
-      preferences: response.data?.preferences,
-      message: response.data?.message || 'Preferences updated successfully',
-    };
-  } catch (error) {
-    trackError(error, {
-      context: 'updateUserPreferences',
-      endpoint: USER_ENDPOINTS.PREFERENCES,
-      preferences,
+    const response = await api.delete(`${USER_ENDPOINTS.SESSIONS}/${sessionId}`, {
+      timeout,
+      headers: {
+        'X-Tenant-ID': TokenManager.getTenantId(),
+      },
     });
     
-    return {
-      success: false,
-      error: error.message || 'Failed to update preferences',
-      code: error.code || 'PREFERENCES_UPDATE_ERROR',
-      details: error.details,
-    };
+    apiEvents.emit('user:session:revoked', { sessionId });
+    
+    return createResponse(
+      true,
+      response.data,
+      response.data?.message || 'Session revoked successfully'
+    );
+  } catch (error) {
+    return handleApiError(error, 'revokeSession', {
+      endpoint: USER_ENDPOINTS.SESSIONS,
+      sessionId,
+    });
   }
 }
 
@@ -506,6 +595,8 @@ export async function updateUserPreferences(preferences, options = {}) {
 
 /**
  * Get current user info from cache or API
+ * @param {Object} options
+ * @returns {Promise<{success: boolean, data: User, cached: boolean}>}
  */
 export async function getCurrentUser(options = {}) {
   const { refresh = false } = options;
@@ -513,13 +604,12 @@ export async function getCurrentUser(options = {}) {
   // Return cached user if available and not refreshing
   const cachedUser = TokenManager.getUserInfo();
   if (cachedUser && !refresh) {
-    return {
-      success: true,
-      data: { user: cachedUser },
-      user: cachedUser,
-      cached: true,
-      timestamp: new Date().toISOString(),
-    };
+    return createResponse(
+      true,
+      { user: cachedUser },
+      'User loaded from cache',
+      { cached: true, user: cachedUser }
+    );
   }
   
   // Fetch fresh data
@@ -531,34 +621,51 @@ export async function getCurrentUser(options = {}) {
  */
 export function clearUserCache() {
   TokenManager.setUserInfo(null);
-  TokenManager.setOrganization(null);
   apiEvents.emit('user:cache:cleared');
 }
 
 /**
- * Check if user has specific permission
+ * Check if user has specific role or permission
+ * @param {string|Array} requiredRole - Role or permission to check
+ * @returns {boolean}
  */
-export function hasPermission(permission, organizationId = null) {
+export function hasRole(requiredRole) {
   const user = TokenManager.getUserInfo();
-  const org = TokenManager.getOrganization();
+  if (!user || !user.role) return false;
   
-  if (!user || !user.permissions) return false;
+  // Accept string or array of roles
+  const requiredRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
+  return requiredRoles.includes(user.role);
+}
+
+/**
+ * Check if user has specific permission
+ * Based on Assessly role-based permissions
+ * @param {string} permission - Permission to check
+ * @returns {boolean}
+ */
+export function hasPermission(permission) {
+  const user = TokenManager.getUserInfo();
+  if (!user) return false;
   
-  // Check global permissions
-  if (user.permissions.includes(permission)) return true;
+  // Super Admin has all permissions
+  if (user.role === 'super-admin') return true;
   
-  // Check organization-specific permissions
-  if (organizationId && user.organizationPermissions) {
-    const orgPerms = user.organizationPermissions[organizationId];
-    return orgPerms && orgPerms.includes(permission);
-  }
+  // Define role-based permissions (simplified - adjust based on your actual permission structure)
+  const rolePermissions = {
+    'organization-admin': [
+      'manage-users', 'manage-assessments', 'view-analytics', 'manage-subscription'
+    ],
+    'assessor': [
+      'create-assessments', 'grade-responses', 'view-analytics'
+    ],
+    'candidate': [
+      'take-assessments', 'view-results'
+    ],
+  };
   
-  // Check current organization permissions
-  if (org?.id && user.organizationPermissions?.[org.id]) {
-    return user.organizationPermissions[org.id].includes(permission);
-  }
-  
-  return false;
+  const permissions = rolePermissions[user.role] || [];
+  return permissions.includes(permission);
 }
 
 // ----------------------
@@ -567,28 +674,46 @@ export function hasPermission(permission, organizationId = null) {
 
 // Auto-refresh profile on organization switch
 apiEvents.on('user:organization:switched', () => {
-  fetchUserProfile({ refresh: true }).catch(() => {
-    // Silently fail if auto-refresh fails
-  });
+  fetchUserProfile({ refresh: true }).catch(console.warn);
 });
 
 // Clear cache on logout
-apiEvents.on('auth:logout', () => {
-  clearUserCache();
+apiEvents.on('auth:logout', clearUserCache);
+
+// Listen for token refresh to update user info
+apiEvents.on('token:refreshed', () => {
+  fetchUserProfile({ refresh: true }).catch(console.warn);
 });
 
-// Export everything
+// ----------------------
+// Default Export
+// ----------------------
+
 export default {
+  // Profile management
   fetchUserProfile,
+  updateUserProfile,
+  uploadAvatar,
+  getCurrentUser,
+  
+  // Organization management
   fetchOrganizations,
   switchOrganization,
-  updateUserProfile,
+  
+  // Security
   changePassword,
-  uploadAvatar,
-  getUserActivity,
+  getUserSessions,
+  revokeSession,
+  
+  // Preferences & Activity
   updateUserPreferences,
-  getCurrentUser,
+  getUserActivity,
+  
+  // Utilities
   clearUserCache,
+  hasRole,
   hasPermission,
+  
+  // Constants
   USER_ENDPOINTS,
 };
