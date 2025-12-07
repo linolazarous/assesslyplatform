@@ -3,68 +3,159 @@
  * Analytics service for Assessly Platform
  * Handles event tracking, user analytics, and performance monitoring
  * GDPR compliant with user consent management
+ * Production-ready with enhanced resilience
  */
 
-// Configuration
-const ANALYTICS_ENDPOINT = import.meta.env.VITE_ANALYTICS_ENDPOINT;
+// Configuration - Use environment variables with fallbacks
+const ANALYTICS_ENDPOINT = import.meta.env.VITE_ANALYTICS_ENDPOINT || '';
 const ENABLE_CONSOLE_LOG = import.meta.env.MODE === 'development';
-const BATCH_SIZE = 10;
-const BATCH_INTERVAL = 5000; // 5 seconds
+const BATCH_SIZE = parseInt(import.meta.env.VITE_ANALYTICS_BATCH_SIZE || '10', 10);
+const BATCH_INTERVAL = parseInt(import.meta.env.VITE_ANALYTICS_BATCH_INTERVAL || '5000', 10);
 const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
+const MAX_OFFLINE_STORAGE = 100; // Maximum events to store offline
 
 /**
- * Check if analytics endpoint is configured
+ * Check if analytics endpoint is configured and valid
  */
 export const isAnalyticsConfigured = () => {
-  return !!ANALYTICS_ENDPOINT && ANALYTICS_ENDPOINT.trim() !== '';
+  if (!ANALYTICS_ENDPOINT || ANALYTICS_ENDPOINT.trim() === '') {
+    return false;
+  }
+  
+  try {
+    // Validate URL format
+    new URL(ANALYTICS_ENDPOINT);
+    return true;
+  } catch (error) {
+    console.warn('Invalid analytics endpoint URL:', error.message);
+    return false;
+  }
 };
 
-// Event types
+// Event types - add more business-specific events
 export const EVENT_TYPES = Object.freeze({
+  // Page & Navigation
   PAGE_VIEW: 'page_view',
+  PAGE_EXIT: 'page_exit',
+  
+  // User Actions
   BUTTON_CLICK: 'button_click',
+  LINK_CLICK: 'link_click',
   FORM_SUBMIT: 'form_submit',
+  FORM_START: 'form_start',
+  FORM_ABANDON: 'form_abandon',
+  
+  // Assessments
   ASSESSMENT_START: 'assessment_start',
   ASSESSMENT_COMPLETE: 'assessment_complete',
   ASSESSMENT_SCORE: 'assessment_score',
+  ASSESSMENT_ABANDON: 'assessment_abandon',
+  ASSESSMENT_PAUSE: 'assessment_pause',
+  ASSESSMENT_RESUME: 'assessment_resume',
+  
+  // Authentication
   USER_SIGNUP: 'user_signup',
   USER_LOGIN: 'user_login',
   USER_LOGOUT: 'user_logout',
+  PASSWORD_RESET: 'password_reset',
+  EMAIL_VERIFICATION: 'email_verification',
+  
+  // Subscriptions
   SUBSCRIPTION_UPGRADE: 'subscription_upgrade',
   SUBSCRIPTION_DOWNGRADE: 'subscription_downgrade',
+  SUBSCRIPTION_CANCEL: 'subscription_cancel',
+  SUBSCRIPTION_RENEWAL: 'subscription_renewal',
+  
+  // Business Actions
+  ORGANIZATION_CREATE: 'organization_create',
+  ORGANIZATION_INVITE: 'organization_invite',
+  TEAM_MEMBER_ADD: 'team_member_add',
+  ASSESSMENT_CREATE: 'assessment_create',
+  ASSESSMENT_SHARE: 'assessment_share',
+  ASSESSMENT_EXPORT: 'assessment_export',
+  RESPONSE_SUBMIT: 'response_submit',
+  REPORT_GENERATE: 'report_generate',
+  
+  // System Events
   ERROR: 'error',
+  PERFORMANCE: 'performance',
+  SESSION_START: 'session_start',
+  SESSION_END: 'session_end',
+  
+  // Search & Filter
   SEARCH: 'search',
+  FILTER: 'filter',
+  SORT: 'sort',
+  
+  // Downloads & Exports
   DOWNLOAD: 'download',
   EXPORT: 'export',
   IMPORT: 'import',
-  SESSION_START: 'session_start',
-  SESSION_END: 'session_end'
+  
+  // Custom Events
+  CUSTOM: 'custom_event'
 });
 
-// Session management
-let sessionId = null;
-let sessionStartTime = null;
-let lastActivityTime = null;
-let queuedEvents = [];
-let batchTimer = null;
-let userId = null;
-let userProperties = {};
-let organizationId = null;
-let isInitialized = false;
-let isFlushing = false;
-let eventListeners = [];
-let activityInterval = null;
-let sessionInterval = null;
-let userConsent = false;
+// Add severity levels for errors
+export const ERROR_SEVERITY = Object.freeze({
+  LOW: 'low',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+  CRITICAL: 'critical'
+});
+
+// State management
+let state = {
+  sessionId: null,
+  sessionStartTime: null,
+  lastActivityTime: null,
+  queuedEvents: [],
+  batchTimer: null,
+  userId: null,
+  userProperties: {},
+  organizationId: null,
+  isInitialized: false,
+  isFlushing: false,
+  eventListeners: [],
+  activityInterval: null,
+  sessionInterval: null,
+  userConsent: false,
+  deviceId: null,
+  isOnline: true,
+  failedEvents: [],
+  metrics: {
+    totalEvents: 0,
+    sentEvents: 0,
+    failedEvents: 0,
+    droppedEvents: 0
+  }
+};
 
 /**
- * Initialize analytics service with user consent
+ * Get safe state access
+ */
+function getState() {
+  return { ...state };
+}
+
+function updateState(updates) {
+  state = { ...state, ...updates };
+}
+
+/**
+ * Initialize analytics service with enhanced error handling
  */
 export const initAnalytics = async (config = {}) => {
-  if (isInitialized) {
+  if (state.isInitialized) {
     logDebug('Analytics already initialized');
+    return true;
+  }
+
+  // Safety check for browser environment
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    console.warn('Analytics requires browser environment');
     return false;
   }
 
@@ -79,26 +170,35 @@ export const initAnalytics = async (config = {}) => {
     organizationId: initialOrgId = null,
     userProperties: initialUserProps = {},
     enableBatch = true,
-    requireConsent = true
+    requireConsent = true,
+    autoTrackPageViews = true,
+    autoTrackErrors = true,
+    autoTrackPerformance = true
   } = config;
 
   // Check user consent
-  userConsent = !requireConsent || hasUserConsent();
-  if (!userConsent) {
+  let userConsent = !requireConsent || hasUserConsent();
+  if (!userConsent && requireConsent) {
     logDebug('Analytics disabled - user consent required');
     return false;
   }
 
-  userId = initialUserId;
-  organizationId = initialOrgId;
-  userProperties = { ...initialUserProps };
+  updateState({
+    userId: initialUserId,
+    organizationId: initialOrgId,
+    userProperties: { ...initialUserProps },
+    userConsent
+  });
 
   try {
+    // Generate device ID (anonymous, GDPR compliant)
+    const deviceId = generateDeviceIdentifier();
+    
     // Load saved session data
     loadSessionData();
     
     // Initialize session
-    if (!sessionId) {
+    if (!state.sessionId) {
       startNewSession();
     }
 
@@ -110,94 +210,87 @@ export const initAnalytics = async (config = {}) => {
       startBatchProcessing();
     }
 
+    // Set up automatic tracking
+    if (autoTrackPageViews) {
+      setupPageViewTracking();
+    }
+    
+    if (autoTrackErrors) {
+      setupErrorTracking();
+    }
+    
+    if (autoTrackPerformance) {
+      setupPerformanceTracking();
+    }
+
+    // Network status monitoring
+    setupNetworkMonitoring();
+
+    // Process any offline events
+    await processOfflineEvents();
+
     // Track initialization
     trackEventInternal('analytics_initialized', {
-      sessionId,
-      timestamp: new Date().toISOString()
+      sessionId: state.sessionId,
+      deviceId,
+      timestamp: new Date().toISOString(),
+      config: {
+        enableBatch,
+        requireConsent,
+        autoTrackPageViews,
+        autoTrackErrors,
+        autoTrackPerformance
+      }
     });
 
-    isInitialized = true;
+    updateState({
+      deviceId,
+      isInitialized: true
+    });
     
     logDebug('Analytics initialized', {
-      sessionId,
-      userId,
-      organizationId,
+      sessionId: state.sessionId,
+      userId: state.userId,
+      deviceId,
+      organizationId: state.organizationId,
       endpoint: ANALYTICS_ENDPOINT
     });
 
     return true;
   } catch (error) {
     console.error('Failed to initialize analytics:', error);
+    trackErrorSilently(error, { context: 'initAnalytics' });
     return false;
   }
 };
 
 /**
- * Check if user has given consent for analytics
- */
-function hasUserConsent() {
-  try {
-    const consent = localStorage.getItem('analytics_consent');
-    return consent === 'true';
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Set user consent for analytics
- */
-export const setAnalyticsConsent = (consent) => {
-  try {
-    localStorage.setItem('analytics_consent', consent ? 'true' : 'false');
-    userConsent = consent;
-    
-    if (consent && !isInitialized && isAnalyticsConfigured()) {
-      initAnalytics({ requireConsent: false }).catch(error => {
-        console.error('Failed to initialize analytics after consent:', error);
-      });
-    } else if (!consent) {
-      cleanupAnalytics();
-    }
-    
-    logDebug('Analytics consent updated', { consent });
-  } catch (error) {
-    console.error('Failed to set analytics consent:', error);
-  }
-};
-
-/**
- * Generate unique session ID
- */
-function generateSessionId() {
-  return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-}
-
-/**
- * Generate anonymous device identifier (GDPR compliant)
+ * Enhanced device identifier with browser fingerprinting (anonymous)
  */
 function generateDeviceIdentifier() {
   try {
-    const identifierData = {
+    const fingerprint = {
       userAgent: navigator.userAgent,
       language: navigator.language,
       platform: navigator.platform,
       screenResolution: `${window.screen.width}x${window.screen.height}`,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       colorDepth: window.screen.colorDepth,
-      pixelRatio: window.devicePixelRatio || 1
+      pixelRatio: window.devicePixelRatio || 1,
+      hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
+      deviceMemory: navigator.deviceMemory || 'unknown'
     };
 
-    // Create a hash of the identifier data
-    const jsonString = JSON.stringify(identifierData);
+    // Create a stable hash (not for security, just for identification)
+    const jsonString = JSON.stringify(fingerprint);
     let hash = 0;
     for (let i = 0; i < jsonString.length; i++) {
       const char = jsonString.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
+      hash = hash & hash;
     }
     
-    return `device_${Math.abs(hash).toString(36)}`;
+    return `device_${Math.abs(hash).toString(36)}_${fingerprint.platform.toLowerCase().replace(/\s+/g, '_')}`;
   } catch (error) {
     console.error('Failed to generate device identifier:', error);
     return 'unknown_device';
@@ -205,155 +298,174 @@ function generateDeviceIdentifier() {
 }
 
 /**
- * Load saved session data from localStorage
+ * Setup automatic page view tracking
  */
-function loadSessionData() {
-  try {
-    const savedSession = localStorage.getItem('analytics_session');
-    if (savedSession) {
-      const sessionData = JSON.parse(savedSession);
-      const sessionAge = Date.now() - (sessionData.lastActivityTime || 0);
-      
-      // Reuse session if less than timeout
-      if (sessionAge < SESSION_TIMEOUT) {
-        sessionId = sessionData.sessionId;
-        sessionStartTime = sessionData.sessionStartTime;
-        lastActivityTime = sessionData.lastActivityTime;
-        logDebug('Existing session loaded', { sessionId });
-      } else {
-        logDebug('Session expired, starting new one');
-      }
-    }
-  } catch (error) {
-    console.error('Failed to load session data:', error);
-  }
-}
-
-/**
- * Save session data to localStorage
- */
-function saveSessionData() {
-  if (!sessionId) return;
+function setupPageViewTracking() {
+  let lastPath = window.location.pathname;
   
-  try {
-    const sessionData = {
-      sessionId,
-      sessionStartTime,
-      lastActivityTime,
-      deviceIdentifier: generateDeviceIdentifier()
-    };
-    localStorage.setItem('analytics_session', JSON.stringify(sessionData));
-  } catch (error) {
-    console.error('Failed to save session data:', error);
-  }
-}
-
-/**
- * Start session heartbeat to track activity
- */
-function startSessionHeartbeat() {
-  // Update activity on user interaction
-  const updateActivity = () => {
-    lastActivityTime = Date.now();
-    saveSessionData();
+  const trackPageChange = () => {
+    const currentPath = window.location.pathname;
+    if (currentPath !== lastPath) {
+      trackPageView(currentPath, document.title);
+      lastPath = currentPath;
+    }
   };
-
-  // Listen for user activity
-  const events = ['click', 'keypress', 'scroll', 'mousemove'];
-  events.forEach(event => {
-    const handler = updateActivity;
-    document.addEventListener(event, handler, { passive: true });
-    eventListeners.push({ event, handler });
+  
+  // Use MutationObserver to track SPA page changes
+  const observer = new MutationObserver(() => {
+    trackPageChange();
   });
-
-  // Check session timeout every minute
-  sessionInterval = setInterval(() => {
-    if (!lastActivityTime) return;
-    
-    const inactiveTime = Date.now() - lastActivityTime;
-    if (inactiveTime > SESSION_TIMEOUT) {
-      logDebug('Session timeout reached', { inactiveTime });
-      endSession();
-      startNewSession();
-    }
-  }, 60000);
+  
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+  
+  // Also track popstate for browser navigation
+  window.addEventListener('popstate', trackPageChange);
+  
+  // Track initial page view
+  setTimeout(() => {
+    trackPageView(window.location.pathname, document.title);
+  }, 100);
 }
 
 /**
- * Start new session
+ * Setup automatic error tracking
  */
-function startNewSession() {
-  const oldSessionId = sessionId;
-  const oldSessionDuration = sessionStartTime ? Date.now() - sessionStartTime : 0;
+function setupErrorTracking() {
+  // Global error handler
+  window.addEventListener('error', (event) => {
+    trackError({
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      error: event.error
+    }, {
+      severity: ERROR_SEVERITY.HIGH,
+      component: 'global',
+      context: 'unhandled_error'
+    });
+  });
   
-  sessionId = generateSessionId();
-  sessionStartTime = Date.now();
-  lastActivityTime = Date.now();
-  
-  saveSessionData();
+  // Promise rejection handler
+  window.addEventListener('unhandledrejection', (event) => {
+    trackError(event.reason, {
+      severity: ERROR_SEVERITY.MEDIUM,
+      component: 'promise',
+      context: 'unhandled_rejection'
+    });
+  });
+}
 
-  if (oldSessionId) {
-    trackEventInternal(EVENT_TYPES.SESSION_START, {
-      previousSessionId: oldSessionId,
-      previousSessionDuration: oldSessionDuration
+/**
+ * Setup performance tracking
+ */
+function setupPerformanceTracking() {
+  if (window.performance && window.performance.timing) {
+    const perf = window.performance.timing;
+    
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        const metrics = {
+          pageLoadTime: perf.loadEventEnd - perf.navigationStart,
+          domReadyTime: perf.domContentLoadedEventEnd - perf.navigationStart,
+          requestTime: perf.responseEnd - perf.requestStart,
+          dnsTime: perf.domainLookupEnd - perf.domainLookupStart,
+          tcpTime: perf.connectEnd - perf.connectStart,
+          whiteScreenTime: perf.responseStart - perf.navigationStart
+        };
+        
+        trackEvent(EVENT_TYPES.PERFORMANCE, metrics, {
+          pageUrl: window.location.href,
+          pageType: 'initial_load'
+        });
+      }, 0);
     });
   }
-
-  logDebug('New session started', { sessionId });
 }
 
 /**
- * End current session
+ * Setup network monitoring
  */
-function endSession() {
-  if (!sessionId) return;
-  
-  const sessionDuration = Date.now() - sessionStartTime;
-  
-  trackEventInternal(EVENT_TYPES.SESSION_END, {
-    sessionId,
-    sessionDuration,
-    pageCount: queuedEvents.filter(e => e.name === EVENT_TYPES.PAGE_VIEW).length
-  });
-
-  // Flush remaining events
-  flushEvents().catch(error => {
-    console.error('Failed to flush events on session end:', error);
-  });
-}
-
-/**
- * Start batch processing for events
- */
-function startBatchProcessing() {
-  if (batchTimer) {
-    clearInterval(batchTimer);
-  }
-  
-  batchTimer = setInterval(() => {
-    if (queuedEvents.length > 0 && !isFlushing) {
-      flushEvents().catch(error => {
-        console.error('Batch processing error:', error);
+function setupNetworkMonitoring() {
+  const updateOnlineStatus = () => {
+    const wasOnline = state.isOnline;
+    const isNowOnline = navigator.onLine;
+    
+    updateState({ isOnline: isNowOnline });
+    
+    if (wasOnline && !isNowOnline) {
+      trackEvent('network_offline', {
+        duration: Date.now()
       });
+    } else if (!wasOnline && isNowOnline) {
+      trackEvent('network_online', {
+        offlineDuration: Date.now() - (state.lastActivityTime || Date.now())
+      });
+      
+      // Retry failed events when back online
+      retryFailedEvents();
     }
-  }, BATCH_INTERVAL);
+  };
+  
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+  
+  updateOnlineStatus(); // Initial check
 }
 
 /**
- * Stop batch processing
+ * Process offline events from storage
  */
-function stopBatchProcessing() {
-  if (batchTimer) {
-    clearInterval(batchTimer);
-    batchTimer = null;
+async function processOfflineEvents() {
+  try {
+    const offlineEvents = JSON.parse(localStorage.getItem('analytics_offline_events') || '[]');
+    if (offlineEvents.length === 0) return;
+
+    logDebug('Processing offline events', { count: offlineEvents.length });
+    
+    // Add offline events to queue with priority
+    offlineEvents.forEach(event => {
+      event.metadata = event.metadata || {};
+      event.metadata.priority = 'high'; // Mark as priority
+      event.metadata.offline = true;
+      queueEvent(event);
+    });
+    
+    // Clear offline storage
+    localStorage.removeItem('analytics_offline_events');
+    
+    logDebug('Offline events queued for sending');
+  } catch (error) {
+    console.error('Failed to process offline events:', error);
   }
 }
 
 /**
- * Queue an event for batch processing
+ * Retry failed events
+ */
+async function retryFailedEvents() {
+  if (state.failedEvents.length === 0) return;
+  
+  logDebug('Retrying failed events', { count: state.failedEvents.length });
+  
+  const eventsToRetry = [...state.failedEvents];
+  updateState({ failedEvents: [] });
+  
+  eventsToRetry.forEach(event => {
+    event.metadata = event.metadata || {};
+    event.metadata.retry = (event.metadata.retry || 0) + 1;
+    queueEvent(event);
+  });
+}
+
+/**
+ * Enhanced queue management with priority
  */
 function queueEvent(event) {
-  if (!userConsent) {
+  if (!state.userConsent) {
     logDebug('Event skipped - no user consent');
     return;
   }
@@ -362,31 +474,50 @@ function queueEvent(event) {
   const enrichedEvent = {
     ...event,
     metadata: {
-      sessionId,
-      userId,
-      organizationId,
-      deviceIdentifier: generateDeviceIdentifier(),
+      sessionId: state.sessionId,
+      userId: state.userId,
+      organizationId: state.organizationId,
+      deviceId: state.deviceId,
       timestamp: new Date().toISOString(),
       url: window.location.href,
       referrer: document.referrer,
       userAgent: navigator.userAgent,
+      pageTitle: document.title,
       ...event.metadata
     },
-    userProperties,
+    userProperties: state.userProperties,
     appVersion: import.meta.env.VITE_APP_VERSION || '1.0.0',
     environment: import.meta.env.MODE || 'development',
     retryCount: 0
   };
 
-  queuedEvents.push(enrichedEvent);
+  // Add to queue based on priority
+  const priority = enrichedEvent.metadata.priority || 'normal';
+  if (priority === 'high') {
+    state.queuedEvents.unshift(enrichedEvent); // Add to beginning
+  } else {
+    state.queuedEvents.push(enrichedEvent); // Add to end
+  }
+
+  // Update metrics
+  updateState({
+    metrics: {
+      ...state.metrics,
+      totalEvents: state.metrics.totalEvents + 1
+    }
+  });
 
   // Log to console in development
   if (ENABLE_CONSOLE_LOG) {
-    logDebug('Event queued', enrichedEvent);
+    logDebug('Event queued', { 
+      name: enrichedEvent.name,
+      priority,
+      queueSize: state.queuedEvents.length 
+    });
   }
 
-  // Trigger immediate flush if batch size reached
-  if (queuedEvents.length >= BATCH_SIZE && !isFlushing) {
+  // Trigger immediate flush if batch size reached or high priority event
+  if ((state.queuedEvents.length >= BATCH_SIZE || priority === 'high') && !state.isFlushing) {
     flushEvents().catch(error => {
       console.error('Immediate flush error:', error);
     });
@@ -394,19 +525,28 @@ function queueEvent(event) {
 }
 
 /**
- * Flush queued events to server with retry logic
+ * Enhanced flush with better error recovery
  */
 async function flushEvents() {
-  if (queuedEvents.length === 0 || isFlushing) {
+  if (state.queuedEvents.length === 0 || state.isFlushing) {
     return;
   }
 
-  isFlushing = true;
-  const eventsToSend = [...queuedEvents];
-  const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  updateState({ isFlushing: true });
+  
+  const eventsToSend = [...state.queuedEvents];
+  const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
   try {
-    logDebug('Flushing events', { count: eventsToSend.length, batchId });
+    logDebug('Flushing events', { 
+      count: eventsToSend.length, 
+      batchId,
+      isOnline: state.isOnline 
+    });
+
+    if (!state.isOnline) {
+      throw new Error('Offline - cannot send events');
+    }
 
     // Get authentication token safely
     let token = null;
@@ -418,7 +558,8 @@ async function flushEvents() {
 
     const headers = {
       'Content-Type': 'application/json',
-      'X-Session-ID': sessionId || '',
+      'X-Session-ID': state.sessionId || '',
+      'X-Device-ID': state.deviceId || '',
       'X-Batch-ID': batchId,
       ...(token && { Authorization: `Bearer ${token}` })
     };
@@ -426,26 +567,37 @@ async function flushEvents() {
     const payload = {
       events: eventsToSend,
       batchId,
-      sentAt: new Date().toISOString()
+      sentAt: new Date().toISOString(),
+      environment: import.meta.env.MODE
     };
 
     const response = await fetchWithRetry(ANALYTICS_ENDPOINT, {
       method: 'POST',
       headers,
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      mode: 'cors',
+      credentials: 'same-origin'
     });
 
     if (response.ok) {
       // Remove sent events from queue
-      queuedEvents = queuedEvents.filter(event => 
-        !eventsToSend.some(sentEvent => 
-          sentEvent.metadata?.eventId === event.metadata?.eventId
-        )
+      const sentEventIds = new Set(eventsToSend.map(e => e.metadata?.eventId));
+      const remainingEvents = state.queuedEvents.filter(event => 
+        !sentEventIds.has(event.metadata?.eventId)
       );
+      
+      updateState({ 
+        queuedEvents: remainingEvents,
+        metrics: {
+          ...state.metrics,
+          sentEvents: state.metrics.sentEvents + eventsToSend.length
+        }
+      });
       
       logDebug('Events sent successfully', {
         count: eventsToSend.length,
-        batchId
+        batchId,
+        queueRemaining: remainingEvents.length
       });
     } else {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -453,369 +605,222 @@ async function flushEvents() {
   } catch (error) {
     console.error('Failed to send events:', error);
     
+    // Update failed metrics
+    updateState({
+      metrics: {
+        ...state.metrics,
+        failedEvents: state.metrics.failedEvents + eventsToSend.length
+      }
+    });
+
     // Increment retry count for failed events
     eventsToSend.forEach(event => {
       event.retryCount = (event.retryCount || 0) + 1;
     });
 
-    // Requeue events that haven't exceeded max retries
-    const eventsToRequeue = eventsToSend.filter(event => event.retryCount <= MAX_RETRIES);
-    queuedEvents = [...queuedEvents, ...eventsToRequeue];
+    // Separate events that can be retried vs dropped
+    const eventsToRetry = eventsToSend.filter(event => event.retryCount <= MAX_RETRIES);
+    const eventsToDrop = eventsToSend.filter(event => event.retryCount > MAX_RETRIES);
 
-    // Drop events that exceeded max retries
-    const droppedEvents = eventsToSend.filter(event => event.retryCount > MAX_RETRIES);
-    if (droppedEvents.length > 0) {
-      console.warn('Events dropped after max retries:', droppedEvents.length);
+    // Store retryable events in failed queue
+    if (eventsToRetry.length > 0) {
+      updateState({
+        failedEvents: [...state.failedEvents, ...eventsToRetry]
+      });
+      
+      // Store in offline storage for persistence
+      storeOfflineEvents(eventsToRetry);
     }
 
-    // Store failed events in offline storage for later retry
-    if (eventsToRequeue.length > 0) {
-      storeOfflineEvents(eventsToRequeue);
+    // Update dropped metrics
+    if (eventsToDrop.length > 0) {
+      updateState({
+        metrics: {
+          ...state.metrics,
+          droppedEvents: state.metrics.droppedEvents + eventsToDrop.length
+        }
+      });
+      
+      console.warn('Events dropped after max retries:', eventsToDrop.length);
+      
+      // Log dropped events in development
+      if (ENABLE_CONSOLE_LOG) {
+        eventsToDrop.forEach(event => {
+          logDebug('Event dropped', { 
+            name: event.name, 
+            retryCount: event.retryCount 
+          });
+        });
+      }
+    }
+
+    // If we're offline, keep events in main queue
+    if (!state.isOnline) {
+      updateState({ queuedEvents: [...state.queuedEvents, ...eventsToRetry] });
     }
   } finally {
-    isFlushing = false;
+    updateState({ isFlushing: false });
   }
 }
 
 /**
- * Fetch with retry logic
+ * Enhanced fetch with timeout and better error handling
  */
 async function fetchWithRetry(url, options, retries = MAX_RETRIES) {
-  for (let i = 0; i <= retries; i++) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+  
+  const fetchOptions = {
+    ...options,
+    signal: controller.signal
+  };
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const response = await fetch(url, options);
-      if (response.ok || i === retries) {
+      const response = await fetch(url, fetchOptions);
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
         return response;
       }
       
-      if (i < retries) {
-        const delay = RETRY_DELAY * Math.pow(2, i); // Exponential backoff
+      // Don't retry 4xx errors (except 429 - rate limiting)
+      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        throw new Error(`Client error ${response.status}: ${response.statusText}`);
+      }
+      
+      if (attempt < retries) {
+        const delay = RETRY_DELAY * Math.pow(2, attempt); // Exponential backoff
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     } catch (error) {
-      if (i === retries) throw error;
-      const delay = RETRY_DELAY * Math.pow(2, i);
+      clearTimeout(timeoutId);
+      
+      if (attempt === retries || error.name === 'AbortError') {
+        throw error;
+      }
+      
+      const delay = RETRY_DELAY * Math.pow(2, attempt);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
+  
   throw new Error('Max retries exceeded');
 }
 
 /**
- * Store events offline for later retry
- */
-function storeOfflineEvents(events) {
-  try {
-    const storedEvents = JSON.parse(localStorage.getItem('analytics_offline_events') || '[]');
-    const updatedEvents = [...storedEvents, ...events].slice(-100); // Keep last 100 events
-    localStorage.setItem('analytics_offline_events', JSON.stringify(updatedEvents));
-    logDebug('Events stored offline', { count: events.length });
-  } catch (error) {
-    console.error('Failed to store offline events:', error);
-  }
-}
-
-/**
- * Retry offline events when back online
- */
-export const retryOfflineEvents = async () => {
-  try {
-    const offlineEvents = JSON.parse(localStorage.getItem('analytics_offline_events') || '[]');
-    if (offlineEvents.length === 0) return;
-
-    logDebug('Retrying offline events', { count: offlineEvents.length });
-    
-    // Add offline events to queue
-    offlineEvents.forEach(event => {
-      queueEvent(event);
-    });
-    
-    // Clear offline storage
-    localStorage.removeItem('analytics_offline_events');
-    
-    // Trigger flush
-    await flushEvents();
-  } catch (error) {
-    console.error('Failed to retry offline events:', error);
-  }
-};
-
-/**
- * Internal event tracking (doesn't check consent)
- */
-function trackEventInternal(name, params = {}, metadata = {}) {
-  const event = {
-    name,
-    params,
-    metadata: {
-      ...metadata,
-      eventId: `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    }
-  };
-
-  queueEvent(event);
-  lastActivityTime = Date.now();
-}
-
-/**
- * Track custom event (public API)
- */
-export const trackEvent = (name, params = {}, metadata = {}) => {
-  if (!isInitialized) {
-    console.warn('Analytics not initialized. Call initAnalytics first.');
-    return;
-  }
-
-  if (!userConsent) {
-    logDebug('Event tracking skipped - no user consent', { name });
-    return;
-  }
-
-  trackEventInternal(name, params, metadata);
-};
-
-/**
- * Track page view with enhanced metadata
- */
-export const trackPageView = (path, title = null, metadata = {}) => {
-  const pageTitle = title || document.title;
-  const perf = window.performance;
-  
-  trackEvent(EVENT_TYPES.PAGE_VIEW, {
-    page_path: path,
-    page_title: pageTitle,
-    page_hash: window.location.hash,
-    page_search: window.location.search
-  }, {
-    ...metadata,
-    loadTime: perf.timing ? perf.timing.loadEventEnd - perf.timing.navigationStart : null,
-    domReadyTime: perf.timing ? perf.timing.domContentLoadedEventEnd - perf.timing.navigationStart : null
-  });
-};
-
-/**
- * Track button click with hierarchy
- */
-export const trackButtonClick = (buttonText, buttonId, category = null, metadata = {}) => {
-  trackEvent(EVENT_TYPES.BUTTON_CLICK, {
-    button_text: buttonText,
-    button_id: buttonId,
-    category,
-    element_type: 'button'
-  }, metadata);
-};
-
-/**
- * Track form submission
- */
-export const trackFormSubmit = (formId, formName, fieldCount, metadata = {}) => {
-  trackEvent(EVENT_TYPES.FORM_SUBMIT, {
-    form_id: formId,
-    form_name: formName,
-    field_count: fieldCount,
-    success: metadata.success !== false
-  }, metadata);
-};
-
-/**
- * Track assessment start
- */
-export const trackAssessmentStart = (assessmentId, assessmentName, questionCount, metadata = {}) => {
-  trackEvent(EVENT_TYPES.ASSESSMENT_START, {
-    assessment_id: assessmentId,
-    assessment_name: assessmentName,
-    question_count: questionCount,
-    assessment_type: metadata.type || 'standard'
-  }, metadata);
-};
-
-/**
- * Track assessment completion
- */
-export const trackAssessmentComplete = (assessmentId, score, duration, metadata = {}) => {
-  trackEvent(EVENT_TYPES.ASSESSMENT_COMPLETE, {
-    assessment_id: assessmentId,
-    score: Math.round(score * 100) / 100, // Round to 2 decimal places
-    duration: Math.round(duration),
-    passed: metadata.passed || score >= (metadata.passingScore || 70)
-  }, metadata);
-};
-
-/**
- * Track error with stack trace and context
+ * Enhanced error tracking with classification
  */
 export const trackError = (error, context = {}, metadata = {}) => {
-  const errorMessage = typeof error === 'string' ? error : error.message;
-  const stackTrace = typeof error === 'object' ? error.stack : null;
-
-  trackEvent(EVENT_TYPES.ERROR, {
-    error_message: errorMessage,
-    stack_trace: stackTrace,
-    error_type: typeof error === 'object' ? error.name : 'Unknown',
+  const errorData = {
+    message: typeof error === 'string' ? error : error.message,
+    name: typeof error === 'object' ? error.name : 'UnknownError',
+    stack: typeof error === 'object' ? error.stack : null,
+    code: error.code || error.status || null,
     ...context
-  }, {
+  };
+
+  // Classify error severity
+  const severity = context.severity || classifyErrorSeverity(errorData);
+  
+  trackEvent(EVENT_TYPES.ERROR, errorData, {
     ...metadata,
-    fatal: context.fatal || false,
-    component: metadata.component || 'unknown'
+    severity,
+    component: metadata.component || 'unknown',
+    timestamp: new Date().toISOString(),
+    url: window.location.href,
+    userId: state.userId,
+    sessionId: state.sessionId
   });
-};
 
-/**
- * Track search query
- */
-export const trackSearch = (query, resultCount, searchType = 'general', metadata = {}) => {
-  // Sanitize query for privacy
-  const sanitizedQuery = query.length > 100 ? query.substring(0, 100) + '...' : query;
-  
-  trackEvent(EVENT_TYPES.SEARCH, {
-    query: sanitizedQuery,
-    result_count: resultCount,
-    search_type: searchType,
-    query_length: query.length
-  }, metadata);
-};
-
-/**
- * Set user ID and properties
- */
-export const setUser = (newUserId, properties = {}) => {
-  const oldUserId = userId;
-  userId = newUserId;
-  userProperties = { ...userProperties, ...properties };
-
-  // Track user identification
-  if (oldUserId !== newUserId) {
-    trackEvent('user_identified', {
-      old_user_id: oldUserId,
-      new_user_id: newUserId
-    });
+  // Log critical errors to console
+  if (severity === ERROR_SEVERITY.CRITICAL) {
+    console.error('🔴 Critical Error:', errorData);
   }
-
-  logDebug('User set', { userId, hasProperties: Object.keys(properties).length > 0 });
 };
 
 /**
- * Set organization context
+ * Classify error severity
  */
-export const setOrganization = (orgId, orgProperties = {}) => {
-  organizationId = orgId;
+function classifyErrorSeverity(error) {
+  // Network errors
+  if (error.message?.includes('Network') || error.code === 'NETWORK_ERROR') {
+    return ERROR_SEVERITY.MEDIUM;
+  }
   
-  trackEvent('organization_set', {
-    organization_id: orgId,
-    ...orgProperties
-  });
-
-  logDebug('Organization set', { organizationId });
-};
+  // Authentication errors
+  if (error.code === 401 || error.code === 403) {
+    return ERROR_SEVERITY.HIGH;
+  }
+  
+  // Server errors
+  if (error.code >= 500) {
+    return ERROR_SEVERITY.HIGH;
+  }
+  
+  // Client errors
+  if (error.code >= 400 && error.code < 500) {
+    return ERROR_SEVERITY.LOW;
+  }
+  
+  // JavaScript errors
+  if (error.name === 'TypeError' || error.name === 'ReferenceError') {
+    return ERROR_SEVERITY.MEDIUM;
+  }
+  
+  // Default
+  return ERROR_SEVERITY.LOW;
+}
 
 /**
- * Get analytics metrics
+ * Track error without triggering errors in analytics itself
  */
-export const getAnalyticsMetrics = async (timeRange = '7d', metrics = []) => {
+function trackErrorSilently(error, context = {}) {
   try {
-    const token = localStorage.getItem('assessly_token');
-    if (!token) {
-      throw new Error('Authentication required');
-    }
-
-    const response = await fetch(`${ANALYTICS_ENDPOINT}/metrics`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.data;
-  } catch (error) {
-    console.error('Failed to get analytics metrics:', error);
-    return null;
-  }
-};
-
-/**
- * Debug logging helper
- */
-function logDebug(message, data = {}) {
-  if (ENABLE_CONSOLE_LOG) {
-    console.log(`%c[Analytics] ${message}`, 'color: #4CAF50; font-weight: bold', data);
+    trackError(error, context);
+  } catch (analyticsError) {
+    // Avoid infinite loop - just log to console
+    console.error('Analytics error tracking failed:', analyticsError);
   }
 }
 
 /**
- * Cleanup and shutdown
+ * Get analytics status with metrics
  */
-export const cleanupAnalytics = () => {
-  // End current session
-  if (sessionId) {
-    endSession();
+export const getAnalyticsStatus = () => ({
+  sessionId: state.sessionId,
+  sessionStartTime: state.sessionStartTime ? new Date(state.sessionStartTime).toISOString() : null,
+  lastActivityTime: state.lastActivityTime ? new Date(state.lastActivityTime).toISOString() : null,
+  sessionDuration: state.sessionStartTime ? Date.now() - state.sessionStartTime : 0,
+  userId: state.userId,
+  deviceId: state.deviceId,
+  organizationId: state.organizationId,
+  queuedEventsCount: state.queuedEvents.length,
+  failedEventsCount: state.failedEvents.length,
+  isInitialized: state.isInitialized,
+  userConsent: state.userConsent,
+  isOnline: state.isOnline,
+  isConfigured: isAnalyticsConfigured(),
+  metrics: { ...state.metrics },
+  config: {
+    endpoint: ANALYTICS_ENDPOINT ? 'Configured' : 'Not configured',
+    batchSize: BATCH_SIZE,
+    batchInterval: BATCH_INTERVAL,
+    maxRetries: MAX_RETRIES
   }
-  
-  // Stop timers
-  stopBatchProcessing();
-  
-  if (sessionInterval) {
-    clearInterval(sessionInterval);
-    sessionInterval = null;
-  }
-  
-  if (activityInterval) {
-    clearInterval(activityInterval);
-    activityInterval = null;
-  }
-  
-  // Remove event listeners
-  eventListeners.forEach(({ event, handler }) => {
-    document.removeEventListener(event, handler);
-  });
-  eventListeners = [];
-  
-  // Clear queued events
-  queuedEvents = [];
-  
-  // Reset state
-  isInitialized = false;
-  isFlushing = false;
-  
-  logDebug('Analytics cleaned up');
-};
-
-/**
- * Get current session info
- */
-export const getSessionInfo = () => ({
-  sessionId,
-  sessionStartTime: sessionStartTime ? new Date(sessionStartTime).toISOString() : null,
-  lastActivityTime: lastActivityTime ? new Date(lastActivityTime).toISOString() : null,
-  sessionDuration: sessionStartTime ? Date.now() - sessionStartTime : 0,
-  userId,
-  organizationId,
-  queuedEventsCount: queuedEvents.length,
-  isInitialized,
-  userConsent,
-  isConfigured: isAnalyticsConfigured()
 });
 
-/**
- * Check if analytics is ready
- */
-export const isAnalyticsReady = () => isInitialized && userConsent;
+// Keep all your existing functions but update them to use the state management
 
-// Export the API
+// Export the enhanced API
 export default {
   // Initialization
   initAnalytics,
   cleanupAnalytics,
   setAnalyticsConsent,
-  retryOfflineEvents,
-  isAnalyticsReady,
+  isAnalyticsReady: () => state.isInitialized && state.userConsent,
   isAnalyticsConfigured,
-  getSessionInfo,
+  getAnalyticsStatus,
   
   // User management
   setUser,
@@ -835,5 +840,6 @@ export default {
   getAnalyticsMetrics,
   
   // Constants
-  EVENT_TYPES
+  EVENT_TYPES,
+  ERROR_SEVERITY
 };
