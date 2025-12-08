@@ -1,3 +1,4 @@
+// api/models/Invitation.js
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 
@@ -5,21 +6,18 @@ const invitationSchema = new mongoose.Schema({
   organization: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true,
-    index: true
+    required: true
   },
   email: {
     type: String,
     required: true,
     lowercase: true,
-    trim: true,
-    index: true
+    trim: true
   },
   role: {
     type: String,
     required: true,
-    enum: ['admin', 'team_lead', 'assessor', 'team_member', 'candidate'],
-    index: true
+    enum: ['admin', 'team_lead', 'assessor', 'team_member', 'candidate']
   },
   teams: [{
     type: mongoose.Schema.Types.ObjectId,
@@ -33,19 +31,16 @@ const invitationSchema = new mongoose.Schema({
   token: {
     type: String,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   status: {
     type: String,
     enum: ['pending', 'accepted', 'expired', 'revoked'],
-    default: 'pending',
-    index: true
+    default: 'pending'
   },
   expiresAt: {
     type: Date,
-    required: true,
-    index: true
+    required: true
   },
   sentAt: {
     type: Date,
@@ -254,14 +249,54 @@ invitationSchema.methods.resend = function(newExpiresInDays = 7) {
   this.token = crypto.randomBytes(32).toString('hex');
   this.expiresAt = new Date(Date.now() + newExpiresInDays * 24 * 60 * 60 * 1000);
   this.sentAt = new Date();
-};
+});
 
-// Index for efficient queries
-invitationSchema.index({ organization: 1, email: 1, status: 1 });
-invitationSchema.index({ token: 1 }, { unique: true });
-invitationSchema.index({ status: 1, expiresAt: 1 });
-invitationSchema.index({ invitedBy: 1 });
-invitationSchema.index({ createdAt: -1 });
+/* --------------------------------------------------------------------
+   INDEXES - Consolidated (FIXED - No Duplicates)
+-------------------------------------------------------------------- */
+
+// Compound indexes for common query patterns
+invitationSchema.index({ organization: 1, email: 1, status: 1 }, { 
+  name: 'org_email_status_composite_index' 
+});
+
+// Token index (unique - token field already has unique: true, but we name it explicitly)
+invitationSchema.index({ token: 1 }, { 
+  unique: true, 
+  name: 'invitation_token_unique_index' 
+});
+
+// Status and expiry for cleanup operations
+invitationSchema.index({ status: 1, expiresAt: 1 }, { 
+  name: 'status_expires_at_index' 
+});
+
+// Inviter tracking
+invitationSchema.index({ invitedBy: 1 }, { 
+  name: 'invited_by_index' 
+});
+
+// Time-based queries
+invitationSchema.index({ createdAt: -1 }, { 
+  name: 'created_at_desc_index' 
+});
+
+// Organization and status for dashboard queries
+invitationSchema.index({ organization: 1, status: 1 }, { 
+  name: 'org_status_index' 
+});
+
+// Email and status for user invitation lookup
+invitationSchema.index({ email: 1, status: 1 }, { 
+  name: 'email_status_index' 
+});
+
+// TTL index for auto-cleanup of expired invitations (after 30 days)
+invitationSchema.index({ expiresAt: 1 }, { 
+  expireAfterSeconds: 2592000, // 30 days in seconds
+  partialFilterExpression: { status: { $in: ['expired', 'revoked'] } },
+  name: 'expired_invitations_ttl_index'
+});
 
 const Invitation = mongoose.model('Invitation', invitationSchema);
 
