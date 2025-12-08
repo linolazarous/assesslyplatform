@@ -1,4 +1,4 @@
-// src/templates/email.js
+// src/templates/emails.js
 /**
  * Enterprise-grade email templates for Assessly Platform
  * Multi-tenant aware, customizable, and responsive email templates
