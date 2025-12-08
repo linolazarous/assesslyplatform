@@ -358,31 +358,63 @@ const organizationSchema = new mongoose.Schema({
 });
 
 /* --------------------------------------------------------------------
-   🔥 MULTI-TENANT INDEXES - Production Optimized
+   🔥 MULTI-TENANT INDEXES - Production Optimized (FIXED - No Duplicates)
+   All indexes consolidated here using schema.index() method
 -------------------------------------------------------------------- */
 
-// Primary query patterns
-organizationSchema.index({ slug: 1 }, { unique: true });
-organizationSchema.index({ owner: 1 });
-organizationSchema.index({ 'members.user': 1 });
-organizationSchema.index({ type: 1 });
+// 🔹 PRIMARY IDENTIFIERS AND SLUG INDEXES
+organizationSchema.index({ slug: 1 }, { unique: true, name: 'slug_unique_index' });
+organizationSchema.index({ type: 1 }, { name: 'type_index' });
 
-// Subscription and billing
-organizationSchema.index({ 'subscription.status': 1 });
-organizationSchema.index({ 'subscription.plan': 1 });
-organizationSchema.index({ 'subscription.currentPeriodEnd': 1 });
+// 🔹 OWNERSHIP AND MEMBERSHIP INDEXES
+organizationSchema.index({ owner: 1 }, { name: 'owner_index' });
+organizationSchema.index({ 'members.user': 1 }, { name: 'members_user_index' });
+organizationSchema.index({ 'members.status': 1 }, { name: 'members_status_index' });
+organizationSchema.index({ 'members.role': 1 }, { name: 'members_role_index' });
 
-// Performance and analytics
-organizationSchema.index({ 'metadata.lastActivity': -1 });
-organizationSchema.index({ 'settings.isPublic': 1 });
-organizationSchema.index({ industry: 1 });
+// 🔹 SUBSCRIPTION AND BILLING INDEXES
+organizationSchema.index({ 'subscription.status': 1 }, { name: 'subscription_status_index' });
+organizationSchema.index({ 'subscription.plan': 1 }, { name: 'subscription_plan_index' });
+organizationSchema.index({ 
+  'subscription.currentPeriodEnd': 1 
+}, { name: 'subscription_period_end_index' });
+organizationSchema.index({ 
+  'subscription.status': 1,
+  'subscription.currentPeriodEnd': 1 
+}, { name: 'subscription_status_period_index' });
 
-// Search and discovery
+// 🔹 PERFORMANCE AND ANALYTICS INDEXES
+organizationSchema.index({ 'metadata.lastActivity': -1 }, { name: 'last_activity_desc_index' });
+organizationSchema.index({ 'settings.isPublic': 1 }, { name: 'is_public_index' });
+organizationSchema.index({ industry: 1 }, { name: 'industry_index' });
+organizationSchema.index({ size: 1 }, { name: 'size_index' });
+organizationSchema.index({ createdAt: -1 }, { name: 'created_at_desc_index' });
+
+// 🔹 SEARCH AND DISCOVERY INDEXES
 organizationSchema.index({ 
   name: 'text', 
   description: 'text',
   'contact.email': 'text'
+}, {
+  weights: {
+    name: 10,
+    description: 5,
+    'contact.email': 2
+  },
+  name: 'organization_search_index'
 });
+
+// 🔹 COMPOUND INDEXES FOR COMMON QUERY PATTERNS
+organizationSchema.index({ 
+  type: 1,
+  'settings.isPublic': 1,
+  'metadata.lastActivity': -1 
+}, { name: 'public_organizations_index' });
+
+organizationSchema.index({ 
+  owner: 1,
+  createdAt: -1 
+}, { name: 'owner_created_index' });
 
 /* --------------------------------------------------------------------
    VIRTUAL FIELDS
