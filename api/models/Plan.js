@@ -1,3 +1,4 @@
+// api/models/Plan.js
 import mongoose from 'mongoose';
 
 const planFeatureSchema = new mongoose.Schema({
@@ -50,8 +51,7 @@ const planSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    trim: true,
-    index: true
+    trim: true
   },
   description: {
     type: String,
@@ -94,8 +94,7 @@ const planSchema = new mongoose.Schema({
   },
   isActive: {
     type: Boolean,
-    default: true,
-    index: true
+    default: true
   },
   isPublic: {
     type: Boolean,
@@ -189,11 +188,31 @@ planSchema.methods.getPriceForInterval = function(interval) {
   }
 };
 
-// Index for efficient queries
-planSchema.index({ isActive: 1, sortOrder: 1 });
-planSchema.index({ slug: 1 }, { unique: true });
-planSchema.index({ 'price.monthly': 1 });
-planSchema.index({ tags: 1 });
+/* --------------------------------------------------------------------
+   INDEXES - Consolidated (FIXED - No Duplicates)
+-------------------------------------------------------------------- */
+
+// Remove the duplicate slug index - slug field already has unique: true
+// planSchema.index({ slug: 1 }, { unique: true }); // <-- REMOVE THIS LINE
+
+// Keep these indexes (they don't conflict with field definitions)
+planSchema.index({ isActive: 1, sortOrder: 1 }, { name: 'active_sort_order_index' });
+planSchema.index({ 'price.monthly': 1 }, { name: 'monthly_price_index' });
+planSchema.index({ tags: 1 }, { name: 'tags_index' });
+
+// Add index for common query patterns
+planSchema.index({ 
+  isActive: 1, 
+  isPublic: 1,
+  sortOrder: 1 
+}, { name: 'active_public_plans_index' });
+
+planSchema.index({ 
+  name: 1 
+}, { 
+  unique: true, 
+  name: 'plan_name_unique_index' 
+});
 
 const Plan = mongoose.model('Plan', planSchema);
 
