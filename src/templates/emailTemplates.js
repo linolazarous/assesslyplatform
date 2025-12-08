@@ -6,7 +6,7 @@
 
 // Configuration
 const EMAIL_CONFIG = {
-  LOGO_URL_PLACEHOLDER: 'https://assessly.com/logo.png',
+  LOGO_URL_PLACEHOLDER: 'https://assessly-gedp.onrender.com/logo.png',
   PRIMARY_COLOR: '#3f51b5',
   SECONDARY_COLOR: '#f8f9fa',
   SUCCESS_COLOR: '#4caf50',
@@ -73,9 +73,9 @@ const templateUtils = {
   generateFooter: (options = {}) => {
     const {
       unsubscribeLink,
-      contactEmail = 'support@assessly.com',
-      privacyPolicyLink = 'https://assessly.com/privacy',
-      termsLink = 'https://assessly.com/terms',
+      contactEmail = 'assesslyinc@gmail.com',
+      privacyPolicyLink = 'https://assessly-gedp.onrender.com/privacy',
+      termsLink = 'https://assessly-assessly-gedp.onrender.com/terms',
       organizationName
     } = options;
 
@@ -741,7 +741,7 @@ export const subscriptionChangeTemplate = (data) => {
     billingAmount,
     billingPeriod,
     featuresChanged = [],
-    contactSupportLink = 'https://assessly.com/support'
+    contactSupportLink = 'https://assessly-gedp.onrender.com/support'
   } = data;
 
   const isUpgrade = newPlan.tier > (oldPlan?.tier || 0);
