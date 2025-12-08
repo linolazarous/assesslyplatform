@@ -216,8 +216,7 @@ const assessmentSchema = new mongoose.Schema({
   organization: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true,
-    index: true
+    required: true
   },
 
   // Content
@@ -396,57 +395,82 @@ const assessmentSchema = new mongoose.Schema({
 });
 
 /* --------------------------------------------------------------------
-   🔥 MULTI-TENANT INDEXES - Production Optimized
+   🔥 MULTI-TENANT INDEXES - Production Optimized (FIXED - No Duplicates)
+   All indexes consolidated here using schema.index() method
 -------------------------------------------------------------------- */
 
-// Primary query patterns
-assessmentSchema.index({ organization: 1, status: 1 });
-assessmentSchema.index({ organization: 1, createdBy: 1 });
-assessmentSchema.index({ organization: 1, category: 1 });
-assessmentSchema.index({ organization: 1, tags: 1 });
-assessmentSchema.index({ organization: 1, access: 1 });
+// 🔹 PRIMARY ORGANIZATION COMPOUND INDEXES (Multi-Tenant)
+assessmentSchema.index({ organization: 1, status: 1 }, { name: 'org_status_index' });
+assessmentSchema.index({ organization: 1, createdBy: 1 }, { name: 'org_created_by_index' });
+assessmentSchema.index({ organization: 1, category: 1 }, { name: 'org_category_index' });
+assessmentSchema.index({ organization: 1, access: 1 }, { name: 'org_access_index' });
 
-// Unique slug per organization (tenant isolation)
+// 🔹 UNIQUE SLUG PER ORGANIZATION (Tenant Isolation)
 assessmentSchema.index(
   { organization: 1, slug: 1 },
   { 
     unique: true, 
     sparse: true,
-    partialFilterExpression: { slug: { $exists: true } }
+    partialFilterExpression: { slug: { $exists: true } },
+    name: 'org_slug_unique_index'
   }
 );
 
-// Performance indexes
-assessmentSchema.index({ organization: 1, createdAt: -1 });
-assessmentSchema.index({ organization: 1, updatedAt: -1 });
-assessmentSchema.index({ organization: 1, 'metadata.views': -1 });
-assessmentSchema.index({ organization: 1, 'metadata.completions': -1 });
+// 🔹 PERFORMANCE AND ANALYTICS INDEXES
+assessmentSchema.index({ organization: 1, createdAt: -1 }, { name: 'org_created_at_desc_index' });
+assessmentSchema.index({ organization: 1, updatedAt: -1 }, { name: 'org_updated_at_desc_index' });
+assessmentSchema.index({ organization: 1, 'metadata.views': -1 }, { name: 'org_views_desc_index' });
+assessmentSchema.index({ organization: 1, 'metadata.completions': -1 }, { name: 'org_completions_desc_index' });
 
-// Scheduling indexes
-assessmentSchema.index({ 'schedule.startDate': 1 });
-assessmentSchema.index({ 'schedule.endDate': 1 });
+// 🔹 TAGS AND CATEGORIES INDEXES
+assessmentSchema.index({ organization: 1, tags: 1 }, { name: 'org_tags_index' });
+
+// 🔹 SCHEDULING AND TIMING INDEXES
+assessmentSchema.index({ 'schedule.startDate': 1 }, { name: 'schedule_start_date_index' });
+assessmentSchema.index({ 'schedule.endDate': 1 }, { name: 'schedule_end_date_index' });
 assessmentSchema.index({ 
   organization: 1, 
   'schedule.startDate': 1, 
   'schedule.endDate': 1 
-});
+}, { name: 'org_schedule_composite_index' });
 
-// Search and discovery
+// 🔹 SEARCH AND DISCOVERY INDEXES
 assessmentSchema.index({ 
   title: 'text', 
   description: 'text', 
   tags: 'text' 
+}, {
+  weights: {
+    title: 10,
+    description: 5,
+    tags: 3
+  },
+  name: 'assessment_search_index'
 });
 
-// Template discovery
+// 🔹 TEMPLATE DISCOVERY INDEXES
 assessmentSchema.index({ 
   organization: 1, 
   'metadata.isTemplate': 1 
-});
+}, { name: 'org_template_index' });
 
-// Access control
-assessmentSchema.index({ allowedCandidates: 1 });
-assessmentSchema.index({ 'allowedEmails.email': 1 });
+// 🔹 ACCESS CONTROL INDEXES
+assessmentSchema.index({ allowedCandidates: 1 }, { name: 'allowed_candidates_index' });
+assessmentSchema.index({ 'allowedEmails.email': 1 }, { name: 'allowed_emails_index' });
+assessmentSchema.index({ 'inviteCodes.code': 1 }, { name: 'invite_codes_index' });
+
+// 🔹 ADDITIONAL COMPOUND INDEXES FOR COMMON QUERIES
+assessmentSchema.index({ 
+  organization: 1,
+  status: 1,
+  createdAt: -1 
+}, { name: 'org_status_created_composite_index' });
+
+assessmentSchema.index({ 
+  organization: 1,
+  'metadata.isTemplate': 1,
+  status: 1 
+}, { name: 'org_template_status_index' });
 
 /* --------------------------------------------------------------------
    VIRTUAL FIELDS & METHODS
