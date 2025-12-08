@@ -206,8 +206,7 @@ const userSchema = new mongoose.Schema({
   organization: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true,
-    index: true
+    required: true
   },
 
   // Role & Permissions
@@ -334,31 +333,43 @@ const userSchema = new mongoose.Schema({
 });
 
 /* --------------------------------------------------------------------
-   🔥 MULTI-TENANT INDEXES - Production Optimized
+   🔥 MULTI-TENANT INDEXES - Production Optimized (FIXED - No Duplicates)
+   All indexes consolidated here using schema.index() method
 -------------------------------------------------------------------- */
 
-// Primary query patterns
-userSchema.index({ organization: 1, email: 1 }, { unique: true });
-userSchema.index({ organization: 1, role: 1 });
-userSchema.index({ organization: 1, isActive: 1 });
+// 🔹 COMPOUND INDEXES for Multi-Tenant Query Performance
+userSchema.index({ organization: 1, email: 1 }, { unique: true }); // Primary tenant lookup
+userSchema.index({ organization: 1, role: 1 }); // Role-based filtering
+userSchema.index({ organization: 1, isActive: 1 }); // Active user queries
 
-// Authentication indexes
-userSchema.index({ googleId: 1 }, { sparse: true });
-userSchema.index({ githubId: 1 }, { sparse: true });
-userSchema.index({ email: 1 }, { unique: true });
+// 🔹 PERFORMANCE INDEXES for Common Query Patterns
+userSchema.index({ organization: 1, lastActivity: -1 }); // Recent activity
+userSchema.index({ organization: 1, createdAt: -1 }); // New users
+userSchema.index({ organization: 1, lastLogin: -1 }); // Login activity
 
-// Performance indexes
-userSchema.index({ organization: 1, lastActivity: -1 });
-userSchema.index({ organization: 1, createdAt: -1 });
-userSchema.index({ 'metadata.referredBy': 1 });
-
-// Search indexes
+// 🔹 SEARCH INDEXES for Text Search
 userSchema.index({ 
   name: 'text', 
   email: 'text',
   'profile.company': 'text',
   'profile.position': 'text'
+}, {
+  weights: {
+    name: 10,
+    email: 5,
+    'profile.company': 3,
+    'profile.position': 2
+  },
+  name: 'user_search_index'
 });
+
+// 🔹 RELATIONSHIP INDEXES
+userSchema.index({ 'metadata.referredBy': 1 }); // Referral tracking
+
+// 🔹 SINGLE FIELD INDEXES (removed from field definitions to avoid duplicates)
+userSchema.index({ email: 1 }, { unique: true, name: 'email_unique_index' });
+userSchema.index({ googleId: 1 }, { sparse: true, name: 'google_id_index' });
+userSchema.index({ githubId: 1 }, { sparse: true, name: 'github_id_index' });
 
 /* --------------------------------------------------------------------
    VIRTUAL FIELDS
