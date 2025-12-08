@@ -23,7 +23,6 @@ import statusMonitor from "express-status-monitor";
 import path from "path";
 import { fileURLToPath } from "url";
 import jwt from "jsonwebtoken";
-import { v4 as uuidv4 } from 'uuid';
 
 import routes from "./routes/index.js";
 import { seedDatabase } from "./utils/seedDatabase.js";
@@ -59,15 +58,20 @@ if (!MONGODB_URI) {
 
 // ======== Request ID Tracking Middleware ========
 app.use((req, res, next) => {
-  req.id = uuidv4();
+  req.id = crypto.randomUUID(); // Use built-in crypto.randomUUID()
   res.setHeader('X-Request-ID', req.id);
   next();
 });
 
-// ======== Response Time Header Middleware ========
+// ======== FIXED Response Time Header Middleware ========
 app.use((req, res, next) => {
   const start = Date.now();
-  res.on('finish', () => {
+  
+  // Store the original end method
+  const originalEnd = res.end;
+  
+  // Override the end method to set the response time header
+  res.end = function(...args) {
     const duration = Date.now() - start;
     res.setHeader('X-Response-Time', `${duration}ms`);
     
@@ -75,7 +79,11 @@ app.use((req, res, next) => {
     if (duration > 1000) { // 1 second threshold
       console.log(chalk.yellow(`⚠️  Slow request detected: ${req.method} ${req.path} - ${duration}ms - Request ID: ${req.id}`));
     }
-  });
+    
+    // Call the original end method
+    return originalEnd.apply(this, args);
+  };
+  
   next();
 });
 
@@ -340,7 +348,7 @@ async function startServer() {
     console.log(chalk.green("✅ MongoDB Connected Successfully"));
     
     // Optional: Seed database if needed
-    if (process.env.AUTO_SEED === 'true') {
+    if (process.env.SEED_DATABASE === 'true') {
       console.log(chalk.yellow("🌱 Seeding database..."));
       await seedDatabase();
       console.log(chalk.green("✅ Database seeded successfully"));
@@ -356,24 +364,40 @@ async function startServer() {
       console.log(chalk.blue(`⏱️  Response time headers: Enabled`));
     });
     
-    // Graceful shutdown
-    const gracefulShutdown = () => {
+    // ======== FIXED Graceful shutdown ========
+    const gracefulShutdown = async () => {
       console.log(chalk.yellow('⚠️  SIGTERM/SIGINT received. Shutting down gracefully...'));
       
-      server.close(() => {
-        console.log(chalk.green('✅ HTTP server closed'));
-        mongoose.connection.close(false, () => {
-          console.log(chalk.green('✅ MongoDB connection closed'));
-          console.log(chalk.green('✅ Graceful shutdown complete'));
-          process.exit(0);
+      try {
+        // Close HTTP server
+        await new Promise((resolve, reject) => {
+          server.close((err) => {
+            if (err) {
+              console.log(chalk.yellow('⚠️  HTTP server close error:'), err);
+              reject(err);
+            } else {
+              console.log(chalk.green('✅ HTTP server closed'));
+              resolve();
+            }
+          });
         });
-      });
-      
-      // Force shutdown after 10 seconds if graceful shutdown fails
-      setTimeout(() => {
-        console.error(chalk.red('❌ Could not close connections in time, forcefully shutting down'));
-        process.exit(1);
-      }, 10000);
+        
+        // Close MongoDB connection (no callback)
+        await mongoose.connection.close();
+        console.log(chalk.green('✅ MongoDB connection closed'));
+        
+        console.log(chalk.green('✅ Graceful shutdown complete'));
+        process.exit(0);
+        
+      } catch (error) {
+        console.error(chalk.red('❌ Graceful shutdown failed:'), error);
+        
+        // Force shutdown after 10 seconds
+        setTimeout(() => {
+          console.error(chalk.red('❌ Could not close connections in time, forcefully shutting down'));
+          process.exit(1);
+        }, 10000);
+      }
     };
     
     process.on('SIGTERM', gracefulShutdown);
