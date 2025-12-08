@@ -16,7 +16,9 @@
     "seed:help": "node scripts/seed.js --help",
     "check-deps": "npm list cors",
     "docs": "node scripts/generateDocs.js",
-    "create-indexes": "node api/scripts/createIndexes.js"
+    "create-indexes": "node api/scripts/createIndexes.js",
+    "setup:templates": "node scripts/setup-email-templates.js",
+    "setup:email": "mkdir -p src/api/templates/emails"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
