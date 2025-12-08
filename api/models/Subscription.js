@@ -182,8 +182,7 @@ const subscriptionSchema = new mongoose.Schema({
   organization: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true,
-    index: true
+    required: true
   },
 
   // Plan & Pricing
@@ -338,28 +337,76 @@ const subscriptionSchema = new mongoose.Schema({
 });
 
 /* --------------------------------------------------------------------
-   🔥 MULTI-TENANT INDEXES - Production Optimized
+   🔥 MULTI-TENANT INDEXES - Production Optimized (FIXED - No Duplicates)
+   All indexes consolidated here using schema.index() method
 -------------------------------------------------------------------- */
 
-// Primary query patterns
-subscriptionSchema.index({ organization: 1 }, { unique: true });
-subscriptionSchema.index({ status: 1 });
-subscriptionSchema.index({ plan: 1 });
-subscriptionSchema.index({ 'price.billingPeriod': 1 });
+// 🔹 PRIMARY ORGANIZATION UNIQUE INDEX (One subscription per organization)
+subscriptionSchema.index({ organization: 1 }, { 
+  unique: true, 
+  name: 'organization_unique_index' 
+});
 
-// Billing and renewal
-subscriptionSchema.index({ 'period.endDate': 1 });
-subscriptionSchema.index({ 'period.trialEndDate': 1 });
-subscriptionSchema.index({ 'payment.nextPayment.date': 1 });
+// 🔹 SUBSCRIPTION STATUS AND LIFECYCLE INDEXES
+subscriptionSchema.index({ status: 1 }, { name: 'status_index' });
+subscriptionSchema.index({ plan: 1 }, { name: 'plan_index' });
+subscriptionSchema.index({ 'price.billingPeriod': 1 }, { name: 'billing_period_index' });
 
-// Payment gateway integration
-subscriptionSchema.index({ 'payment.gateway.subscriptionId': 1 });
-subscriptionSchema.index({ 'payment.gateway.customerId': 1 });
+// 🔹 BILLING AND RENEWAL INDEXES
+subscriptionSchema.index({ 'period.endDate': 1 }, { name: 'period_end_date_index' });
+subscriptionSchema.index({ 'period.trialEndDate': 1 }, { name: 'trial_end_date_index' });
+subscriptionSchema.index({ 'period.canceledAt': 1 }, { name: 'canceled_at_index' });
+subscriptionSchema.index({ 'payment.nextPayment.date': 1 }, { name: 'next_payment_date_index' });
 
-// Analytics and reporting
-subscriptionSchema.index({ 'metadata.salesRep': 1 });
-subscriptionSchema.index({ createdAt: -1 });
-subscriptionSchema.index({ 'metadata.cancellation.requestedAt': 1 });
+// 🔹 PAYMENT GATEWAY INTEGRATION INDEXES
+subscriptionSchema.index({ 
+  'payment.gateway.subscriptionId': 1 
+}, { name: 'gateway_subscription_id_index' });
+
+subscriptionSchema.index({ 
+  'payment.gateway.customerId': 1 
+}, { name: 'gateway_customer_id_index' });
+
+// 🔹 ANALYTICS AND REPORTING INDEXES
+subscriptionSchema.index({ 'metadata.salesRep': 1 }, { name: 'sales_rep_index' });
+subscriptionSchema.index({ createdAt: -1 }, { name: 'created_at_desc_index' });
+subscriptionSchema.index({ updatedAt: -1 }, { name: 'updated_at_desc_index' });
+subscriptionSchema.index({ 
+  'metadata.cancellation.requestedAt': 1 
+}, { name: 'cancellation_requested_index' });
+
+// 🔹 COMPOUND INDEXES FOR COMMON QUERY PATTERNS
+subscriptionSchema.index({ 
+  status: 1,
+  'period.endDate': 1 
+}, { name: 'status_end_date_composite_index' });
+
+subscriptionSchema.index({ 
+  status: 1,
+  plan: 1,
+  createdAt: -1 
+}, { name: 'status_plan_created_composite_index' });
+
+subscriptionSchema.index({ 
+  organization: 1,
+  status: 1 
+}, { name: 'org_status_composite_index' });
+
+subscriptionSchema.index({ 
+  'metadata.autoRenew': 1,
+  'period.endDate': 1 
+}, { name: 'auto_renew_end_date_index' });
+
+// 🔹 TTL INDEX FOR EXPIRED SUBSCRIPTIONS (Auto-cleanup after 90 days)
+subscriptionSchema.index({ 
+  'period.endDate': 1 
+}, { 
+  expireAfterSeconds: 7776000, // 90 days in seconds
+  partialFilterExpression: { 
+    status: { $in: ['canceled', 'expired', 'incomplete_expired'] }
+  },
+  name: 'expired_subscriptions_ttl_index'
+});
 
 /* --------------------------------------------------------------------
    VIRTUAL FIELDS
@@ -412,6 +459,38 @@ subscriptionSchema.virtual('usagePercentages').get(function() {
     assessments: this.usage.assessments.limit > 0 ? (this.usage.assessments.current / this.usage.assessments.limit) * 100 : 0,
     storage: this.usage.storage.limit > 0 ? (this.usage.storage.current / this.usage.storage.limit) * 100 : 0
   };
+});
+
+subscriptionSchema.virtual('monthlyRecurringRevenue').get(function() {
+  if (this.price.type === 'recurring') {
+    switch (this.price.billingPeriod) {
+      case 'monthly':
+        return this.price.amount;
+      case 'quarterly':
+        return this.price.amount / 3;
+      case 'yearly':
+        return this.price.amount / 12;
+      default:
+        return this.price.amount;
+    }
+  }
+  return 0;
+});
+
+subscriptionSchema.virtual('annualRecurringRevenue').get(function() {
+  if (this.price.type === 'recurring') {
+    switch (this.price.billingPeriod) {
+      case 'monthly':
+        return this.price.amount * 12;
+      case 'quarterly':
+        return this.price.amount * 4;
+      case 'yearly':
+        return this.price.amount;
+      default:
+        return this.price.amount;
+    }
+  }
+  return 0;
 });
 
 /* --------------------------------------------------------------------
@@ -470,7 +549,7 @@ subscriptionSchema.statics.getSubscriptionAnalytics = async function(organizatio
             $group: {
               _id: '$plan',
               count: { $sum: 1 },
-              totalMRR: { $sum: '$price.amount' }
+              totalMRR: { $sum: '$monthlyRecurringRevenue' }
             }
           }
         ],
@@ -491,9 +570,9 @@ subscriptionSchema.statics.getSubscriptionAnalytics = async function(organizatio
           {
             $group: {
               _id: null,
-              totalMRR: { $sum: '$price.amount' },
-              totalARR: { $sum: { $multiply: ['$price.amount', 12] } },
-              avgPlanValue: { $avg: '$price.amount' },
+              totalMRR: { $sum: '$monthlyRecurringRevenue' },
+              totalARR: { $sum: '$annualRecurringRevenue' },
+              avgPlanValue: { $avg: '$monthlyRecurringRevenue' },
               churnedThisMonth: {
                 $sum: {
                   $cond: [
