@@ -25,6 +25,7 @@ const config = ENV_CONFIG[currentEnv];
 
 // Primary allowed origins
 const PRIMARY_ORIGINS = [
+  'https://assesslyplatform-t49h.onrender.com',
   'https://assessly-gedp.onrender.com',
   'https://www.assessly.com',
   'https://app.assessly.com'
