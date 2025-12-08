@@ -68,6 +68,97 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(compression());
 app.use(morgan("dev"));
 
+// ======== FIXED CORS with Cookies Support ========
+const corsOptions = {
+  origin: FRONTEND_URL,
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+};
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+// ======== ROUTE HANDLERS FOR ROOT & COMMON PATHS ========
+
+/**
+ * Root endpoint - Welcome message
+ */
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "🚀 Assessly Platform API v1.0.0",
+    description: "Multi-tenant assessment platform API",
+    status: "operational",
+    timestamp: new Date().toISOString(),
+    links: {
+      frontend: "https://assessly-gedp.onrender.com",
+      apiDocumentation: "/api/docs",
+      apiSpecification: "/api/docs.json",
+      healthCheck: "/health",
+      apiStatus: "/api",
+      support: "mailto:assesslyinc@gmail.com"
+    },
+    authentication: {
+      methods: ["JWT Bearer Token", "Google OAuth 2.0"],
+      header: "Authorization: Bearer <your-jwt-token>"
+    }
+  });
+});
+
+/**
+ * General health check endpoint
+ */
+app.get("/health", (req, res) => {
+  res.json({
+    success: true,
+    status: "healthy",
+    service: "Assessly Platform API",
+    version: "1.0.0",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: NODE_ENV,
+    memory: {
+      rss: `${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`,
+      heapTotal: `${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`,
+      heapUsed: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`
+    },
+    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+    frontend: FRONTEND_URL,
+    backend: BACKEND_URL
+  });
+});
+
+/**
+ * API root endpoint
+ */
+app.get("/api", (req, res) => {
+  res.json({
+    success: true,
+    name: "Assessly Platform API",
+    version: "1.0.0",
+    basePath: "/api/v1",
+    documentation: `${BACKEND_URL}/api/docs`,
+    status: "operational",
+    endpoints: {
+      v1: {
+        auth: "/api/v1/auth",
+        users: "/api/v1/users",
+        organizations: "/api/v1/organizations",
+        assessments: "/api/v1/assessments",
+        subscriptions: "/api/v1/subscriptions",
+        analytics: "/api/v1/analytics"
+      }
+    },
+    quickStart: "Visit /api/docs for interactive API documentation"
+  });
+});
+
+// ======== EXISTING HEALTH ROUTE (KEEP THIS) ========
+// Health - Keep this for API health checks
+app.get("/api/health", (req, res) => res.json({ success: true, status: "ok" }));
+
+// ======== JWT Refresh Token Endpoint (NEW) ========
+// ... rest of your existing code ...
 // Health
 app.get("/api/health", (req, res) => res.json({ success: true, status: "ok" }));
 
@@ -93,9 +184,36 @@ app.get("/api/v1/auth/refresh", (req, res) => {
 setupSwagger(app);
 app.use("/api/v1", routes);
 
-// 404
+// 404 handler with helpful suggestions
 app.use((req, res) => {
-  res.status(404).json({ success: false, error: "Route not found" });
+  // Don't handle API routes here - they're handled by the routes/index.js
+  if (req.path.startsWith("/api/v1")) {
+    return res.status(404).json({
+      success: false,
+      error: "API route not found",
+      path: req.path,
+      method: req.method,
+      availableEndpoints: {
+        docs: "/api/docs",
+        v1: "/api/v1",
+        health: "/health",
+        apiHealth: "/api/health"
+      },
+      suggestion: "This is an API server. For the web application, visit: " + FRONTEND_URL
+    });
+  }
+  
+  // For non-API routes
+  res.status(404).json({
+    success: false,
+    error: "Route not found",
+    path: req.path,
+    suggestion: `Try one of these:
+      • API Documentation: ${BACKEND_URL}/api/docs
+      • Frontend Application: ${FRONTEND_URL}
+      • Health Check: ${BACKEND_URL}/health
+      • API Status: ${BACKEND_URL}/api`
+  });
 });
 
 // ======== Server Start ========
