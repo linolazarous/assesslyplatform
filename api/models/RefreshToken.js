@@ -86,8 +86,7 @@ const locationSchema = new mongoose.Schema({
 const securitySchema = new mongoose.Schema({
   fingerprint: {
     type: String,
-    required: true,
-    index: true
+    required: true
   },
   userAgent: {
     type: String,
@@ -132,41 +131,35 @@ const refreshTokenSchema = new mongoose.Schema({
   organization: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true,
-    index: true
+    required: true
   },
 
   // Core Token Information
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: [true, 'User reference is required'],
-    index: true
+    required: [true, 'User reference is required']
   },
   token: {
     type: String,
     required: [true, 'Token is required'],
     unique: true,
-    index: true,
     trim: true
   },
   tokenHash: {
     type: String,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   family: {
     type: String, // Token family for refresh token rotation
-    required: true,
-    index: true
+    required: true
   },
 
   // Token Lifecycle
   expires: {
     type: Date,
-    required: [true, 'Expiration date is required'],
-    index: true
+    required: [true, 'Expiration date is required']
   },
   issuedAt: {
     type: Date,
@@ -174,8 +167,7 @@ const refreshTokenSchema = new mongoose.Schema({
   },
   revokedAt: {
     type: Date,
-    default: null,
-    index: true
+    default: null
   },
   revokedBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -223,8 +215,7 @@ const refreshTokenSchema = new mongoose.Schema({
   // Usage Tracking
   lastUsedAt: {
     type: Date,
-    default: Date.now,
-    index: true
+    default: Date.now
   },
   usageCount: {
     type: Number,
@@ -330,33 +321,62 @@ const refreshTokenSchema = new mongoose.Schema({
 });
 
 /* --------------------------------------------------------------------
-   🔥 MULTI-TENANT INDEXES - Production Optimized
+   🔥 MULTI-TENANT INDEXES - Production Optimized (FIXED - No Duplicates)
+   All indexes consolidated here using schema.index() method
 -------------------------------------------------------------------- */
 
-// Primary query patterns
-refreshTokenSchema.index({ organization: 1, user: 1 });
-refreshTokenSchema.index({ organization: 1, tokenHash: 1 });
-refreshTokenSchema.index({ organization: 1, family: 1 });
+// 🔹 PRIMARY IDENTIFIERS AND UNIQUE CONSTRAINTS
+refreshTokenSchema.index({ tokenHash: 1 }, { unique: true, name: 'token_hash_unique_index' });
+refreshTokenSchema.index({ token: 1 }, { unique: true, name: 'token_unique_index' });
+refreshTokenSchema.index({ family: 1 }, { name: 'family_index' });
 
-// Token lifecycle management
-refreshTokenSchema.index({ organization: 1, revokedAt: 1 });
-refreshTokenSchema.index({ organization: 1, expires: 1 });
-refreshTokenSchema.index({ organization: 1, lastUsedAt: -1 });
+// 🔹 ORGANIZATION-BASED COMPOUND INDEXES (Multi-Tenant Architecture)
+refreshTokenSchema.index({ organization: 1, user: 1 }, { name: 'org_user_index' });
+refreshTokenSchema.index({ organization: 1, tokenHash: 1 }, { name: 'org_token_hash_index' });
+refreshTokenSchema.index({ organization: 1, family: 1 }, { name: 'org_family_index' });
+refreshTokenSchema.index({ organization: 1, expires: 1 }, { name: 'org_expires_index' });
+refreshTokenSchema.index({ organization: 1, lastUsedAt: -1 }, { name: 'org_last_used_desc_index' });
 
-// Security and monitoring
-refreshTokenSchema.index({ organization: 1, 'security.fingerprint': 1 });
-refreshTokenSchema.index({ organization: 1, 'location.ip': 1 });
-refreshTokenSchema.index({ organization: 1, 'metadata.riskLevel': 1 });
+// 🔹 TOKEN LIFECYCLE MANAGEMENT
+refreshTokenSchema.index({ revokedAt: 1 }, { name: 'revoked_at_index' });
+refreshTokenSchema.index({ expires: 1 }, { name: 'expires_index' });
+refreshTokenSchema.index({ lastUsedAt: -1 }, { name: 'last_used_desc_index' });
+refreshTokenSchema.index({ 
+  revokedAt: 1,
+  expires: 1 
+}, { name: 'revoked_expires_composite_index' });
 
-// Performance and cleanup
+// 🔹 SECURITY AND MONITORING INDEXES
+refreshTokenSchema.index({ 'security.fingerprint': 1 }, { name: 'security_fingerprint_index' });
+refreshTokenSchema.index({ 'location.ip': 1 }, { name: 'location_ip_index' });
+refreshTokenSchema.index({ 'metadata.riskLevel': 1 }, { name: 'risk_level_index' });
+refreshTokenSchema.index({ 'metadata.mfaVerified': 1 }, { name: 'mfa_verified_index' });
+
+// 🔹 PERFORMANCE AND COMPOUND INDEXES FOR COMMON QUERIES
+refreshTokenSchema.index({ 
+  organization: 1,
+  user: 1,
+  revokedAt: 1 
+}, { name: 'org_user_revoked_index' });
+
+refreshTokenSchema.index({ 
+  organization: 1,
+  user: 1,
+  expires: 1 
+}, { name: 'org_user_expires_index' });
+
+refreshTokenSchema.index({ 
+  organization: 1,
+  revokedAt: 1,
+  expires: 1 
+}, { name: 'org_revoked_expires_index' });
+
+// 🔹 TTL INDEX FOR AUTO-CLEANUP
 refreshTokenSchema.index({ expires: 1 }, { 
   expireAfterSeconds: 0,
-  partialFilterExpression: { revokedAt: { $ne: null } }
+  partialFilterExpression: { revokedAt: { $ne: null } },
+  name: 'expired_tokens_ttl_index'
 });
-
-// Compound indexes for common queries
-refreshTokenSchema.index({ organization: 1, user: 1, revokedAt: 1 });
-refreshTokenSchema.index({ organization: 1, user: 1, expires: 1 });
 
 /* --------------------------------------------------------------------
    VIRTUAL FIELDS
