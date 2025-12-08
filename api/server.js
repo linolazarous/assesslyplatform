@@ -1,421 +1,399 @@
 /**
- * api/server.js – FINAL PRODUCTION VERSION
- * Authentication System FIXED:
- * - HttpOnly Refresh Token Support
- * - CORS Cookie Credentials Enabled
- * - Refresh Endpoint Exposed
+ * api/server.js – PRODUCTION-READY
+ * - Fixed: crypto import for request-id
+ * - Fixed: rate limit handler includes requestId
+ * - Refresh endpoint supports GET + POST and returns access token
+ * - Graceful shutdown + robust error handling
  */
 
-import express from "express";
-import mongoose from "mongoose";
-import cors from "cors";
-import helmet from "helmet";
-import hpp from "hpp";
-import xss from "xss-clean";
-import mongoSanitize from "express-mongo-sanitize";
-import compression from "compression";
-import morgan from "morgan";
-import chalk from "chalk";
-import dotenv from "dotenv";
-import cookieParser from "cookie-parser";
-import rateLimit from "express-rate-limit";
-import statusMonitor from "express-status-monitor";
-import path from "path";
-import { fileURLToPath } from "url";
-import jwt from "jsonwebtoken";
+import 'dotenv/config';
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import helmet from 'helmet';
+import hpp from 'hpp';
+import xss from 'xss-clean';
+import mongoSanitize from 'express-mongo-sanitize';
+import compression from 'compression';
+import morgan from 'morgan';
+import chalk from 'chalk';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
+import statusMonitor from 'express-status-monitor';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
-import routes from "./routes/index.js";
-import { seedDatabase } from "./utils/seedDatabase.js";
-import { setupSwagger } from "./config/swagger.js";
+import routes from './routes/index.js';
+import { seedDatabase } from './utils/seedDatabase.js';
+import { setupSwagger } from './config/swagger.js';
 
-dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.set("trust proxy", 1);
+app.set('trust proxy', 1);
 
+// Environment
 const PORT = Number(process.env.PORT || 10000);
-const NODE_ENV = process.env.NODE_ENV || "production";
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://assessly-gedp.onrender.com";
-const BACKEND_URL = process.env.BACKEND_URL || "https://assesslyplatform-t49h.onrender.com";
+const NODE_ENV = process.env.NODE_ENV || 'production';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://assessly-gedp.onrender.com';
+const BACKEND_URL = process.env.BACKEND_URL || `https://localhost:${PORT}`;
 const MONGODB_URI = process.env.MONGODB_URI;
-const isProd = NODE_ENV === "production";
+const isProd = NODE_ENV === 'production';
 
-// ======== Environment Validation ========
+// Validate required environment variables
 const requiredEnvVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'MONGODB_URI'];
-requiredEnvVars.forEach(envVar => {
-  if (!process.env[envVar]) {
-    console.error(chalk.red(`❌ Missing required environment variable: ${envVar}`));
+for (const name of requiredEnvVars) {
+  if (!process.env[name]) {
+    console.error(chalk.red(`❌ Missing required environment variable: ${name}`));
     process.exit(1);
   }
-});
-
-if (!MONGODB_URI) {
-  console.error(chalk.red("❌ MONGODB_URI missing!"));
-  process.exit(1);
 }
 
-// ======== Request ID Tracking Middleware ========
+// ======== Request ID Middleware ========
 app.use((req, res, next) => {
-  req.id = crypto.randomUUID(); // Use built-in crypto.randomUUID()
+  try {
+    // Node's built-in crypto.randomUUID() is available in modern Node versions
+    req.id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+  } catch (err) {
+    req.id = crypto.randomBytes(16).toString('hex');
+  }
   res.setHeader('X-Request-ID', req.id);
   next();
 });
 
-// ======== FIXED Response Time Header Middleware ========
+// ======== Response Time Header Middleware ========
 app.use((req, res, next) => {
   const start = Date.now();
-  
-  // Store the original end method
   const originalEnd = res.end;
-  
-  // Override the end method to set the response time header
-  res.end = function(...args) {
-    const duration = Date.now() - start;
-    res.setHeader('X-Response-Time', `${duration}ms`);
-    
-    // Log slow requests (optional)
-    if (duration > 1000) { // 1 second threshold
-      console.log(chalk.yellow(`⚠️  Slow request detected: ${req.method} ${req.path} - ${duration}ms - Request ID: ${req.id}`));
+
+  res.end = function (...args) {
+    try {
+      const duration = Date.now() - start;
+      // attach response time header
+      if (!res.headersSent) {
+        res.setHeader('X-Response-Time', `${duration}ms`);
+      } else {
+        // ensure header still set if headers already sent (some frameworks send early)
+        try { res.setHeader('X-Response-Time', `${duration}ms`); } catch (e) { /* ignore */ }
+      }
+
+      if (duration > 1000) {
+        console.log(chalk.yellow(`⚠️  Slow request detected: ${req.method} ${req.originalUrl} - ${duration}ms - Request ID: ${req.id}`));
+      }
+    } catch (err) {
+      // swallow timing errors — shouldn't break response
+      console.error(chalk.red('Error while setting X-Response-Time header:'), err);
     }
-    
-    // Call the original end method
     return originalEnd.apply(this, args);
   };
-  
+
   next();
 });
 
-// ======== Rate Limiting ========
+// ======== Rate Limiting (with handler that returns requestId) ========
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: {
-    success: false,
-    error: "Too many requests from this IP, please try again later.",
-    requestId: null // Will be populated by middleware
-  },
-  keyGenerator: (req) => {
-    // Use IP + request ID for better tracking
-    return `${req.ip}-${req.id}`;
-  },
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  skipSuccessfulRequests: false,
-  skipFailedRequests: false
+  keyGenerator: (req) => `${req.ip}-${req.id || ''}`,
+  handler: (req, res /*, next */) => {
+    const payload = {
+      success: false,
+      error: 'Too many requests from this IP, please try again later.',
+      requestId: req.id || null
+    };
+    res.status(429).json(payload);
+  }
 });
-
 app.use(limiter);
 
-// ======== Enhanced Morgan Logging with Request ID ========
-morgan.token('request-id', (req) => req.id);
-morgan.token('response-time', (req, res) => {
-  if (!res.getHeader('X-Response-Time')) return '';
-  return res.getHeader('X-Response-Time');
-});
+// ======== Morgan Logging with Request ID ========
+morgan.token('request-id', (req) => req.id || '-');
+morgan.token('x-response-time', (req, res) => res.getHeader('X-Response-Time') || '-');
 
-const morganFormat = isProd 
-  ? ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time ms - request-id::request-id'
-  : ':method :url :status :response-time ms - :res[content-length] - request-id::request-id';
+const morganFormat = isProd
+  ? ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :x-response-time - reqid=:request-id'
+  : ':method :url :status :res[content-length] - :x-response-time - reqid=:request-id';
 
 app.use(morgan(morganFormat));
 
-// ======== FIXED CORS with Cookies Support ========
+// ======== CORS (with credentials) ========
 const corsOptions = {
   origin: FRONTEND_URL,
   credentials: true,
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "X-Request-ID"],
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  exposedHeaders: ["Content-Length", "Content-Type", "X-Request-ID", "X-Response-Time"]
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Request-ID'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  exposedHeaders: ['Content-Length', 'Content-Type', 'X-Request-ID', 'X-Response-Time']
 };
 app.use(cors(corsOptions));
 
-// ======== Security Middleware ========
+// ======== Security & Parsing Middleware ========
 app.use(helmet({
   contentSecurityPolicy: isProd ? undefined : false,
   crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 app.use(xss());
 app.use(mongoSanitize());
 app.use(hpp());
 app.use(cookieParser());
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(compression());
 
-// ======== Status Monitor ========
+// ======== Status Monitor (dev only) ========
 if (!isProd) {
   app.use(statusMonitor());
 }
 
-// ======== ROUTE HANDLERS FOR ROOT & COMMON PATHS ========
-
-/**
- * Root endpoint - Welcome message
- */
-app.get("/", (req, res) => {
+// ======== Root & Health Endpoints ========
+app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: "🚀 Assessly Platform API v1.0.0",
-    description: "Multi-tenant assessment platform API",
-    status: "operational",
+    message: '🚀 Assessly Platform API v1.0.0',
+    status: 'operational',
     timestamp: new Date().toISOString(),
     requestId: req.id,
     links: {
       frontend: FRONTEND_URL,
-      apiDocumentation: `${BACKEND_URL}/api/docs`,
-      apiSpecification: `${BACKEND_URL}/api/docs.json`,
-      healthCheck: `${BACKEND_URL}/health`,
-      apiStatus: `${BACKEND_URL}/api`,
-      support: "mailto:assesslyinc@gmail.com"
-    },
-    authentication: {
-      methods: ["JWT Bearer Token", "Google OAuth 2.0"],
-      header: "Authorization: Bearer <your-jwt-token>"
+      apiDocumentation: `${BACKEND_URL.replace(/\/$/, '')}/api/docs`,
+      healthCheck: `${BACKEND_URL.replace(/\/$/, '')}/health`
     }
   });
 });
 
-/**
- * General health check endpoint
- */
-app.get("/health", (req, res) => {
-  const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
-  
+app.get('/health', (req, res) => {
+  const dbState = mongoose.connection.readyState;
+  const dbStatus = dbState === 1 ? 'connected' : dbState === 2 ? 'connecting' : 'disconnected';
+
   res.json({
     success: true,
-    status: "healthy",
-    service: "Assessly Platform API",
-    version: "1.0.0",
+    status: 'healthy',
+    service: 'Assessly Platform API',
+    version: '1.0.0',
     timestamp: new Date().toISOString(),
     requestId: req.id,
-    uptime: process.uptime(),
+    uptimeSeconds: Math.floor(process.uptime()),
     environment: NODE_ENV,
-    memory: {
-      rss: `${(process.memoryUsage().rss / 1024 / 1024).toFixed(2)} MB`,
-      heapTotal: `${(process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)} MB`,
-      heapUsed: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`
+    memoryMB: {
+      rss: Number((process.memoryUsage().rss / 1024 / 1024).toFixed(2)),
+      heapTotal: Number((process.memoryUsage().heapTotal / 1024 / 1024).toFixed(2)),
+      heapUsed: Number((process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2))
     },
-    database: dbStatus,
-    frontend: FRONTEND_URL,
-    backend: BACKEND_URL
+    database: dbStatus
   });
 });
 
-/**
- * API root endpoint
- */
-app.get("/api", (req, res) => {
+app.get('/api', (req, res) => {
   res.json({
     success: true,
-    name: "Assessly Platform API",
-    version: "1.0.0",
-    basePath: "/api/v1",
-    documentation: `${BACKEND_URL}/api/docs`,
-    status: "operational",
-    requestId: req.id,
-    endpoints: {
-      v1: {
-        auth: "/api/v1/auth",
-        users: "/api/v1/users",
-        organizations: "/api/v1/organizations",
-        assessments: "/api/v1/assessments",
-        subscriptions: "/api/v1/subscriptions",
-        analytics: "/api/v1/analytics"
-      }
-    },
-    quickStart: "Visit /api/docs for interactive API documentation"
+    name: 'Assessly Platform API',
+    version: '1.0.0',
+    basePath: '/api/v1',
+    documentation: `${BACKEND_URL.replace(/\/$/, '')}/api/docs`,
+    status: 'operational',
+    requestId: req.id
   });
 });
 
-// Health check for API
-app.get("/api/health", (req, res) => {
-  res.json({ 
-    success: true, 
-    status: "ok",
+app.get('/api/health', (req, res) => {
+  res.json({
+    success: true,
+    status: 'ok',
     timestamp: new Date().toISOString(),
     requestId: req.id,
-    service: "Assessly API"
+    service: 'Assessly API'
   });
 });
 
-// ======== JWT Refresh Token Endpoint ========
-app.get("/api/v1/auth/refresh", (req, res) => {
-  const refreshToken = req.cookies?.refreshToken;
-  
-  if (!refreshToken) {
-    return res.status(401).json({ 
-      success: false,
-      message: "No refresh token provided",
-      requestId: req.id
-    });
-  }
-
-  jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ 
+// ======== JWT Refresh Endpoint (GET and POST) ========
+async function handleRefresh(req, res) {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+    if (!refreshToken) {
+      return res.status(401).json({
         success: false,
-        message: "Invalid or expired refresh token",
+        message: 'No refresh token provided',
         requestId: req.id
       });
     }
 
-    const accessToken = jwt.sign(
-      { 
-        id: user.id,
-        email: user.email,
-        role: user.role 
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "15m" }
-    );
+    jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, (err, payload) => {
+      if (err || !payload) {
+        return res.status(403).json({
+          success: false,
+          message: 'Invalid or expired refresh token',
+          requestId: req.id
+        });
+      }
 
-    return res.json({ 
-      success: true,
-      accessToken,
-      tokenType: "Bearer",
-      expiresIn: 900, // 15 minutes in seconds
+      // Build a new access token (short lived)
+      const accessToken = jwt.sign(
+        {
+          id: payload.id,
+          email: payload.email,
+          role: payload.role
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '15m' }
+      );
+
+      return res.json({
+        success: true,
+        accessToken,
+        tokenType: 'Bearer',
+        expiresIn: 900, // seconds
+        requestId: req.id
+      });
+    });
+  } catch (err) {
+    console.error(chalk.red(`❌ Refresh token handler error [${req.id}]:`), err);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
       requestId: req.id
     });
-  });
-});
+  }
+}
 
-// ======== Swagger & Routes ========
-setupSwagger(app);
-app.use("/api/v1", routes);
+// Expose both GET and POST for convenience (same semantics)
+app.get('/api/v1/auth/refresh', handleRefresh);
+app.post('/api/v1/auth/refresh', handleRefresh);
 
-// ======== Global Error Handler ========
-app.use((err, req, res, next) => {
-  console.error(chalk.red(`❌ Error [${req.id}]: ${err.message}`), err.stack);
-  
-  const statusCode = err.statusCode || 500;
-  const message = err.message || "Internal Server Error";
-  
-  res.status(statusCode).json({
-    success: false,
-    error: message,
-    requestId: req.id,
-    ...(NODE_ENV === 'development' && { stack: err.stack })
-  });
-});
+// ======== Register Swagger & App Routes ========
+try {
+  await setupSwagger(app); // if this is async; if not, it's still safe
+} catch (err) {
+  // non-fatal; log and continue
+  console.warn(chalk.yellow('⚠️ Swagger setup warning:'), err?.message || err);
+}
+app.use('/api/v1', routes);
 
-// ======== 404 Handler ========
+// ======== 404 Handler for API & Web ========
 app.use((req, res) => {
-  if (req.path.startsWith("/api/v1")) {
+  if (req.path.startsWith('/api/v1')) {
     return res.status(404).json({
       success: false,
-      error: "API route not found",
+      error: 'API route not found',
       path: req.path,
       method: req.method,
       requestId: req.id,
       availableEndpoints: {
-        docs: "/api/docs",
-        v1: "/api/v1",
-        health: "/health",
-        apiHealth: "/api/health"
+        docs: '/api/docs',
+        v1: '/api/v1',
+        health: '/health',
+        apiHealth: '/api/health'
       },
       suggestion: `This is an API server. For the web application, visit: ${FRONTEND_URL}`
     });
   }
-  
+
   res.status(404).json({
     success: false,
-    error: "Route not found",
+    error: 'Route not found',
     path: req.path,
     requestId: req.id,
-    suggestion: `Try one of these:
-      • API Documentation: ${BACKEND_URL}/api/docs
-      • Frontend Application: ${FRONTEND_URL}
-      • Health Check: ${BACKEND_URL}/health
-      • API Status: ${BACKEND_URL}/api`
+    suggestion: `Check API docs: ${BACKEND_URL.replace(/\/$/, '')}/api/docs`
   });
 });
 
-// ======== Server Start ========
+// ======== Global Error Handler ========
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  console.error(chalk.red(`❌ Error [${req.id}]: ${err?.message || err}`));
+  if (err?.stack) console.error(err.stack);
+
+  const statusCode = err?.statusCode || 500;
+  const payload = {
+    success: false,
+    error: err?.message || 'Internal Server Error',
+    requestId: req.id
+  };
+  if (!isProd) payload.stack = err?.stack;
+  res.status(statusCode).json(payload);
+});
+
+// ======== Server Start & Graceful Shutdown ========
 async function startServer() {
+  let server;
   try {
-    console.log(chalk.blue(`🔗 Connecting to MongoDB...`));
-    
+    console.log(chalk.blue('🔗 Connecting to MongoDB...'));
+
     await mongoose.connect(MONGODB_URI, {
       serverSelectionTimeoutMS: 5000,
       maxPoolSize: 10,
       socketTimeoutMS: 45000,
-      connectTimeoutMS: 10000
+      connectTimeoutMS: 10000,
+      family: 4
     });
-    
-    console.log(chalk.green("✅ MongoDB Connected Successfully"));
-    
-    // Optional: Seed database if needed
+
+    console.log(chalk.green('✅ MongoDB Connected Successfully'));
+
     if (process.env.SEED_DATABASE === 'true') {
-      console.log(chalk.yellow("🌱 Seeding database..."));
+      console.log(chalk.yellow('🌱 Seeding database...'));
       await seedDatabase();
-      console.log(chalk.green("✅ Database seeded successfully"));
+      console.log(chalk.green('✅ Database seeded successfully'));
     }
-    
-    const server = app.listen(PORT, "0.0.0.0", () => {
+
+    server = app.listen(PORT, '0.0.0.0', () => {
       console.log(chalk.green(`🚀 Server running on port ${PORT}`));
       console.log(chalk.cyan(`🌐 Backend URL: ${BACKEND_URL}`));
       console.log(chalk.cyan(`🌍 Frontend URL: ${FRONTEND_URL}`));
-      console.log(chalk.yellow(`📚 API Documentation: ${BACKEND_URL}/api/docs`));
+      console.log(chalk.yellow(`📚 API Documentation: ${BACKEND_URL.replace(/\/$/, '')}/api/docs`));
       console.log(chalk.magenta(`⚡ Environment: ${NODE_ENV}`));
       console.log(chalk.blue(`🔑 Request ID tracking: Enabled`));
-      console.log(chalk.blue(`⏱️  Response time headers: Enabled`));
     });
-    
-    // ======== FIXED Graceful shutdown ========
-    const gracefulShutdown = async () => {
-      console.log(chalk.yellow('⚠️  SIGTERM/SIGINT received. Shutting down gracefully...'));
-      
+
+    // Graceful shutdown
+    const gracefulShutdown = async (signal) => {
       try {
-        // Close HTTP server
-        await new Promise((resolve, reject) => {
-          server.close((err) => {
-            if (err) {
-              console.log(chalk.yellow('⚠️  HTTP server close error:'), err);
-              reject(err);
-            } else {
-              console.log(chalk.green('✅ HTTP server closed'));
-              resolve();
-            }
-          });
-        });
-        
-        // Close MongoDB connection (no callback)
-        await mongoose.connection.close();
-        console.log(chalk.green('✅ MongoDB connection closed'));
-        
+        console.log(chalk.yellow(`⚠️  ${signal || 'SIGTERM'} received. Shutting down gracefully...`));
+        // stop accepting new connections
+        if (server) {
+          await new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+          console.log(chalk.green('✅ HTTP server closed'));
+        }
+
+        // close DB connection
+        try {
+          await mongoose.connection.close(false);
+          console.log(chalk.green('✅ MongoDB connection closed'));
+        } catch (e) {
+          console.warn(chalk.yellow('⚠️ Error closing MongoDB connection:'), e);
+        }
+
         console.log(chalk.green('✅ Graceful shutdown complete'));
         process.exit(0);
-        
-      } catch (error) {
-        console.error(chalk.red('❌ Graceful shutdown failed:'), error);
-        
-        // Force shutdown after 10 seconds
+      } catch (e) {
+        console.error(chalk.red('❌ Graceful shutdown failed:'), e);
         setTimeout(() => {
-          console.error(chalk.red('❌ Could not close connections in time, forcefully shutting down'));
+          console.error(chalk.red('❌ Forcefully exiting'));
           process.exit(1);
         }, 10000);
       }
     };
-    
-    process.on('SIGTERM', gracefulShutdown);
-    process.on('SIGINT', gracefulShutdown);
-    
-    // Handle uncaught exceptions
+
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
     process.on('uncaughtException', (error) => {
       console.error(chalk.red('❌ Uncaught Exception:'), error);
-      gracefulShutdown();
+      // attempt graceful shutdown, then exit
+      gracefulShutdown('uncaughtException');
     });
-    
+
     process.on('unhandledRejection', (reason, promise) => {
       console.error(chalk.red('❌ Unhandled Rejection at:'), promise, 'reason:', reason);
-      // Don't shutdown here, just log
+      // log only; do not crash
     });
-    
   } catch (err) {
-    console.error(chalk.red("❌ Startup Failed:"), err);
+    console.error(chalk.red('❌ Startup Failed:'), err);
+    if (server && server.close) {
+      try { server.close(); } catch (e) { /* ignore */ }
+    }
     process.exit(1);
   }
 }
