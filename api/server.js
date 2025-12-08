@@ -340,7 +340,7 @@ async function startServer() {
     console.log(chalk.green("✅ MongoDB Connected Successfully"));
     
     // Optional: Seed database if needed
-    if (process.env.SEED_DATABASE === 'true') {
+    if (process.env.AUTO_SEED === 'true') {
       console.log(chalk.yellow("🌱 Seeding database..."));
       await seedDatabase();
       console.log(chalk.green("✅ Database seeded successfully"));
