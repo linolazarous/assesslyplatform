@@ -1,5 +1,6 @@
 // src/contexts/SnackbarContext.jsx
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import PropTypes from 'prop-types';
 import { Snackbar, Alert, AlertTitle } from '@mui/material';
 
 /**
@@ -30,38 +31,37 @@ export const SnackbarProvider = ({ children }) => {
     action: null,
     vertical: 'bottom',
     horizontal: 'left',
+    onClose: null,
   });
 
-  const showSnackbar = useCallback((
-    message,
-    severity = 'info',
-    options = {}
-  ) => {
-    setSnackbar({
-      open: true,
-      message,
-      severity,
-      title: options.title || null,
-      autoHideDuration: options.autoHideDuration || 6000,
-      action: options.action || null,
-      vertical: options.vertical || 'bottom',
-      horizontal: options.horizontal || 'left',
-      onClose: options.onClose || null,
-    });
-  }, []);
+  const showSnackbar = useCallback(
+    (message, severity = 'info', options = {}) => {
+      setSnackbar({
+        open: true,
+        message,
+        severity,
+        title: options.title || null,
+        autoHideDuration: options.autoHideDuration ?? 6000,
+        action: options.action || null,
+        vertical: options.vertical || 'bottom',
+        horizontal: options.horizontal || 'left',
+        onClose: options.onClose || null,
+      });
+    },
+    []
+  );
 
   const hideSnackbar = useCallback((event, reason) => {
-    if (reason === 'clickaway') {
-      return;
-    }
-    setSnackbar(prev => ({ ...prev, open: false }));
-  }, []);
+    if (reason === 'clickaway') return;
+    setSnackbar((prev) => ({ ...prev, open: false }));
+    if (snackbar.onClose) snackbar.onClose(event, reason);
+  }, [snackbar.onClose]);
 
   const handleExited = () => {
-    setSnackbar(prev => ({ ...prev, message: '' }));
+    setSnackbar((prev) => ({ ...prev, message: '' }));
   };
 
-  // Pre-configured snackbar methods for common use cases
+  // Pre-configured snackbar methods for convenience
   const showSuccess = useCallback((message, options = {}) => {
     showSnackbar(message, 'success', options);
   }, [showSnackbar]);
@@ -117,20 +117,14 @@ export const SnackbarProvider = ({ children }) => {
           severity={snackbar.severity}
           variant="filled"
           elevation={6}
-          sx={{ 
+          sx={{
             width: '100%',
             alignItems: 'center',
-            '& .MuiAlert-message': {
-              flex: 1,
-            },
+            '& .MuiAlert-message': { flex: 1 },
           }}
           action={snackbar.action}
         >
-          {snackbar.title && (
-            <AlertTitle sx={{ mb: 0.5 }}>
-              {snackbar.title}
-            </AlertTitle>
-          )}
+          {snackbar.title && <AlertTitle sx={{ mb: 0.5 }}>{snackbar.title}</AlertTitle>}
           {snackbar.message}
         </Alert>
       </Snackbar>
