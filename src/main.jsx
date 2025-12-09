@@ -7,8 +7,7 @@ import ErrorBoundary from "./ErrorBoundary.jsx";
 import "./styles/global.css";
 
 /**
- * 🟣 Global Safe Logging Helpers
- * Never break UI if analytics is not configured
+ * 🟣 Safe Global Analytics / Logging (No break if not configured)
  */
 window.trackEvent = (...args) =>
   console.debug("📊 Analytics disabled - trackEvent skipped:", ...args);
@@ -17,20 +16,20 @@ window.trackError = (...args) =>
   console.debug("⚠️ Analytics disabled - trackError skipped:", ...args);
 
 /**
- * 🔐 Global Error Handling
+ * 🔐 Global Error Handlers
  */
 const registerErrorHandlers = () => {
   window.addEventListener("error", (event) => {
-    console.error("Global Error:", event.error || event.message);
+    console.error("Global Error:", event.error || event.message, event);
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    console.error("Unhandled Promise:", event.reason);
+    console.error("Unhandled Promise Rejection:", event.reason, event);
   });
 };
 
 /**
- * 🚦 Application Bootstrap
+ * 🚦 Initialize & Mount Application
  */
 const initializeApp = () => {
   const rootElement = document.getElementById("root");
@@ -48,7 +47,11 @@ const initializeApp = () => {
     root.render(
       <React.StrictMode>
         <HelmetProvider>
-          <ErrorBoundary>
+          <ErrorBoundary
+            enableRecovery={true}          // auto recovery enabled
+            alwaysShowDetails={import.meta.env.DEV} // show details in dev
+            showSupportOptions={true}     // show support buttons
+          >
             <App />
           </ErrorBoundary>
         </HelmetProvider>
@@ -57,20 +60,22 @@ const initializeApp = () => {
 
     console.log("✅ App mounted successfully");
 
-    // Service Worker only in production
+    // ✅ Register Service Worker only in production
     if ("serviceWorker" in navigator && import.meta.env.PROD) {
       navigator.serviceWorker
         .register("/sw.js")
-        .then(() => console.log("SW Registered"))
-        .catch(() => console.warn("SW Failed"));
+        .then(() => console.log("✅ Service Worker Registered"))
+        .catch((err) =>
+          console.warn("⚠️ Service Worker registration failed:", err)
+        );
     }
   } catch (error) {
     console.error("❌ App initialization failed:", error);
     rootElement.innerHTML = `
       <div style="padding:2rem;text-align:center;">
         <h1>⚠️ Application Failed</h1>
-        <p>${error.message}</p>
-        <button onclick="window.location.reload()">Reload</button>
+        <p>${error?.message || "Unknown Error"}</p>
+        <button onclick="window.location.reload()" style="padding:0.5rem 1rem;margin-top:1rem;">Reload</button>
       </div>
     `;
   }
