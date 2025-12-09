@@ -1,5 +1,6 @@
 // src/components/layout/Footer.jsx
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
+import PropTypes from "prop-types";
 import { 
   Box, 
   Typography, 
@@ -31,25 +32,24 @@ import {
   LinkedIn,
   Twitter,
   GitHub,
-  Language,
   ArrowForward,
   CheckCircle,
 } from "@mui/icons-material";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-// FIX: Import directly instead of from barrel file
 import Logo from "../brand/Logo";
 import Wordmark from "../brand/Wordmark";
-const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
+
+const Footer = React.memo(function Footer({ showSuperAdminInfo }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const { isSuperAdmin } = useAuth();
   const [expandedSection, setExpandedSection] = useState(null);
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
-  
-  const currentYear = React.useMemo(() => new Date().getFullYear(), []);
-  
+
+  const currentYear = useMemo(() => new Date().getFullYear(), []);
+
   const platformLinks = [
     { label: "Features", href: "/features" },
     { label: "Pricing", href: "/pricing" },
@@ -58,7 +58,7 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
     { label: "API Documentation", href: "/api-docs" },
     { label: "Status", href: "/status" },
   ];
-  
+
   const resourceLinks = [
     { label: "Documentation", href: "/docs" },
     { label: "Help Center", href: "/help" },
@@ -67,7 +67,7 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
     { label: "Partners", href: "/partners" },
     { label: "Webinars", href: "/webinars" },
   ];
-  
+
   const legalLinks = [
     { label: "Privacy Policy", href: "/privacy" },
     { label: "Terms of Service", href: "/terms" },
@@ -76,7 +76,7 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
     { label: "CCPA", href: "/ccpa" },
     { label: "Security", href: "/security" },
   ];
-  
+
   const companyLinks = [
     { label: "About Us", href: "/about" },
     { label: "Careers", href: "/careers" },
@@ -85,19 +85,18 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
     { label: "Brand", href: "/brand" },
     { label: "Sitemap", href: "/sitemap" },
   ];
-  
+
   const platformStats = [
     { value: "99.9%", label: "Uptime", icon: <Cloud fontSize="small" /> },
     { value: "500+", label: "Organizations", icon: <Business fontSize="small" /> },
     { value: "1M+", label: "Assessments", icon: <CheckCircle fontSize="small" /> },
     { value: "SOC 2", label: "Compliant", icon: <Security fontSize="small" /> },
   ];
-  
+
   const handleSubscribe = async (e) => {
     e.preventDefault();
     if (!email) return;
-    
-    // Here you would typically call your newsletter API
+
     try {
       // await subscribeToNewsletter(email);
       setSubscribed(true);
@@ -107,18 +106,14 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
       console.error("Subscription failed:", error);
     }
   };
-  
+
   const toggleSection = (section) => {
     setExpandedSection(expandedSection === section ? null : section);
   };
-  
+
   const renderLinkColumn = (title, links) => (
     <Box>
-      <Typography 
-        variant="subtitle1" 
-        fontWeight="bold" 
-        sx={{ mb: 2, color: 'text.primary' }}
-      >
+      <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2, color: 'text.primary' }}>
         {title}
       </Typography>
       <Stack spacing={1}>
@@ -130,10 +125,7 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
             sx={{
               textDecoration: 'none',
               fontSize: '0.875rem',
-              '&:hover': {
-                color: 'primary.main',
-                textDecoration: 'underline',
-              },
+              '&:hover': { color: 'primary.main', textDecoration: 'underline' },
             }}
           >
             {link.label}
@@ -142,23 +134,16 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
       </Stack>
     </Box>
   );
-  
+
   const renderMobileSection = (title, links, sectionKey) => (
     <Box sx={{ mb: 2 }}>
       <Button
         fullWidth
         onClick={() => toggleSection(sectionKey)}
-        sx={{
-          justifyContent: 'space-between',
-          color: 'text.primary',
-          textTransform: 'none',
-          py: 1,
-        }}
+        sx={{ justifyContent: 'space-between', color: 'text.primary', textTransform: 'none', py: 1 }}
         endIcon={expandedSection === sectionKey ? <ExpandLess /> : <ExpandMore />}
       >
-        <Typography variant="subtitle1" fontWeight="bold">
-          {title}
-        </Typography>
+        <Typography variant="subtitle1" fontWeight="bold">{title}</Typography>
       </Button>
       <Collapse in={expandedSection === sectionKey}>
         <Stack spacing={1} sx={{ pl: 2, pt: 1 }}>
@@ -172,10 +157,7 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
                 fontSize: '0.875rem',
                 py: 0.5,
                 display: 'block',
-                '&:hover': {
-                  color: 'primary.main',
-                  textDecoration: 'underline',
-                },
+                '&:hover': { color: 'primary.main', textDecoration: 'underline' },
               }}
             >
               {link.label}
@@ -187,45 +169,26 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
   );
 
   return (
-    <Box
-      component="footer"
-      sx={{
-        bgcolor: 'background.paper',
-        borderTop: `1px solid ${theme.palette.divider}`,
-        pt: 6,
-        pb: 3,
-        mt: 'auto',
-      }}
-    >
+    <Box component="footer" sx={{ bgcolor: 'background.paper', borderTop: `1px solid ${theme.palette.divider}`, pt: 6, pb: 3, mt: 'auto' }}>
       {/* Platform Stats */}
       <Container maxWidth="xl" sx={{ mb: 6 }}>
         <Grid container spacing={3} justifyContent="center">
           {platformStats.map((stat, index) => (
             <Grid item xs={6} sm={3} key={index}>
               <Box sx={{ textAlign: 'center', p: 2 }}>
-                <Box sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  color: 'primary.main',
-                  mb: 1,
-                }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'primary.main', mb: 1 }}>
                   {stat.icon}
                 </Box>
-                <Typography variant="h5" fontWeight="bold" color="primary.main">
-                  {stat.value}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {stat.label}
-                </Typography>
+                <Typography variant="h5" fontWeight="bold" color="primary.main">{stat.value}</Typography>
+                <Typography variant="caption" color="text.secondary">{stat.label}</Typography>
               </Box>
             </Grid>
           ))}
         </Grid>
       </Container>
-      
+
       <Divider sx={{ mb: 6 }} />
-      
+
       <Container maxWidth="xl">
         <Grid container spacing={4}>
           {/* Brand & Description */}
@@ -240,78 +203,32 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
                 that enables organizations to create, deliver, and analyze 
                 assessments with powerful analytics and seamless user experiences.
               </Typography>
-              
-              {/* Super Admin Note */}
+
               {showSuperAdminInfo && isSuperAdmin && (
-                <Alert 
-                  severity="info" 
-                  icon={<AdminPanelSettings />}
-                  sx={{ 
-                    mb: 3,
-                    '& .MuiAlert-message': { fontSize: '0.875rem' }
-                  }}
-                >
+                <Alert severity="info" icon={<AdminPanelSettings />} sx={{ mb: 3, '& .MuiAlert-message': { fontSize: '0.875rem' } }}>
                   <Typography variant="body2">
                     <strong>Super Admin View:</strong> You manage all organizations and subscriptions centrally.
                   </Typography>
                 </Alert>
               )}
-              
+
               <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
-                <IconButton 
-                  size="small" 
-                  href="https://twitter.com/assessly"
-                  target="_blank"
-                  sx={{ 
-                    color: 'text.secondary',
-                    '&:hover': { color: '#1DA1F2' }
-                  }}
-                >
-                  <Twitter />
-                </IconButton>
-                <IconButton 
-                  size="small" 
-                  href="https://linkedin.com/company/assessly"
-                  target="_blank"
-                  sx={{ 
-                    color: 'text.secondary',
-                    '&:hover': { color: '#0077B5' }
-                  }}
-                >
-                  <LinkedIn />
-                </IconButton>
-                <IconButton 
-                  size="small" 
-                  href="https://github.com/assessly"
-                  target="_blank"
-                  sx={{ 
-                    color: 'text.secondary',
-                    '&:hover': { color: '#333' }
-                  }}
-                >
-                  <GitHub />
-                </IconButton>
+                <IconButton size="small" href="https://twitter.com/assessly" target="_blank" sx={{ color: 'text.secondary', '&:hover': { color: '#1DA1F2' } }}><Twitter /></IconButton>
+                <IconButton size="small" href="https://linkedin.com/company/assessly" target="_blank" sx={{ color: 'text.secondary', '&:hover': { color: '#0077B5' } }}><LinkedIn /></IconButton>
+                <IconButton size="small" href="https://github.com/assessly" target="_blank" sx={{ color: 'text.secondary', '&:hover': { color: '#333' } }}><GitHub /></IconButton>
               </Stack>
             </Box>
           </Grid>
-          
+
           {/* Desktop Links */}
           <Grid item xs={12} md={8}>
             <Grid container spacing={4}>
-              <Grid item xs={6} sm={3} sx={{ display: { xs: 'none', md: 'block' } }}>
-                {renderLinkColumn("Platform", platformLinks)}
-              </Grid>
-              <Grid item xs={6} sm={3} sx={{ display: { xs: 'none', md: 'block' } }}>
-                {renderLinkColumn("Resources", resourceLinks)}
-              </Grid>
-              <Grid item xs={6} sm={3} sx={{ display: { xs: 'none', md: 'block' } }}>
-                {renderLinkColumn("Legal", legalLinks)}
-              </Grid>
-              <Grid item xs={6} sm={3} sx={{ display: { xs: 'none', md: 'block' } }}>
-                {renderLinkColumn("Company", companyLinks)}
-              </Grid>
+              <Grid item xs={6} sm={3} sx={{ display: { xs: 'none', md: 'block' } }}>{renderLinkColumn("Platform", platformLinks)}</Grid>
+              <Grid item xs={6} sm={3} sx={{ display: { xs: 'none', md: 'block' } }}>{renderLinkColumn("Resources", resourceLinks)}</Grid>
+              <Grid item xs={6} sm={3} sx={{ display: { xs: 'none', md: 'block' } }}>{renderLinkColumn("Legal", legalLinks)}</Grid>
+              <Grid item xs={6} sm={3} sx={{ display: { xs: 'none', md: 'block' } }}>{renderLinkColumn("Company", companyLinks)}</Grid>
             </Grid>
-            
+
             {/* Mobile Links */}
             <Box sx={{ display: { xs: 'block', md: 'none' } }}>
               {renderMobileSection("Platform", platformLinks, "platform")}
@@ -321,23 +238,14 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
             </Box>
           </Grid>
         </Grid>
-        
+
         {/* Newsletter Subscription */}
-        <Box sx={{ 
-          mt: 6, 
-          p: 4, 
-          borderRadius: 2,
-          bgcolor: alpha(theme.palette.primary.main, 0.05),
-          border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
-        }}>
+        <Box sx={{ mt: 6, p: 4, borderRadius: 2, bgcolor: alpha(theme.palette.primary.main, 0.05), border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}` }}>
           <Grid container alignItems="center" spacing={3}>
             <Grid item xs={12} md={6}>
-              <Typography variant="h6" fontWeight="bold" gutterBottom>
-                Stay Updated
-              </Typography>
+              <Typography variant="h6" fontWeight="bold" gutterBottom>Stay Updated</Typography>
               <Typography variant="body2" color="text.secondary">
-                Subscribe to our newsletter for platform updates, new features, 
-                and assessment best practices.
+                Subscribe to our newsletter for platform updates, new features, and assessment best practices.
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
@@ -351,26 +259,13 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    sx={{ 
-                      '& .MuiOutlinedInput-root': {
-                        bgcolor: 'background.paper',
-                      }
-                    }}
+                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
                   />
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    endIcon={<ArrowForward />}
-                    disabled={subscribed}
-                  >
+                  <Button type="submit" variant="contained" endIcon={<ArrowForward />} disabled={subscribed}>
                     {subscribed ? 'Subscribed!' : 'Subscribe'}
                   </Button>
                 </Stack>
-                {subscribed && (
-                  <Typography variant="caption" color="success.main" sx={{ mt: 1, display: 'block' }}>
-                    🎉 Thanks for subscribing! Check your email for confirmation.
-                  </Typography>
-                )}
+                {subscribed && <Typography variant="caption" color="success.main" sx={{ mt: 1, display: 'block' }}>🎉 Thanks for subscribing! Check your email for confirmation.</Typography>}
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
                   By subscribing, you agree to our Privacy Policy and consent to receive updates.
                 </Typography>
@@ -378,92 +273,39 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo = false }) {
             </Grid>
           </Grid>
         </Box>
-        
+
         <Divider sx={{ my: 4 }} />
-        
+
         {/* Bottom Footer */}
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">
-              &copy; {currentYear} Assessly Platform. All rights reserved.
-            </Typography>
+            <Typography variant="body2" color="text.secondary">&copy; {currentYear} Assessly Platform. All rights reserved.</Typography>
             <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
-              <Chip 
-                label="SOC 2 Compliant" 
-                size="small" 
-                icon={<Security />}
-                variant="outlined"
-              />
-              <Chip 
-                label="GDPR Ready" 
-                size="small" 
-                icon={<Security />}
-                variant="outlined"
-              />
-              <Chip 
-                label="HIPAA Compliant" 
-                size="small" 
-                icon={<Security />}
-                variant="outlined"
-              />
+              <Chip label="SOC 2 Compliant" size="small" icon={<Security />} variant="outlined" />
+              <Chip label="GDPR Ready" size="small" icon={<Security />} variant="outlined" />
+              <Chip label="HIPAA Compliant" size="small" icon={<Security />} variant="outlined" />
             </Stack>
           </Grid>
-          
           <Grid item xs={12} sm={6}>
-            <Box sx={{ 
-              display: 'flex', 
-              flexWrap: 'wrap', 
-              justifyContent: { xs: 'flex-start', sm: 'flex-end' },
-              gap: 2,
-              alignItems: 'center'
-            }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: { xs: 'flex-start', sm: 'flex-end' }, gap: 2, alignItems: 'center' }}>
               <Stack direction="row" spacing={2} alignItems="center">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Email fontSize="small" />
-                  <Typography variant="caption" color="text.secondary">
-                    support@assesslyplatform.com
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Support fontSize="small" />
-                  <Typography variant="caption" color="text.secondary">
-                    24/7 Support
-                  </Typography>
-                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Email fontSize="small" /><Typography variant="caption" color="text.secondary">assesslyinc@gmail.com</Typography></Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Support fontSize="small" /><Typography variant="caption" color="text.secondary">24/7 Support</Typography></Box>
               </Stack>
-              
-              <Typography variant="caption" color="text.secondary">
-                v{process.env.REACT_APP_VERSION || '1.0.0'}
-              </Typography>
+              <Typography variant="caption" color="text.secondary">v{process.env.REACT_APP_VERSION || '1.0.0'}</Typography>
             </Box>
           </Grid>
         </Grid>
-        
-        {/* Additional Legal */}
-        <Typography 
-          variant="caption" 
-          color="text.secondary" 
-          sx={{ 
-            mt: 3, 
-            display: 'block',
-            fontSize: '0.75rem',
-            lineHeight: 1.5,
-          }}
-        >
+
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 3, display: 'block', fontSize: '0.75rem', lineHeight: 1.5 }}>
           Assessly is a registered trademark. All other trademarks are property of their respective owners.
           The platform is provided "as is" without warranty of any kind. Use of this platform is subject to our Terms of Service.
           For enterprise inquiries, contact assesslyinc@gmail.com.
         </Typography>
       </Container>
-      
-      {/* Back to Top */}
+
       <Box sx={{ textAlign: 'center', mt: 4 }}>
-        <Button
-          variant="text"
-          size="small"
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          sx={{ color: 'text.secondary' }}
-        >
+        <Button variant="text" size="small" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} sx={{ color: 'text.secondary' }}>
           ↑ Back to top
         </Button>
       </Box>
