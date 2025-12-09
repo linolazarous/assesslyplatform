@@ -1,12 +1,39 @@
 // api/services/emailService.js
-import nodemailer from 'nodemailer';
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import handlebars from 'handlebars';
+import nodemailer from "nodemailer";
+import fs from "fs";
+import fsPromises from "fs/promises";
+import path from "path";
+import handlebars from "handlebars";
+import { fileURLToPath } from "url";
 
+// Support ESM for __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Templates folder
+const templatesPath = path.join(__dirname, "templates/emails");
+
+// Cache for .hbs file reading
+const templateCache = new Map();
+
+/**
+ * Load a .hbs template file once and cache it
+ */
+const loadTemplate = (fileName) => {
+  const filePath = path.join(templatesPath, fileName);
+
+  if (!fs.existsSync(filePath)) {
+    console.error(`❌ Missing email template: ${filePath}`);
+    return "";
+  }
+
+  if (!templateCache.has(fileName)) {
+    const content = fs.readFileSync(filePath, "utf8");
+    templateCache.set(fileName, content);
+  }
+
+  return templateCache.get(fileName);
+};
 
 class EmailService {
   constructor() {
@@ -21,18 +48,16 @@ class EmailService {
     try {
       await this.configureTransporter();
       await this.loadTemplates();
-
       this.initialized = true;
-      console.log("📧 Email Service Ready");
+      console.log("📧 Email Service is ready");
     } catch (error) {
-      console.error("❌ Email initialization failed:", error.message);
+      console.error("❌ Email Service initialization failed:", error.message);
     }
   }
 
   async configureTransporter() {
     if (process.env.NODE_ENV === "production") {
-      console.log("💼 Production email mode enabled");
-
+      console.log("💼 Using Production SMTP");
       this.transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
         port: Number(process.env.SMTP_PORT || 587),
@@ -43,8 +68,7 @@ class EmailService {
         },
       });
     } else {
-      console.log("🧪 Development email mode (Ethereal)");
-
+      console.log("🧪 Development Mode: Using Ethereal Testing");
       const testAccount = await nodemailer.createTestAccount();
       this.transporter = nodemailer.createTransport({
         host: "smtp.ethereal.email",
@@ -63,59 +87,45 @@ class EmailService {
     }
   }
 
+  /**
+   * Load all .hbs templates in /templates/emails
+   */
   async loadTemplates() {
-    const templatesDir = path.resolve(__dirname, "../templates/emails");
-
     try {
-      await fs.access(templatesDir); // ensure directory exists
+      await fsPromises.access(templatesPath);
     } catch {
-      console.warn("⚠️ Email templates folder missing — creating fallback...");
-      await fs.mkdir(templatesDir, { recursive: true });
+      console.warn("⚠️ Templates folder missing. Loading fallback templates...");
       this.createFallbackTemplates();
       return;
     }
 
     try {
-      const files = await fs.readdir(templatesDir);
+      const files = await fsPromises.readdir(templatesPath);
+      const hbsFiles = files.filter((file) => file.endsWith(".hbs"));
 
-      const hbsFiles = files.filter((f) => f.endsWith(".hbs"));
-      if (hbsFiles.length === 0) throw new Error("No template files found");
+      if (hbsFiles.length === 0)
+        throw new Error("No .hbs templates found in folder.");
 
       for (const file of hbsFiles) {
         const name = path.basename(file, ".hbs");
-        const templateContent = await fs.readFile(
-          path.join(templatesDir, file),
-          "utf8"
-        );
-        this.templates.set(name, handlebars.compile(templateContent));
-        console.log(`📄 Loaded email template: ${name}`);
+        const content = loadTemplate(file);
+        this.templates.set(name, handlebars.compile(content));
+        console.log(`📄 Email template loaded: ${name}`);
       }
-    } catch (error) {
-      console.error("⚠️ Failed to load templates → fallback mode:", error.message);
+    } catch (err) {
+      console.error("⚠️ Template loading failure → fallback mode:", err.message);
       this.createFallbackTemplates();
     }
   }
 
+  /**
+   * Minimal fallback templates if folder is missing
+   */
   createFallbackTemplates() {
     const fallback = {
-      "user-welcome": `<h1>Welcome {{name}} to {{organizationName}}</h1>
-      <p>Your role: {{role}}</p>
-      <p>Login: <a href="{{loginUrl}}">Access Platform</a></p>`,
-
-      "organization-invitation": `<h1>You've been invited to {{organizationName}}</h1>
-      <p>Role: {{role}}</p>
-      <p><a href="{{invitationUrl}}">Accept Invitation</a></p>`,
-
-      "contact-confirmation": `<h3>Hello {{name}}</h3>
-      <p>Your message regarding "{{subject}}" has been received.</p>`,
-
-      "password-reset": `<h1>Reset Password</h1>
-      <p>Click: <a href="{{resetUrl}}">Reset Password</a></p>
-      <p>Expires in: {{expiresIn}}</p>`,
-
-      "subscription-invoice": `<h1>Invoice: {{invoiceNumber}}</h1>
-      <p>Total: {{amount}}</p>
-      <p>Due: {{dueDate}}</p>`
+      "user-wwelcome": `<h1>Welcome, {{name}}</h1>`,
+      "organization-invitation": `<h1>Join {{organizationName}}</h1>`,
+      "password-reset": `<h1>Reset your password</h1>`,
     };
 
     Object.entries(fallback).forEach(([name, html]) => {
@@ -124,15 +134,15 @@ class EmailService {
     });
   }
 
-  async sendEmail(options) {
-    await this.init(); // ensure transporter & templates are ready
+  /**
+   * Send email using compiled templates
+   */
+  async sendEmail({ to, subject, template, context = {}, ...rest }) {
+    await this.init();
 
     if (!this.initialized) {
       return { success: false, error: "Email service not initialized" };
     }
-
-    const { to, subject, template, context = {} } = options;
-
     if (!to || !subject || !template) {
       return { success: false, error: "Missing required email fields" };
     }
@@ -142,19 +152,21 @@ class EmailService {
       return { success: false, error: `Template not found: ${template}` };
     }
 
+    // Inject global fields automatically
     const html = templateFn({
       ...context,
       currentYear: new Date().getFullYear(),
-      supportEmail: process.env.SUPPORT_EMAIL || "assesslyinc@gmail.com",
-      platformUrl: process.env.FRONTEND_URL
-        || "https://assessly-gedp.onrender.com",
+      supportEmail: process.env.SUPPORT_EMAIL || "support@example.com",
+      platformUrl: process.env.FRONTEND_URL || "https://example.com",
     });
 
     try {
       const result = await this.transporter.sendMail({
-        from: process.env.EMAIL_FROM || "Assessly <no-reply@assessly.com>",
-        ...options,
+        from: process.env.EMAIL_FROM || "No Reply <no-reply@example.com>",
+        to,
+        subject,
         html,
+        ...rest,
       });
 
       if (process.env.NODE_ENV !== "production") {
@@ -163,11 +175,14 @@ class EmailService {
 
       return { success: true, messageId: result.messageId };
     } catch (err) {
-      console.error("❌ Email send failure:", err.message);
+      console.error("❌ Failed to send email:", err.message);
       return { success: false, error: err.message };
     }
   }
 
+  /**
+   * Check service health & SMTP connection
+   */
   async healthCheck() {
     try {
       await this.init();
@@ -175,7 +190,7 @@ class EmailService {
       return {
         healthy: true,
         provider: process.env.NODE_ENV === "production" ? "SMTP" : "Ethereal",
-        loadedTemplates: Array.from(this.templates.keys()),
+        templates: Array.from(this.templates.keys()),
       };
     } catch (err) {
       return { healthy: false, error: err.message };
