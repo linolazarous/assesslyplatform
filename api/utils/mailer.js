@@ -1,5 +1,12 @@
 // api/utils/mailer.js
 import nodemailer from "nodemailer";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs/promises";
+import handlebars from "handlebars";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 class MailerService {
   constructor() {
@@ -11,6 +18,10 @@ class MailerService {
       lastError: null,
       lastSuccess: null,
     };
+    this.templatesPath = path.join(
+      __dirname,
+      "../services/templates/emails"
+    );
 
     this.init();
   }
@@ -18,7 +29,6 @@ class MailerService {
   async init() {
     const required = ["SMTP_HOST", "SMTP_USER", "SMTP_PASS"];
     const missing = required.filter((v) => !process.env[v]);
-
     if (missing.length) {
       console.warn(
         "⚠️ Email disabled — missing config:",
@@ -52,14 +62,27 @@ class MailerService {
   }
 
   /**
-   * Main Send Email Handler
+   * Load and compile a Handlebars template
    */
-  async send(options) {
+  async loadTemplate(templateName, context = {}) {
+    try {
+      const templateFile = path.join(this.templatesPath, `${templateName}.hbs`);
+      const content = await fs.readFile(templateFile, "utf-8");
+      const compiled = handlebars.compile(content);
+      return compiled(context);
+    } catch (err) {
+      console.error("❌ Template load error:", err.message);
+      throw new Error(`Failed to load email template: ${templateName}`);
+    }
+  }
+
+  /**
+   * Send email
+   */
+  async send({ to, subject, html, text, attachments = [] }) {
     if (!this.isConfigured) {
       return { success: false, skipped: true, error: "Email not configured" };
     }
-
-    const { to, subject, html, text } = options;
     if (!to || !subject || (!html && !text)) {
       return { success: false, error: "Invalid email payload" };
     }
@@ -67,8 +90,11 @@ class MailerService {
     try {
       const res = await this.transporter.sendMail({
         from: process.env.EMAIL_FROM || `Assessly <${process.env.SMTP_USER}>`,
-        ...options,
+        to,
+        subject,
+        html,
         text: text || this.htmlToText(html),
+        attachments,
       });
 
       this.stats.sent++;
@@ -85,16 +111,10 @@ class MailerService {
     }
   }
 
-  /**
-   * Convert HTML → TXT fallback
-   */
   htmlToText(html) {
     return html.replace(/<[^>]+>/g, "").trim();
   }
 
-  /**
-   * Useful for Health Monitoring API
-   */
   status() {
     return {
       configured: this.isConfigured,
@@ -106,33 +126,21 @@ class MailerService {
 export const mailer = new MailerService();
 
 /**
- * Common Templates (Reusable)
+ * Common email templates using Handlebars files
  */
 export const EmailTemplates = {
-  contactConfirmation: ({ name, email, message }) => ({
-    subject: `📩 Inquiry Received - Assessly`,
-    html: `
-      <div style="font-family:Arial;padding:20px">
-        <h2>Hello ${name},</h2>
-        <p>We’ve received your inquiry. Our team will respond shortly.</p>
-        <hr/>
-        <p><strong>Your message:</strong></p>
-        <p>${message}</p>
-        <br/>
-        <p>Thanks for contacting Assessly!</p>
-      </div>
-    `,
-  }),
-  welcome: ({ name, dashboardLink }) => ({
-    subject: "🎉 Welcome to Assessly!",
-    html: `
-      <div style="font-family:Arial;padding:20px">
-        <h2>Welcome ${name}!</h2>
-        <p>Your account is now active.</p>
-        <a href="${dashboardLink}" style="padding:10px 20px;background:#43a047;color:#fff;text-decoration:none;border-radius:5px;">Open Dashboard</a>
-      </div>
-    `,
-  }),
+  userWelcome: async ({ name, dashboardLink }) => {
+    const html = await mailer.loadTemplate("user-welcome", { name, dashboardLink });
+    return { subject: "🎉 Welcome to Assessly!", html };
+  },
+  orgInvitation: async ({ name, orgName, inviteLink }) => {
+    const html = await mailer.loadTemplate("organization-invitation", { name, orgName, inviteLink });
+    return { subject: `📩 Invitation to join ${orgName}`, html };
+  },
+  passwordReset: async ({ name, resetLink }) => {
+    const html = await mailer.loadTemplate("password-reset", { name, resetLink });
+    return { subject: "🔑 Reset Your Password", html };
+  },
 };
 
 export default mailer;
