@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react-swc";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
-  // Required for Render static site hosting
+  // Required when hosting on Render / Netlify / or Root Path Deployment
   base: "/",
 
   plugins: [
@@ -12,8 +12,6 @@ export default defineConfig({
 
     VitePWA({
       registerType: "autoUpdate",
-
-      // Files in /public
       includeAssets: ["favicon.ico", "logo.png"],
 
       manifest: {
@@ -26,14 +24,10 @@ export default defineConfig({
         theme_color: "#3f51b5",
         background_color: "#ffffff",
         display: "standalone",
-
-        // These MUST match your hosting base path
         scope: "/",
         start_url: "/",
-
         orientation: "portrait-primary",
 
-        // Recommended icon set (min 192 & 512)
         icons: [
           {
             src: "/logo.png",
@@ -53,13 +47,11 @@ export default defineConfig({
           "**/*.{js,css,html,ico,png,svg,jpg,jpeg,woff2,webp}"
         ],
 
-        // Allow caching large bundles
-        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6MB
-
-        // PREVENT excessive re-caching on every deploy
+        // Improve app stability during new deploys
         cleanupOutdatedCaches: true,
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6 MB
 
-        // Make sure PWA doesn't break navigation
+        // Ensure offline routing works
         navigateFallback: "/index.html"
       }
     })
@@ -68,7 +60,9 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    sourcemap: false,
+
+    /** 👈 Enable source maps for easier debugging */
+    sourcemap: true,
 
     rollupOptions: {
       output: {
@@ -84,13 +78,17 @@ export default defineConfig({
           charts: ["recharts"]
         }
       }
-    }
+    },
+
+    /** 👈 Fail build on errors to prevent broken deploys */
+    minify: "esbuild",
   },
 
   server: {
     port: 3000,
     host: true,
     headers: {
+      // Prevent caching for easier development refresh
       "Cache-Control": "no-store"
     }
   },
@@ -98,17 +96,5 @@ export default defineConfig({
   preview: {
     port: 4173,
     host: true
-  },
-
-  optimizeDeps: {
-    include: [
-      "react",
-      "react-dom",
-      "@mui/material",
-      "@mui/icons-material",
-      "axios",
-      "dayjs",
-      "recharts"
-    ]
   }
 });
