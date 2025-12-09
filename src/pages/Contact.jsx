@@ -1,29 +1,26 @@
 // src/pages/Contact.jsx
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import {
   Box,
   Container,
   TextField,
   Button,
   Typography,
-  Paper,
-  CircularProgress,
-  Grid,
   Card,
   CardContent,
+  CircularProgress,
+  Grid,
   Alert,
+  Divider,
+  Link as MuiLink,
   useTheme,
   alpha,
-  Divider,
-  IconButton,
-  Link as MuiLink,
 } from '@mui/material';
 import {
   Send,
   CheckCircle,
   Email,
-  Phone,
-  LocationOn,
   Business,
   Schedule,
   ArrowBack,
@@ -34,11 +31,6 @@ import { useNavigate } from 'react-router-dom';
 import { useSnackbar } from '../contexts/SnackbarContext';
 import contactApi from '../api/contactApi';
 import Confetti from 'react-confetti';
-
-/**
- * Contact Page - Get in touch with Assessly Platform support
- * Multi-tenant aware with organization support
- */
 
 // Success Popup Component
 const SuccessPopup = ({ success, onClose }) => {
@@ -70,7 +62,6 @@ const SuccessPopup = ({ success, onClose }) => {
             background: `linear-gradient(135deg, ${alpha(theme.palette.success.light, 0.95)} 0%, ${alpha(theme.palette.success.main, 0.1)} 100%)`,
             backdropFilter: 'blur(20px)',
             border: `1px solid ${alpha(theme.palette.success.main, 0.2)}`,
-            overflow: 'hidden',
           }}
         >
           <CardContent sx={{ p: 4, textAlign: 'center' }}>
@@ -94,19 +85,14 @@ const SuccessPopup = ({ success, onClose }) => {
             </Typography>
             
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-              Thank you for reaching out to Assessly Platform. Our team will get back to you within 24 hours.
+              Thank you for reaching out. Our team will respond within 24 hours.
             </Typography>
             
             <Button
               variant="contained"
               color="success"
               onClick={onClose}
-              sx={{
-                px: 4,
-                py: 1,
-                borderRadius: 2,
-                fontWeight: 600,
-              }}
+              sx={{ px: 4, py: 1, borderRadius: 2, fontWeight: 600 }}
             >
               Close
             </Button>
@@ -115,6 +101,11 @@ const SuccessPopup = ({ success, onClose }) => {
       </motion.div>
     </AnimatePresence>
   );
+};
+
+SuccessPopup.propTypes = {
+  success: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
 };
 
 // Contact Form Component
@@ -135,11 +126,7 @@ const ContactForm = ({ formData, loading, errors, onChange, onSubmit, organizati
             helperText={errors.name}
             required
             disabled={loading}
-            InputProps={{
-              startAdornment: (
-                <Business sx={{ mr: 1, color: theme.palette.action.active }} />
-              ),
-            }}
+            InputProps={{ startAdornment: <Business sx={{ mr: 1, color: theme.palette.action.active }} /> }}
             sx={{ mb: 2 }}
           />
         </Grid>
@@ -156,11 +143,7 @@ const ContactForm = ({ formData, loading, errors, onChange, onSubmit, organizati
             helperText={errors.email}
             required
             disabled={loading}
-            InputProps={{
-              startAdornment: (
-                <Email sx={{ mr: 1, color: theme.palette.action.active }} />
-              ),
-            }}
+            InputProps={{ startAdornment: <Email sx={{ mr: 1, color: theme.palette.action.active }} /> }}
             sx={{ mb: 2 }}
           />
         </Grid>
@@ -174,11 +157,7 @@ const ContactForm = ({ formData, loading, errors, onChange, onSubmit, organizati
             onChange={onChange}
             placeholder={organizationId ? 'Your organization' : 'Company name (optional)'}
             disabled={!!organizationId || loading}
-            InputProps={{
-              startAdornment: (
-                <Business sx={{ mr: 1, color: theme.palette.action.active }} />
-              ),
-            }}
+            InputProps={{ startAdornment: <Business sx={{ mr: 1, color: theme.palette.action.active }} /> }}
             sx={{ mb: 2 }}
           />
         </Grid>
@@ -238,9 +217,7 @@ const ContactForm = ({ formData, loading, errors, onChange, onSubmit, organizati
                 transform: 'translateY(-2px)',
                 boxShadow: theme.shadows[8],
               },
-              '&:disabled': {
-                background: theme.palette.action.disabledBackground,
-              },
+              '&:disabled': { background: theme.palette.action.disabledBackground },
               transition: 'all 0.3s ease',
             }}
           >
@@ -252,80 +229,48 @@ const ContactForm = ({ formData, loading, errors, onChange, onSubmit, organizati
   );
 };
 
+ContactForm.propTypes = {
+  formData: PropTypes.object.isRequired,
+  loading: PropTypes.bool.isRequired,
+  errors: PropTypes.object.isRequired,
+  onChange: PropTypes.func.isRequired,
+  onSubmit: PropTypes.func.isRequired,
+  organizationId: PropTypes.string,
+};
+
 // Contact Information Card
 const ContactInfoCard = () => {
   const theme = useTheme();
 
   const contactInfo = [
-    {
-      icon: <Email color="primary" />,
-      title: 'Email Support',
-      details: 'assesslyinc@gmail.com',
-      subtitle: 'For technical issues and account support',
-    },
-    {
-      icon: <Schedule color="primary" />,
-      title: 'Response Time',
-      details: 'Within 24 hours',
-      subtitle: 'For all support inquiries',
-    },
-    {
-      icon: <Download color="primary" />,
-      title: 'Documentation',
-      details: 'docs.assessly.com',
-      subtitle: 'API docs and user guides',
-    },
+    { icon: <Email color="primary" />, title: 'Email Support', details: 'assesslyinc@gmail.com', subtitle: 'For technical issues and account support' },
+    { icon: <Schedule color="primary" />, title: 'Response Time', details: 'Within 24 hours', subtitle: 'For all support inquiries' },
+    { icon: <Download color="primary" />, title: 'Documentation', details: 'docs.assessly.com', subtitle: 'API docs and user guides' },
   ];
 
   return (
-    <Card
-      elevation={2}
-      sx={{
-        height: '100%',
-        borderRadius: 3,
-        border: `1px solid ${theme.palette.divider}`,
-        background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.05)} 0%, transparent 100%)`,
-      }}
-    >
+    <Card elevation={2} sx={{ height: '100%', borderRadius: 3, border: `1px solid ${theme.palette.divider}`, background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.05)} 0%, transparent 100%)` }}>
       <CardContent sx={{ p: 4 }}>
         <Typography variant="h5" gutterBottom color="primary" sx={{ fontWeight: 600, mb: 3 }}>
           Contact Information
         </Typography>
-        
         <Grid container spacing={3}>
           {contactInfo.map((item, index) => (
             <Grid item xs={12} sm={6} key={index}>
               <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: 2 }}>
-                <Box
-                  sx={{
-                    p: 1.5,
-                    borderRadius: 2,
-                    bgcolor: alpha(theme.palette.primary.main, 0.1),
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
+                <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.primary.main, 0.1), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {item.icon}
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                    {item.title}
-                  </Typography>
-                  <Typography variant="body2" color="text.primary" fontWeight={500}>
-                    {item.details}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {item.subtitle}
-                  </Typography>
+                  <Typography variant="subtitle2" fontWeight={600} gutterBottom>{item.title}</Typography>
+                  <Typography variant="body2" color="text.primary" fontWeight={500}>{item.details}</Typography>
+                  <Typography variant="caption" color="text.secondary">{item.subtitle}</Typography>
                 </Box>
               </Box>
             </Grid>
           ))}
         </Grid>
-        
         <Divider sx={{ my: 3 }} />
-        
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           <strong>Business Hours:</strong> Monday - Friday, 9:00 AM - 6:00 PM EST
         </Typography>
@@ -337,14 +282,12 @@ const ContactInfoCard = () => {
   );
 };
 
-/**
- * Main Contact Page Component
- */
+// Main Contact Page Component
 export default function Contact({ organizationId = null }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const { showSnackbar, showSuccess, showError } = useSnackbar();
-  
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -362,7 +305,6 @@ export default function Contact({ organizationId = null }) {
   const [showConfetti, setShowConfetti] = useState(false);
   const [confettiKey, setConfettiKey] = useState(0);
 
-  // Load user information if available
   useEffect(() => {
     const loadUserInfo = () => {
       try {
@@ -380,44 +322,24 @@ export default function Contact({ organizationId = null }) {
         console.error('Error loading user info:', error);
       }
     };
-
     loadUserInfo();
   }, []);
 
   const handleChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    
-    // Clear error for this field when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: undefined }));
-    }
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: undefined }));
   }, [errors]);
 
   const validateForm = () => {
     const newErrors = {};
-
-    if (!formData.name.trim()) {
-      newErrors.name = 'Name is required';
-    }
-
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
-    }
-
-    if (!formData.subject.trim()) {
-      newErrors.subject = 'Subject is required';
-    } else if (formData.subject.length < 5) {
-      newErrors.subject = 'Subject must be at least 5 characters';
-    }
-
-    if (!formData.message.trim()) {
-      newErrors.message = 'Message is required';
-    } else if (formData.message.length < 20) {
-      newErrors.message = 'Please provide more details (minimum 20 characters)';
-    }
+    if (!formData.name.trim()) newErrors.name = 'Name is required';
+    if (!formData.email.trim()) newErrors.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Please enter a valid email';
+    if (!formData.subject.trim()) newErrors.subject = 'Subject is required';
+    else if (formData.subject.length < 5) newErrors.subject = 'Subject must be at least 5 characters';
+    if (!formData.message.trim()) newErrors.message = 'Message is required';
+    else if (formData.message.length < 20) newErrors.message = 'Please provide more details (minimum 20 characters)';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -425,14 +347,12 @@ export default function Contact({ organizationId = null }) {
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
-
     if (!validateForm()) {
       showSnackbar('Please fix the errors in the form', 'error');
       return;
     }
 
     setLoading(true);
-
     try {
       const response = await contactApi.sendContactMessage({
         ...formData,
@@ -442,15 +362,10 @@ export default function Contact({ organizationId = null }) {
       });
 
       if (response.success) {
-        // Show success state
         setSuccess(true);
         setShowConfetti(true);
         setConfettiKey(prev => prev + 1);
-        
-        // Show success message
         showSuccess('Message sent successfully! We\'ll get back to you soon.');
-        
-        // Reset form
         setFormData({
           name: '',
           email: '',
@@ -461,14 +376,8 @@ export default function Contact({ organizationId = null }) {
           priority: 'normal',
           organizationId,
         });
-        
-        // Auto-hide confetti after 5 seconds
-        setTimeout(() => {
-          setShowConfetti(false);
-        }, 5000);
-      } else {
-        throw new Error(response.message || 'Failed to send message');
-      }
+        setTimeout(() => setShowConfetti(false), 5000);
+      } else throw new Error(response.message || 'Failed to send message');
     } catch (error) {
       console.error('Contact form error:', error);
       showError(error.response?.data?.message || error.message || 'Failed to send message. Please try again.');
@@ -482,14 +391,10 @@ export default function Contact({ organizationId = null }) {
     setShowConfetti(false);
   }, []);
 
-  const handleBack = useCallback(() => {
-    navigate(-1);
-  }, [navigate]);
+  const handleBack = useCallback(() => navigate(-1), [navigate]);
 
-  // Confetti effect (client-side only)
   const renderConfetti = () => {
     if (typeof window === 'undefined' || !showConfetti) return null;
-    
     return (
       <Confetti
         key={confettiKey}
@@ -510,107 +415,38 @@ export default function Contact({ organizationId = null }) {
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.1)} 0%, ${alpha(theme.palette.secondary.light, 0.05)} 100%)`,
-        py: { xs: 4, md: 6 },
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Confetti Effect */}
+    <Box sx={{ minHeight: '100vh', background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.1)} 0%, ${alpha(theme.palette.secondary.light, 0.05)} 100%)`, py: { xs: 4, md: 6 }, position: 'relative', overflow: 'hidden' }}>
       {renderConfetti()}
-      
-      {/* Success Popup */}
       <SuccessPopup success={success} onClose={handleCloseSuccessPopup} />
-      
-      {/* Background decorative elements */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: -100,
-          right: -100,
-          width: 400,
-          height: 400,
-          borderRadius: '50%',
-          background: `radial-gradient(${alpha(theme.palette.primary.light, 0.2)} 0%, transparent 70%)`,
-          zIndex: 0,
-        }}
-      />
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: -100,
-          left: -100,
-          width: 300,
-          height: 300,
-          borderRadius: '50%',
-          background: `radial-gradient(${alpha(theme.palette.secondary.light, 0.15)} 0%, transparent 70%)`,
-          zIndex: 0,
-        }}
-      />
+
+      <Box sx={{ position: 'absolute', top: -100, right: -100, width: 400, height: 400, borderRadius: '50%', background: `radial-gradient(${alpha(theme.palette.primary.light, 0.2)} 0%, transparent 70%)`, zIndex: 0 }} />
+      <Box sx={{ position: 'absolute', bottom: -100, left: -100, width: 300, height: 300, borderRadius: '50%', background: `radial-gradient(${alpha(theme.palette.secondary.light, 0.15)} 0%, transparent 70%)`, zIndex: 0 }} />
 
       <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
-        {/* Header */}
         <Box sx={{ mb: 4 }}>
-          <Button
-            startIcon={<ArrowBack />}
-            onClick={handleBack}
-            sx={{ mb: 2, textTransform: 'none' }}
-          >
-            Back
-          </Button>
-          
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <Typography variant="h3" fontWeight={800} gutterBottom color="primary">
-              Contact Us
-            </Typography>
-            <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
-              We're here to help you succeed with Assessly Platform
-            </Typography>
+          <Button startIcon={<ArrowBack />} onClick={handleBack} sx={{ mb: 2, textTransform: 'none' }}>Back</Button>
+          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+            <Typography variant="h3" fontWeight={800} gutterBottom color="primary">Contact Us</Typography>
+            <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>We're here to help you succeed with Assessly Platform</Typography>
             <Typography variant="body1" color="text.secondary">
-              Whether you have questions about features, need technical support, or want to discuss enterprise solutions, 
-              our team is ready to assist you.
+              Whether you have questions about features, need technical support, or want to discuss enterprise solutions, our team is ready to assist you.
             </Typography>
           </motion.div>
         </Box>
 
-        {/* Main Content */}
         <Grid container spacing={4}>
-          {/* Contact Form */}
           <Grid item xs={12} lg={8}>
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1, duration: 0.5 }}
-            >
-              <Card
-                elevation={6}
-                sx={{
-                  borderRadius: 3,
-                  overflow: 'hidden',
-                  border: `1px solid ${theme.palette.divider}`,
-                }}
-              >
+            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1, duration: 0.5 }}>
+              <Card elevation={6} sx={{ borderRadius: 3, overflow: 'hidden', border: `1px solid ${theme.palette.divider}` }}>
                 <CardContent sx={{ p: { xs: 3, md: 5 } }}>
-                  <Typography variant="h5" gutterBottom color="primary" sx={{ fontWeight: 600, mb: 4 }}>
-                    Send us a Message
-                  </Typography>
-                  
+                  <Typography variant="h5" gutterBottom color="primary" sx={{ fontWeight: 600, mb: 4 }}>Send us a Message</Typography>
                   {organizationId && (
                     <Alert severity="info" sx={{ mb: 3 }}>
                       <Typography variant="body2">
-                        This message will be associated with your organization. 
-                        Our support team will have access to your organization context.
+                        This message will be associated with your organization. Our support team will have access to your organization context.
                       </Typography>
                     </Alert>
                   )}
-                  
                   <ContactForm
                     formData={formData}
                     loading={loading}
@@ -619,29 +455,19 @@ export default function Contact({ organizationId = null }) {
                     onSubmit={handleSubmit}
                     organizationId={organizationId}
                   />
-                  
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 3, textAlign: 'center' }}>
                     By submitting this form, you agree to our{' '}
-                    <MuiLink href="/privacy" color="primary">
-                      Privacy Policy
-                    </MuiLink>
-                    . We'll never share your information with third parties.
+                    <MuiLink href="/privacy" color="primary">Privacy Policy</MuiLink>. We'll never share your information with third parties.
                   </Typography>
                 </CardContent>
               </Card>
             </motion.div>
           </Grid>
 
-          {/* Contact Information */}
           <Grid item xs={12} lg={4}>
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.2, duration: 0.5 }}
-            >
+            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2, duration: 0.5 }}>
               <ContactInfoCard />
-              
-              {/* FAQ/Help Links */}
+
               <Card sx={{ mt: 3, borderRadius: 3 }}>
                 <CardContent sx={{ p: 3 }}>
                   <Typography variant="h6" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
@@ -670,7 +496,6 @@ export default function Contact({ organizationId = null }) {
           </Grid>
         </Grid>
 
-        {/* Status Messages */}
         <Box sx={{ mt: 4, textAlign: 'center' }}>
           <Typography variant="body2" color="text.secondary">
             Average response time: <strong>2 hours</strong> for urgent issues, <strong>24 hours</strong> for general inquiries
