@@ -55,7 +55,7 @@ import {
   Error,
 } from "@mui/icons-material";
 import { useAuth } from "../../contexts/AuthContext";
-import { useSnackbar } from "../../contexts/SnackbarContext"; // assuming your custom SnackbarContext
+import { useSnackbar } from "../../contexts/SnackbarContext";
 import { useNavigate } from "react-router-dom";
 import { useLoading } from "../../hooks/useLoading";
 import LoadingScreen from "../../components/ui/LoadingScreen";
@@ -196,8 +196,6 @@ StatCard.propTypes = {
 
 // Quick Actions Component
 const QuickActions = ({ onAction }) => {
-  const [open, setOpen] = useState(false);
-
   const actions = [
     { icon: <Add />, name: "Create Assessment", action: "create_assessment", color: "primary" },
     { icon: <PeopleIcon />, name: "Add User", action: "add_user", color: "secondary" },
@@ -227,10 +225,302 @@ QuickActions.propTypes = {
 };
 
 export default function AdminDashboard() {
-  // ... your dashboard logic remains the same
-  // No props needed, all data is from context/hooks
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const navigate = useNavigate();
+  const { currentUser, currentOrganization, isSuperAdmin } = useAuth();
+  const { showSnackbar } = useSnackbar();
+  const { startLoading, stopLoading, isLoading } = useLoading(false, {
+    timeout: 15000,
+    onError: (error) => showSnackbar(`Dashboard error: ${error.message}`, "error"),
+  });
 
-  return <Box>{/* ...dashboard JSX... */}</Box>;
+  // State
+  const [activeTab, setActiveTab] = useState(0);
+  const [stats, setStats] = useState({
+    totalOrganizations: 0,
+    totalUsers: 0,
+    totalAssessments: 0,
+    activeAssessments: 0,
+    pendingReviews: 0,
+    systemHealth: 100,
+  });
+  const [recentActivities, setRecentActivities] = useState([]);
+  const [systemHealth, setSystemHealth] = useState([]);
+  const [viewMode, setViewMode] = useState("grid");
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(30000); // 30 seconds
+  const [filterPeriod, setFilterPeriod] = useState("today");
+
+  // Fetch dashboard data
+  const fetchDashboardData = useCallback(async () => {
+    startLoading("Loading dashboard data...");
+    try {
+      const [statsData, healthData, activitiesData] = await Promise.all([
+        fetchAdminStats(filterPeriod),
+        fetchSystemHealth(),
+        fetchRecentActivities(),
+      ]);
+
+      setStats(statsData);
+      setSystemHealth(healthData);
+      setRecentActivities(activitiesData);
+      stopLoading("success", null, "Dashboard data loaded");
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+      stopLoading("error", error, "Failed to load dashboard data");
+    }
+  }, [filterPeriod, startLoading, stopLoading]);
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  // Auto-refresh
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchDashboardData();
+      }
+    }, refreshInterval);
+
+    return () => clearInterval(intervalId);
+  }, [autoRefresh, refreshInterval, fetchDashboardData]);
+
+  // Handle quick actions
+  const handleQuickAction = useCallback((action) => {
+    switch (action) {
+      case "create_assessment":
+        navigate("/assessments/create");
+        break;
+      case "add_user":
+        navigate("/users/create");
+        break;
+      case "create_organization":
+        navigate("/organizations/create");
+        break;
+      case "generate_report":
+        showSnackbar("Report generation started", "info");
+        break;
+      case "system_settings":
+        navigate("/admin/settings");
+        break;
+      default:
+        showSnackbar(`Action ${action} not implemented`, "warning");
+    }
+  }, [navigate, showSnackbar]);
+
+  // Tab change handler
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+  };
+
+  // Toggle view mode
+  const toggleViewMode = () => {
+    setViewMode(prev => prev === "grid" ? "list" : "grid");
+  };
+
+  // env.MODE
+  if (import.meta.env.MODE === "development") {
+  console.log("Development mode - showing debug info");
+  }
+  if (isLoading) {
+    return <LoadingScreen message="Loading admin dashboard..." type="data" fullScreen={false} />;
+  }
+
+  return (
+    <RoleGuard requiredRole="super_admin">
+      <Box sx={{ p: isMobile ? 2 : 3 }}>
+        {/* Header */}
+        <Box sx={{ mb: 4 }}>
+          <Stack direction={isMobile ? "column" : "row"} justifyContent="space-between" alignItems={isMobile ? "flex-start" : "center"} spacing={2}>
+            <Box>
+              <Typography variant="h4" fontWeight="bold" gutterBottom>
+                Admin Dashboard
+              </Typography>
+              <Typography variant="body1" color="text.secondary">
+                Manage platform-wide statistics, organizations, and system health
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={2}>
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={fetchDashboardData}
+                disabled={isLoading}
+              >
+                Refresh
+              </Button>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={autoRefresh}
+                    onChange={(e) => setAutoRefresh(e.target.checked)}
+                  />
+                }
+                label="Auto-refresh"
+              />
+              <IconButton onClick={toggleViewMode}>
+                {viewMode === "grid" ? <ViewList /> : <GridView />}
+              </IconButton>
+            </Stack>
+          </Stack>
+
+          {/* User/Organization info */}
+          <Box sx={{ mt: 2 }}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Chip
+                label={`Super Admin: ${currentUser?.name || "User"}`}
+                icon={<AdminPanelSettings />}
+                color="primary"
+                variant="outlined"
+              />
+              {currentOrganization && (
+                <Chip
+                  label={`Organization: ${currentOrganization.name}`}
+                  icon={<BusinessIcon />}
+                  color="secondary"
+                  variant="outlined"
+                />
+              )}
+              <Chip
+                label={`View: ${viewMode === "grid" ? "Grid" : "List"}`}
+                color="default"
+                variant="outlined"
+              />
+            </Stack>
+          </Box>
+        </Box>
+
+        {/* Tabs */}
+        <Paper sx={{ mb: 4, borderRadius: 2 }}>
+          <Tabs
+            value={activeTab}
+            onChange={handleTabChange}
+            variant={isMobile ? "scrollable" : "standard"}
+            scrollButtons="auto"
+            sx={{ borderBottom: 1, borderColor: "divider" }}
+          >
+            <Tab label="Overview" />
+            <Tab label="Organizations" />
+            <Tab label="Assessments" />
+            <Tab label="Users" />
+            <Tab label="System Health" />
+            <Tab label="Analytics" />
+          </Tabs>
+        </Paper>
+
+        {/* Main Content */}
+        <Box sx={{ mb: 4 }}>
+          {activeTab === 0 && (
+            <Grid container spacing={3}>
+              {/* Stats Cards */}
+              <Grid item xs={12} sm={6} md={4} lg={3}>
+                <StatCard
+                  title="Organizations"
+                  value={stats.totalOrganizations}
+                  icon={<BusinessIcon />}
+                  color="primary"
+                  trend="up"
+                  subtitle="Active organizations"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4} lg={3}>
+                <StatCard
+                  title="Users"
+                  value={stats.totalUsers}
+                  icon={<PeopleIcon />}
+                  color="secondary"
+                  trend="up"
+                  subtitle="Registered users"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4} lg={3}>
+                <StatCard
+                  title="Assessments"
+                  value={stats.totalAssessments}
+                  icon={<AssessmentIcon />}
+                  color="warning"
+                  trend="up"
+                  subtitle="Total assessments"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4} lg={3}>
+                <StatCard
+                  title="System Health"
+                  value={`${stats.systemHealth}%`}
+                  icon={<CheckCircle />}
+                  color={stats.systemHealth > 90 ? "success" : stats.systemHealth > 70 ? "warning" : "error"}
+                  trend="neutral"
+                  subtitle="Overall system status"
+                />
+              </Grid>
+
+              {/* Charts and Widgets */}
+              <Grid item xs={12} lg={8}>
+                <Paper sx={{ p: 3, borderRadius: 2, height: "100%" }}>
+                  <Typography variant="h6" gutterBottom>
+                    Assessment Analytics
+                  </Typography>
+                  <ErrorBoundary componentName="AssessmentChart">
+                    <Suspense fallback={<LoadingFallback message="Loading chart..." />}>
+                      <AssessmentChart period={filterPeriod} />
+                    </Suspense>
+                  </ErrorBoundary>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} lg={4}>
+                <Paper sx={{ p: 3, borderRadius: 2, height: "100%" }}>
+                  <Typography variant="h6" gutterBottom>
+                    System Health
+                  </Typography>
+                  <ErrorBoundary componentName="SystemHealthMonitor">
+                    <Suspense fallback={<LoadingFallback message="Loading system health..." />}>
+                      <SystemHealthMonitor data={systemHealth} />
+                    </Suspense>
+                  </ErrorBoundary>
+                </Paper>
+              </Grid>
+
+              {/* Recent Activities */}
+              <Grid item xs={12}>
+                <Paper sx={{ p: 3, borderRadius: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Recent Activities
+                  </Typography>
+                  <ErrorBoundary componentName="RecentActivities">
+                    <Suspense fallback={<LoadingFallback message="Loading activities..." />}>
+                      <RecentActivities activities={recentActivities} />
+                    </Suspense>
+                  </ErrorBoundary>
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+
+          {/* Other tabs would have their own content here */}
+          {activeTab !== 0 && (
+            <Paper sx={{ p: 3, borderRadius: 2, minHeight: 400 }}>
+              <Typography variant="h6" gutterBottom>
+                Tab {activeTab + 1} Content
+              </Typography>
+              <Typography color="text.secondary">
+                This tab content would be loaded based on the active tab selection.
+              </Typography>
+            </Paper>
+          )}
+        </Box>
+
+        {/* Quick Actions */}
+        {isSuperAdmin && <QuickActions onAction={handleQuickAction} />}
+      </Box>
+    </RoleGuard>
+  );
 }
 
-AdminDashboard.propTypes = {};
+AdminDashboard.propTypes = {
+  // Add any props if needed
+};
