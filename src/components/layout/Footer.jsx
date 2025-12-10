@@ -292,7 +292,8 @@ const Footer = React.memo(function Footer({ showSuperAdminInfo }) {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Email fontSize="small" /><Typography variant="caption" color="text.secondary">assesslyinc@gmail.com</Typography></Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Support fontSize="small" /><Typography variant="caption" color="text.secondary">24/7 Support</Typography></Box>
               </Stack>
-              <Typography variant="caption" color="text.secondary">v{process.env.REACT_APP_VERSION || '1.0.0'}</Typography>
+              {/* FIXED LINE: Changed process.env.REACT_APP_VERSION to import.meta.env.VITE_APP_VERSION */}
+              <Typography variant="caption" color="text.secondary">v{import.meta.env.VITE_APP_VERSION || '1.0.0'}</Typography>
             </Box>
           </Grid>
         </Grid>
