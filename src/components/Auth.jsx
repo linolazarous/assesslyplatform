@@ -379,8 +379,9 @@ export default function Auth({
     }
   }, [validateForm, forgotPassword, formData.email, enqueueSnackbar]);
 
+  // FIXED LINE: Changed process.env.REACT_APP_API_BASE_URL to import.meta.env.VITE_API_BASE_URL
   const handleSocialLogin = useCallback((provider) => {
-    const socialAuthUrl = `${process.env.REACT_APP_API_BASE_URL}/auth/${provider}?redirect=${encodeURIComponent(window.location.origin + redirectTo)}`;
+    const socialAuthUrl = `${import.meta.env.VITE_API_BASE_URL || 'https://assesslyplatform-t49h.onrender.com/api/v1'}/auth/${provider}?redirect=${encodeURIComponent(window.location.origin + redirectTo)}`;
     window.location.href = socialAuthUrl;
   }, [redirectTo]);
 
