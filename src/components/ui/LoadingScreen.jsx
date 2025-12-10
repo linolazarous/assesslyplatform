@@ -13,7 +13,8 @@ import {
   Collapse,
   IconButton,
   Stack,
-  alpha
+  alpha,
+  Button // Added Button import
 } from '@mui/material';
 import {
   Refresh,
@@ -532,7 +533,8 @@ const LoadingScreen = React.memo(({
                 Assessly Platform • Enterprise Assessment Solution
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                v{process.env.REACT_APP_VERSION || '1.0.0'}
+                {/* FIXED LINE: Changed process.env.REACT_APP_VERSION to import.meta.env.VITE_APP_VERSION */}
+                v{import.meta.env.VITE_APP_VERSION || '1.0.0'}
               </Typography>
             </Box>
           </Fade>
