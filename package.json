@@ -6,7 +6,8 @@
   "description": "Assessly - Modern AI-Powered Assessment Platform",
 
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   },
 
   "scripts": {
@@ -14,7 +15,9 @@
     "build": "vite build",
     "serve": "vite preview --host",
     "preview": "vite preview --port 4173 --host",
-    "analyze": "npm run build -- --mode analyze"
+    "start": "vite preview --host --port $PORT",
+    "analyze": "npm run build -- --mode analyze",
+    "install-deps": "npm ci --legacy-peer-deps --verbose"
   },
 
   "dependencies": {
@@ -44,11 +47,18 @@
   "devDependencies": {
     "@babel/preset-react": "^7.24.7",
     "@emotion/babel-plugin": "^11.11.0",
-    "dotenv": "^16.3.1",
-    "vite": "^7.1.12",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react-swc": "^3.5.0",
-    "vite-plugin-pwa": "^1.1.0",
-    "rollup-plugin-visualizer": "^5.12.0"
+    "dotenv": "^16.3.1",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react": "^7.34.1",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-react-refresh": "^0.4.7",
+    "rollup-plugin-visualizer": "^5.12.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.8",
+    "vite-plugin-pwa": "^0.17.4"
   },
 
   "browserslist": {
