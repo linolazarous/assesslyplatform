@@ -57,7 +57,8 @@ export const fetchRevenueData = async (params = {}) => {
     console.error('[RevenueAPI] Fetch revenue data error:', error);
     
     // Development mock data
-    if (process.env.NODE_ENV === 'development') {
+    // FIXED: Changed process.env.NODE_ENV to import.meta.env.MODE
+    if (import.meta.env.MODE === 'development') {
       console.warn('[RevenueAPI] Using mock revenue data for development');
       return generateMockRevenueData(params);
     }
@@ -106,7 +107,8 @@ export const fetchRevenueAnalytics = async (params = {}) => {
   } catch (error) {
     console.error('[RevenueAPI] Fetch revenue analytics error:', error);
     
-    if (process.env.NODE_ENV === 'development') {
+    // FIXED: Changed process.env.NODE_ENV to import.meta.env.MODE
+    if (import.meta.env.MODE === 'development') {
       console.warn('[RevenueAPI] Using mock revenue analytics for development');
       return generateMockRevenueAnalytics(params);
     }
