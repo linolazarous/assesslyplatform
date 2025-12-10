@@ -61,7 +61,7 @@ const userActivityApi = {
       console.error('[UserActivityAPI] Fetch user activities error:', error);
       
       // Development mock data
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.MODE === 'development') {
         console.warn('[UserActivityAPI] Using mock user activities for development');
         return generateMockUserActivities(params);
       }
@@ -201,7 +201,7 @@ const userActivityApi = {
     } catch (error) {
       console.error('[UserActivityAPI] Fetch user activity analytics error:', error);
       
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.MODE === 'development') {
         console.warn('[UserActivityAPI] Using mock activity analytics for development');
         return generateMockActivityAnalytics(params);
       }
@@ -484,7 +484,7 @@ const userActivityApi = {
    * @returns {string} Icon name
    */
   getActivityIcon: (activityType) => {
-    const activityTypes = systemApi.getActivityTypes();
+    const activityTypes = userActivityApi.getActivityTypes();
     const type = activityTypes.find(t => t.value === activityType);
     return type?.icon || 'activity';
   },
