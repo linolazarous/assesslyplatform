@@ -34,7 +34,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Stack, // ADDED THIS IMPORT - This was missing!
+  Stack,
 } from "@mui/material";
 import {
   Menu,
@@ -214,18 +214,21 @@ export default function MainLayout({
       setMobileOpen(false);
     }
     
-    // Track navigation performance
-    const navigationStart = performance.now();
-    const cleanup = () => {
-      const navigationEnd = performance.now();
-      const duration = navigationEnd - navigationStart;
+    // Track navigation performance - Only in development mode
+    if (import.meta.env.MODE === 'development') {
+      const navigationStart = performance.now();
+      const cleanup = () => {
+        const navigationEnd = performance.now();
+        const duration = navigationEnd - navigationStart;
+        
+        // FIXED: Only show warning in development mode with adjusted threshold
+        if (duration > 2000) { // Increased from 1000ms to 2000ms
+          console.warn(`Slow navigation detected: ${duration.toFixed(2)}ms to ${location.pathname}`);
+        }
+      };
       
-      if (duration > 1000) {
-        console.warn(`Slow navigation detected: ${duration.toFixed(2)}ms to ${location.pathname}`);
-      }
-    };
-    
-    return cleanup;
+      return cleanup;
+    }
   }, [location.pathname, isMobile, mobileOpen]);
 
   // Handle keyboard shortcuts
@@ -499,7 +502,6 @@ export default function MainLayout({
       <CssBaseline />
       
       {/* Performance monitor (development only) */}
-      {/* FIXED LINE: Changed process.env.NODE_ENV to import.meta.env.MODE */}
       {import.meta.env.MODE === 'development' && (
         <Box
           ref={performanceMonitorRef}
@@ -749,7 +751,6 @@ export default function MainLayout({
                   </Typography>
                 </Grid>
                 <Grid item xs={12} sm={6} sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
-                  {/* FIXED: Added Stack import above, now using Stack component */}
                   <Stack direction="row" spacing={1} justifyContent="flex-end">
                     <Typography
                       variant="caption"
