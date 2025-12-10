@@ -62,7 +62,7 @@ export const fetchSystemHealth = async (params = {}) => {
     console.error('[SystemAPI] Fetch system health error:', error);
     
     // Development mock data
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.MODE === 'development') {
       console.warn('[SystemAPI] Using mock system health data for development');
       return generateMockSystemHealth(params);
     }
@@ -112,7 +112,7 @@ export const fetchServiceStatus = async (params = {}) => {
   } catch (error) {
     console.error('[SystemAPI] Fetch service status error:', error);
     
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.MODE === 'development') {
       console.warn('[SystemAPI] Using mock service status data for development');
       return generateMockServiceStatus(params);
     }
