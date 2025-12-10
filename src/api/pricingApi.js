@@ -45,7 +45,8 @@ const pricingApi = {
       console.error('[PricingAPI] Get plans error:', error);
       
       // Development mock data
-      if (process.env.NODE_ENV === 'development') {
+      // FIXED: Changed process.env.NODE_ENV to import.meta.env.MODE
+      if (import.meta.env.MODE === 'development') {
         console.warn('[PricingAPI] Using mock pricing data for development');
         return generateMockPlans(params);
       }
@@ -78,7 +79,8 @@ const pricingApi = {
     } catch (error) {
       console.error('[PricingAPI] Get plan error:', error);
       
-      if (process.env.NODE_ENV === 'development') {
+      // FIXED: Changed process.env.NODE_ENV to import.meta.env.MODE
+      if (import.meta.env.MODE === 'development') {
         console.warn('[PricingAPI] Using mock plan data for development');
         return generateMockPlan(planId, options);
       }
@@ -173,7 +175,8 @@ const pricingApi = {
     } catch (error) {
       console.error('[PricingAPI] Get organization subscription error:', error);
       
-      if (process.env.NODE_ENV === 'development') {
+      // FIXED: Changed process.env.NODE_ENV to import.meta.env.MODE
+      if (import.meta.env.MODE === 'development') {
         console.warn('[PricingAPI] Using mock subscription data for development');
         return generateMockSubscription(organizationId, options);
       }
