@@ -6,7 +6,7 @@
 
 // Performance monitoring configuration
 const PERF_CONFIG = {
-  ENABLE_METRICS: process.env.NODE_ENV === 'development',
+  ENABLE_METRICS: import.meta.env.MODE === 'development',
   LONG_TASK_THRESHOLD: 50, // milliseconds
   MEMORY_CHECK_INTERVAL: 30000, // 30 seconds
   IDLE_TIMEOUT: 5000, // 5 seconds
@@ -806,7 +806,7 @@ const trackPerformance = (metric, data) => {
   }
   
   // Send to analytics endpoint in production
-  if (process.env.NODE_ENV === 'production') {
+  if (import.meta.env.MODE === 'production') {
     // Debounce sending to prevent spam
     const sendMetrics = debounce(() => {
       navigator.sendBeacon?.('/api/performance-metrics', JSON.stringify(entry));
