@@ -34,6 +34,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Stack, // ADDED THIS IMPORT - This was missing!
 } from "@mui/material";
 import {
   Menu,
@@ -748,6 +749,7 @@ export default function MainLayout({
                   </Typography>
                 </Grid>
                 <Grid item xs={12} sm={6} sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
+                  {/* FIXED: Added Stack import above, now using Stack component */}
                   <Stack direction="row" spacing={1} justifyContent="flex-end">
                     <Typography
                       variant="caption"
