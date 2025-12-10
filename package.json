@@ -17,7 +17,8 @@
     "preview": "vite preview --port 4173 --host",
     "start": "vite preview --host --port $PORT",
     "analyze": "npm run build -- --mode analyze",
-    "render-build": "npm ci --legacy-peer-deps && npm run build"
+    "render-build": "npm ci --legacy-peer-deps && npm run build",
+    "clean-install": "rm -rf node_modules package-lock.json && npm install --legacy-peer-deps"
   },
 
   "dependencies": {
@@ -28,6 +29,7 @@
     "@tanstack/react-query": "^5.62.3",
     "@vitejs/plugin-react-swc": "^3.5.0",
     "axios": "^1.7.2",
+    "chart.js": "^4.4.1",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.13",
     "framer-motion": "^12.23.24",
@@ -37,6 +39,7 @@
     "notistack": "^3.0.1",
     "prop-types": "^15.8.1",
     "react": "^18.3.1",
+    "react-chartjs-2": "^5.2.0",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.1",
     "react-confetti": "^6.1.0",
@@ -52,6 +55,7 @@
     "@emotion/babel-plugin": "^11.11.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@types/chart.js": "^2.9.41",
     "dotenv": "^16.3.1",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.1",
