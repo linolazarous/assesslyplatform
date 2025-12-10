@@ -17,7 +17,7 @@
     "preview": "vite preview --port 4173 --host",
     "start": "vite preview --host --port $PORT",
     "analyze": "npm run build -- --mode analyze",
-    "install-deps": "npm ci --legacy-peer-deps --verbose"
+    "render-build": "npm ci --legacy-peer-deps && npm run build"
   },
 
   "dependencies": {
@@ -26,6 +26,7 @@
     "@mui/icons-material": "^5.16.7",
     "@mui/material": "^5.16.7",
     "@tanstack/react-query": "^5.62.3",
+    "@vitejs/plugin-react-swc": "^3.5.0",
     "axios": "^1.7.2",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.13",
@@ -41,6 +42,8 @@
     "react-confetti": "^6.1.0",
     "react-helmet-async": "^2.0.4",
     "recharts": "^2.15.0",
+    "vite": "^5.2.8",
+    "vite-plugin-pwa": "^0.17.4",
     "xlsx": "^0.18.5"
   },
 
@@ -49,16 +52,13 @@
     "@emotion/babel-plugin": "^11.11.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react-swc": "^3.5.0",
     "dotenv": "^16.3.1",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.1",
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.7",
     "rollup-plugin-visualizer": "^5.12.0",
-    "typescript": "^5.4.5",
-    "vite": "^5.2.8",
-    "vite-plugin-pwa": "^0.17.4"
+    "typescript": "^5.4.5"
   },
 
   "browserslist": {
