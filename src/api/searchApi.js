@@ -80,7 +80,8 @@ const searchApi = {
         userId: TokenManager.getUserInfo()?.id,
         organizationId: TokenManager.getTenantId(),
         timestamp: new Date().toISOString(),
-        includeDebug: process.env.NODE_ENV === 'development'
+        // FIXED: Changed process.env.NODE_ENV to import.meta.env.MODE
+        includeDebug: import.meta.env.MODE === 'development'
       });
       
       validateResponse(response.data, ['results', 'queryAnalysis', 'suggestions']);
