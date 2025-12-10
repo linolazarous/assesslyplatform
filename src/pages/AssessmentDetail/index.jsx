@@ -59,7 +59,7 @@ const ShareAssessmentDialog = lazy(() =>
 );
 
 const DeleteConfirmationDialog = lazy(() => 
-  import('../../components/common/DeleteConfirmationDialog')
+  import('../../components/assessments/DeleteConfirmationDialog')
 );
 
 // Tab Panel Component
