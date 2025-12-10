@@ -19,17 +19,86 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" />
 
     <style>
-      body { margin: 0; font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #111827; }
-      #root { min-height: 100vh; }
-      #loading-fallback { display:flex; align-items:center; justify-content:center; height:100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:#fff; }
-      .react-loaded #loading-fallback { display:none; }
-      * { box-sizing: border-box; }
+      /* Optimized Critical CSS */
+      * { 
+        margin: 0; 
+        padding: 0; 
+        box-sizing: border-box; 
+      }
+      
+      html {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      
+      body { 
+        font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif; 
+        background: #f8fafc; 
+        color: #111827; 
+        line-height: 1.5;
+        overflow-x: hidden;
+      }
+      
+      #root { 
+        min-height: 100vh; 
+      }
+      
+      #loading-fallback { 
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+        color: #fff;
+        z-index: 9999;
+        transition: opacity 0.3s ease, visibility 0.3s ease;
+      }
+      
+      .react-loaded #loading-fallback { 
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      
+      /* Loading animation */
+      .loading-spinner {
+        display: inline-block;
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: #fff;
+        animation: spin 1s ease-in-out infinite;
+        margin-bottom: 1rem;
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      
+      /* Content fade-in */
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      
+      .fade-in {
+        animation: fadeIn 0.5s ease-out;
+      }
     </style>
+    
+    <!-- Preload main script for faster loading -->
+    <link rel="modulepreload" href="/src/main.jsx" as="script" />
   </head>
   <body>
     <div id="loading-fallback">
-      <div style="text-align:center;padding:2rem;">
-        <h1 style="margin:0;font-size:2rem">Assessly</h1>
+      <div style="text-align:center;padding:2rem;" class="fade-in">
+        <div class="loading-spinner"></div>
+        <h1 style="margin:0;font-size:2rem;font-weight:600">Assessly</h1>
         <p style="margin-top:0.5rem;opacity:0.85">Loading…</p>
       </div>
     </div>
@@ -38,15 +107,46 @@
 
     <script type="module" src="/src/main.jsx"></script>
     <script>
-      // Small safety fallback if React hydrates after a long time:
+      // Enhanced loading fallback with better UX
       window.addEventListener('load', () => {
-        setTimeout(() => {
-          const loadingFallback = document.getElementById('loading-fallback');
-          if (loadingFallback) {
-            loadingFallback.style.display = 'none';
+        const loadingFallback = document.getElementById('loading-fallback');
+        const root = document.getElementById('root');
+        
+        // Check if React already hydrated
+        if (root.children.length > 0) {
+          document.body.classList.add('react-loaded');
+          return;
+        }
+        
+        // Set maximum wait time
+        const maxWaitTimeout = setTimeout(() => {
+          document.body.classList.add('react-loaded');
+        }, 5000);
+        
+        // Watch for React hydration
+        const observer = new MutationObserver(() => {
+          if (root.children.length > 0) {
             document.body.classList.add('react-loaded');
+            clearTimeout(maxWaitTimeout);
+            observer.disconnect();
+          }
+        });
+        
+        observer.observe(root, { childList: true, subtree: true });
+        
+        // Minimum show time for branding
+        setTimeout(() => {
+          if (!document.body.classList.contains('react-loaded')) {
+            document.body.classList.add('react-loaded');
+            observer.disconnect();
+            clearTimeout(maxWaitTimeout);
           }
         }, 300);
+      });
+      
+      // Global error handler
+      window.addEventListener('error', (event) => {
+        console.error('Global error:', event.error);
       });
     </script>
   </body>
