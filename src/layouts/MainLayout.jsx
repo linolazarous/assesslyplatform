@@ -24,6 +24,16 @@ import {
   Badge,
   Drawer,
   SwipeableDrawer,
+  Grid,
+  List,
+  ListItem,
+  ListItemText,
+  Button,
+  Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import {
   Menu,
@@ -488,7 +498,8 @@ export default function MainLayout({
       <CssBaseline />
       
       {/* Performance monitor (development only) */}
-      {process.env.NODE_ENV === 'development' && (
+      {/* FIXED LINE: Changed process.env.NODE_ENV to import.meta.env.MODE */}
+      {import.meta.env.MODE === 'development' && (
         <Box
           ref={performanceMonitorRef}
           sx={{
