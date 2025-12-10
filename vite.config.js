@@ -1,12 +1,11 @@
-// vite.config.js
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import { VitePWA } from "vite-plugin-pwa";
-import { visualizer } from "rollup-plugin-visualizer";
 import path from "path";
 
 export default defineConfig(({ mode }) => {
   const isProduction = mode === "production";
+  const isAnalyze = mode === "analyze";
   
   return {
     // Required when hosting on Render / Netlify / or Root Path Deployment
@@ -119,23 +118,15 @@ export default defineConfig(({ mode }) => {
           type: "module",
           navigateFallback: "index.html"
         }
-      }),
-
-      // Bundle analyzer for production builds (optional)
-      isProduction && visualizer({
-        filename: "./dist/stats.html",
-        open: false,
-        gzipSize: true,
-        brotliSize: true,
       })
-    ].filter(Boolean),
+    ],
 
     build: {
       outDir: "dist",
       emptyOutDir: true,
 
       /** 👈 Enable source maps for easier debugging */
-      sourcemap: true,
+      sourcemap: isProduction ? false : true,
 
       rollupOptions: {
         output: {
