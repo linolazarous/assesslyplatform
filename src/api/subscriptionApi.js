@@ -47,7 +47,7 @@ const subscriptionApi = {
       console.error('[SubscriptionAPI] Fetch subscription plans error:', error);
       
       // Development mock data
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.MODE === 'development') {
         console.warn('[SubscriptionAPI] Using mock subscription plans for development');
         return generateMockSubscriptionPlans(params);
       }
@@ -105,7 +105,7 @@ const subscriptionApi = {
     } catch (error) {
       console.error('[SubscriptionAPI] Get current subscription error:', error);
       
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.MODE === 'development') {
         console.warn('[SubscriptionAPI] Using mock subscription data for development');
         return generateMockSubscription(options.organizationId || TokenManager.getTenantId(), options);
       }
