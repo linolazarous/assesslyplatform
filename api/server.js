@@ -31,9 +31,6 @@ const __dirname = path.dirname(__filename);
 // Import your main router that consolidates all routes
 import mainRouter from './routes/index.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const app = express();
 app.set('trust proxy', 1);
 
@@ -52,6 +49,64 @@ for (const name of requiredEnvVars) {
     console.error(chalk.red(`❌ Missing required environment variable: ${name}`));
     process.exit(1);
   }
+}
+
+// Helper function to get available endpoints
+function getAvailableEndpoints() {
+  return {
+    authentication: {
+      login: 'POST /api/v1/auth/login',
+      register: 'POST /api/v1/auth/register',
+      logout: 'POST /api/v1/auth/logout',
+      refresh: 'POST /api/v1/auth/refresh',
+      forgotPassword: 'POST /api/v1/auth/forgot-password',
+      resetPassword: 'POST /api/v1/auth/reset-password',
+      verifyEmail: 'POST /api/v1/auth/verify-email'
+    },
+    users: {
+      getProfile: 'GET /api/v1/users/profile',
+      updateProfile: 'PUT /api/v1/users/profile',
+      listUsers: 'GET /api/v1/users',
+      getUser: 'GET /api/v1/users/:id',
+      updateUser: 'PUT /api/v1/users/:id',
+      deleteUser: 'DELETE /api/v1/users/:id'
+    },
+    organizations: {
+      create: 'POST /api/v1/organizations',
+      list: 'GET /api/v1/organizations',
+      get: 'GET /api/v1/organizations/:id',
+      update: 'PUT /api/v1/organizations/:id',
+      delete: 'DELETE /api/v1/organizations/:id',
+      invite: 'POST /api/v1/organizations/:id/invite',
+      members: 'GET /api/v1/organizations/:id/members'
+    },
+    assessments: {
+      create: 'POST /api/v1/assessments',
+      list: 'GET /api/v1/assessments',
+      get: 'GET /api/v1/assessments/:id',
+      update: 'PUT /api/v1/assessments/:id',
+      delete: 'DELETE /api/v1/assessments/:id',
+      publish: 'POST /api/v1/assessments/:id/publish',
+      responses: 'GET /api/v1/assessments/:id/responses'
+    },
+    subscriptions: {
+      plans: 'GET /api/v1/subscriptions/plans',
+      subscribe: 'POST /api/v1/subscriptions/subscribe',
+      current: 'GET /api/v1/subscriptions/current',
+      invoices: 'GET /api/v1/subscriptions/invoices'
+    },
+    system: {
+      health: 'GET /health',
+      monitor: 'GET /api/monitor',
+      apiHealth: 'GET /api/v1/health',
+      status: 'GET /api/v1/status',
+      features: 'GET /api/v1/features'
+    },
+    contact: {
+      sendMessage: 'POST /api/v1/contact',
+      listMessages: 'GET /api/v1/contact (admin only)'
+    }
+  };
 }
 
 // ==================== Core Middleware Setup ====================
@@ -429,16 +484,7 @@ async function setupSwagger() {
           success: true,
           message: 'API Documentation',
           note: 'API documentation is disabled in production for security. Enable with ENABLE_API_DOCS=true',
-          endpoints: {
-            authentication: '/api/v1/auth/*',
-            users: '/api/v1/users/*',
-            organizations: '/api/v1/organizations/*',
-            assessments: '/api/v1/assessments/*',
-            subscriptions: '/api/v1/subscriptions/*',
-            contact: '/api/v1/contact/*',
-            monitoring: '/api/monitor',
-            health: '/health'
-          },
+          endpoints: getAvailableEndpoints(),
           requestId: req.id,
           timestamp: new Date().toISOString()
         });
@@ -611,67 +657,6 @@ async function setupSwagger() {
   }
 }
 
-// Helper function to get available endpoints
-function getAvailableEndpoints() {
-  return {
-    authentication: {
-      login: 'POST /api/v1/auth/login',
-      register: 'POST /api/v1/auth/register',
-      logout: 'POST /api/v1/auth/logout',
-      refresh: 'POST /api/v1/auth/refresh',
-      forgotPassword: 'POST /api/v1/auth/forgot-password',
-      resetPassword: 'POST /api/v1/auth/reset-password',
-      verifyEmail: 'POST /api/v1/auth/verify-email'
-    },
-    users: {
-      getProfile: 'GET /api/v1/users/profile',
-      updateProfile: 'PUT /api/v1/users/profile',
-      listUsers: 'GET /api/v1/users',
-      getUser: 'GET /api/v1/users/:id',
-      updateUser: 'PUT /api/v1/users/:id',
-      deleteUser: 'DELETE /api/v1/users/:id'
-    },
-    organizations: {
-      create: 'POST /api/v1/organizations',
-      list: 'GET /api/v1/organizations',
-      get: 'GET /api/v1/organizations/:id',
-      update: 'PUT /api/v1/organizations/:id',
-      delete: 'DELETE /api/v1/organizations/:id',
-      invite: 'POST /api/v1/organizations/:id/invite',
-      members: 'GET /api/v1/organizations/:id/members'
-    },
-    assessments: {
-      create: 'POST /api/v1/assessments',
-      list: 'GET /api/v1/assessments',
-      get: 'GET /api/v1/assessments/:id',
-      update: 'PUT /api/v1/assessments/:id',
-      delete: 'DELETE /api/v1/assessments/:id',
-      publish: 'POST /api/v1/assessments/:id/publish',
-      responses: 'GET /api/v1/assessments/:id/responses'
-    },
-    subscriptions: {
-      plans: 'GET /api/v1/subscriptions/plans',
-      subscribe: 'POST /api/v1/subscriptions/subscribe',
-      current: 'GET /api/v1/subscriptions/current',
-      invoices: 'GET /api/v1/subscriptions/invoices'
-    },
-    system: {
-      health: 'GET /health',
-      monitor: 'GET /api/monitor',
-      apiHealth: 'GET /api/v1/health',
-      status: 'GET /api/v1/status',
-      features: 'GET /api/v1/features'
-    },
-    contact: {
-      sendMessage: 'POST /api/v1/contact',
-      listMessages: 'GET /api/v1/contact (admin only)'
-    }
-  };
-}
-
-// Initialize Swagger
-setupSwagger();
-
 // ==================== SPA Fallback for Frontend Routes ====================
 // This handles all frontend routes and serves the index.html
 // so that React Router can take over client-side routing
@@ -789,7 +774,9 @@ app.get('*', (req, res, next) => {
 });
 
 // ==================== 404 Handler ====================
+// IMPORTANT: This must come AFTER the SPA fallback
 app.use((req, res) => {
+  // This will only be reached if the route wasn't handled by SPA fallback
   if (req.path.startsWith('/api/v1')) {
     return res.status(404).json({
       success: false,
@@ -881,6 +868,9 @@ async function startServer() {
         console.warn(chalk.yellow('⚠️ Database seeding skipped:'), seedError.message);
       }
     }
+
+    // Initialize Swagger AFTER all routes are defined
+    await setupSwagger();
 
     server = app.listen(PORT, '0.0.0.0', () => {
       console.log(chalk.green(`\n🚀 Assessly Platform API Server Running`));
