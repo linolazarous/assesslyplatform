@@ -1,13 +1,39 @@
 // src/ErrorBoundary.jsx
-import React, { useState, useEffect, useRef, useCallback, memo, createContext, useContext } from 'react';
+import React, { useState, useEffect, useRef, useCallback, createContext, useContext, memo } from 'react';
 import PropTypes from 'prop-types';
 import {
-  Box, Typography, Button, Container, Paper, Alert, Stack, Divider, CircularProgress,
-  Chip, Link, alpha, Collapse, Tooltip, Fade, Zoom, useTheme
+  Box, 
+  Typography, 
+  Button, 
+  Container, 
+  Paper, 
+  Alert, 
+  Stack, 
+  Divider,
+  CircularProgress,
+  Chip, 
+  Link, 
+  alpha, 
+  Collapse, 
+  Tooltip, 
+  Fade, 
+  Zoom, 
+  useTheme
 } from '@mui/material';
 import {
-  Refresh, Home, ContentCopy, ExpandMore, ExpandLess, BugReport,
-  AutoFixHigh, ErrorOutline, CheckCircle, Warning, Info, Send, SupportAgent
+  Refresh, 
+  Home, 
+  ContentCopy, 
+  ExpandMore, 
+  ExpandLess, 
+  BugReport,
+  AutoFixHigh, 
+  ErrorOutline, 
+  CheckCircle, 
+  Warning, 
+  Info, 
+  Send, 
+  SupportAgent
 } from '@mui/icons-material';
 
 // ===================== CONSTANTS =====================
@@ -55,7 +81,6 @@ const getBrowserInfo = () => {
       online: navigator.onLine,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       cookies: navigator.cookieEnabled,
-      jsEnabled: true,
     };
   } catch {
     return { error: 'Failed to get browser info' };
@@ -64,75 +89,117 @@ const getBrowserInfo = () => {
 
 export const categorizeError = (error) => {
   if (!error) return ERROR_CATEGORIES.UNKNOWN;
-  const { name = '', message = '' } = error;
+  
+  const errorName = error.name || '';
+  const errorMessage = String(error.message || '').toLowerCase();
 
-  if (name.includes('Network') || message.includes('Network') || message.includes('fetch') || message.includes('offline')) {
-    return ERROR_CATEGORIES.NETWORK;
-  }
-  if (name.includes('ChunkLoad') || message.includes('chunk') || message.includes('dynamic import')) {
+  if (errorName.includes('ChunkLoad') || errorMessage.includes('chunk') || errorMessage.includes('loading chunk')) {
     return ERROR_CATEGORIES.CHUNK;
   }
-  if (name.includes('Syntax') || message.includes('Unexpected token') || message.includes('Invalid or unexpected token')) {
+  
+  if (errorName.includes('Network') || errorMessage.includes('network') || errorMessage.includes('fetch')) {
+    return ERROR_CATEGORIES.NETWORK;
+  }
+  
+  if (errorName.includes('Syntax') || errorMessage.includes('unexpected token')) {
     return ERROR_CATEGORIES.SYNTAX;
   }
-  if (message.includes('API') || message.includes('CORS') || message.includes('auth') || message.includes('token')) {
+  
+  if (errorMessage.includes('api') || errorMessage.includes('cors') || errorMessage.includes('auth')) {
     return ERROR_CATEGORIES.INTEGRATION;
   }
-  if (name.includes('TypeError') || name.includes('ReferenceError') || name.includes('RangeError')) {
+  
+  if (errorName.includes('TypeError') || errorName.includes('ReferenceError')) {
     return ERROR_CATEGORIES.RUNTIME;
   }
+  
   return ERROR_CATEGORIES.UNKNOWN;
 };
 
 export const isRecoverableError = (error) => {
   const category = categorizeError(error);
-  return [ERROR_CATEGORIES.NETWORK, ERROR_CATEGORIES.CHUNK, ERROR_CATEGORIES.INTEGRATION].includes(category);
+  return [
+    ERROR_CATEGORIES.NETWORK, 
+    ERROR_CATEGORIES.CHUNK, 
+    ERROR_CATEGORIES.INTEGRATION
+  ].includes(category);
 };
 
 export const getRecoveryStrategy = (error) => {
   const category = categorizeError(error);
   switch (category) {
-    case ERROR_CATEGORIES.NETWORK: return RECOVERY_STRATEGIES.RELOAD;
-    case ERROR_CATEGORIES.CHUNK: return RECOVERY_STRATEGIES.CLEAR_CACHE;
-    case ERROR_CATEGORIES.INTEGRATION: return RECOVERY_STRATEGIES.RESET_STATE;
-    default: return RECOVERY_STRATEGIES.FALLBACK;
+    case ERROR_CATEGORIES.CHUNK:
+      return RECOVERY_STRATEGIES.CLEAR_CACHE;
+    case ERROR_CATEGORIES.NETWORK:
+      return RECOVERY_STRATEGIES.RELOAD;
+    case ERROR_CATEGORIES.INTEGRATION:
+      return RECOVERY_STRATEGIES.RESET_STATE;
+    default:
+      return RECOVERY_STRATEGIES.FALLBACK;
   }
 };
 
 export const formatErrorDetails = (error, errorInfo, errorId) => {
   const userInfo = getUserInfo();
   const browserInfo = getBrowserInfo();
+  
   return `
-====== ASSESSLY ERROR REPORT ======
+===== ASSESSLY ERROR REPORT =====
 Error ID: ${errorId}
-Category: ${categorizeError(error)}
 Timestamp: ${new Date().toISOString()}
 Environment: ${import.meta.env.MODE || 'unknown'}
-App Version: ${import.meta.env.VITE_APP_VERSION || 'unknown'}
 URL: ${window.location.href}
-Path: ${window.location.pathname}
-
-User ID: ${userInfo?.user?.id || 'Not authenticated'}
-Organization: ${userInfo?.organization?.id || 'None'}
 
 Error: ${error?.name || 'Unknown'} - ${error?.message || 'No message'}
-Stack Trace: ${error?.stack || 'No stack trace available'}
-Component Stack: ${errorInfo?.componentStack || 'No component stack'}
+Category: ${categorizeError(error)}
 
-Browser: ${browserInfo.userAgent || 'Unknown'}, ${browserInfo.language || 'Unknown'}, ${browserInfo.platform || 'Unknown'}
-Online: ${browserInfo.online ? 'Yes' : 'No'}, Timezone: ${browserInfo.timezone || 'Unknown'}
+User: ${userInfo?.user?.id || 'Not authenticated'}
+Organization: ${userInfo?.organization?.id || 'None'}
+
+Browser: ${browserInfo.userAgent || 'Unknown'}
+Screen: ${browserInfo.screen || 'Unknown'}
+Online: ${browserInfo.online ? 'Yes' : 'No'}
+
+Stack Trace:
+${error?.stack || 'No stack trace'}
+
+Component Stack:
+${errorInfo?.componentStack || 'No component stack'}
 `.trim();
 };
 
-// ===================== ERROR REPORTING HOOK =====================
-export const useErrorReporting = (errorId, error, errorInfo, userId, organizationId) => {
+// ===================== ERROR REPORTING =====================
+const reportErrorToService = async (errorPayload) => {
+  try {
+    // Try to report to backend
+    await fetch('/api/v1/errors/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(errorPayload),
+    });
+  } catch (err) {
+    // Fallback to localStorage
+    try {
+      const offlineErrors = JSON.parse(localStorage.getItem('assessly_offline_errors') || '[]');
+      offlineErrors.push({
+        ...errorPayload,
+        storedAt: new Date().toISOString(),
+      });
+      localStorage.setItem('assessly_offline_errors', JSON.stringify(offlineErrors.slice(-50)));
+    } catch (storageErr) {
+      console.warn('Failed to store error offline:', storageErr);
+    }
+  }
+};
+
+const useErrorReporting = (errorId, error, errorInfo, userId, organizationId) => {
   const hasReportedRef = useRef(false);
 
   useEffect(() => {
     if (hasReportedRef.current || !error) return;
     hasReportedRef.current = true;
 
-    const reportError = async () => {
+    const report = async () => {
       const payload = {
         id: errorId,
         timestamp: new Date().toISOString(),
@@ -149,27 +216,29 @@ export const useErrorReporting = (errorId, error, errorInfo, userId, organizatio
         browserInfo: getBrowserInfo(),
       };
 
+      // Development logging
       if (import.meta.env.DEV) {
-        console.group('🚨 ErrorBoundary - Detailed Error');
-        console.error(payload);
+        console.group('🚨 Error Details');
+        console.error('Error:', error);
+        console.error('Category:', categorizeError(error));
+        console.error('Payload:', payload);
         console.groupEnd();
       }
 
-      try {
-        await fetch('/api/v1/errors/log', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, source: 'error_boundary' }),
+      // Report to service
+      await reportErrorToService(payload);
+
+      // Track in analytics if available
+      if (window.gtag) {
+        window.gtag('event', 'exception', {
+          description: error.message,
+          fatal: false,
+          category: categorizeError(error),
         });
-      } catch {
-        console.warn('Error service unreachable, storing offline.');
-        const offlineErrors = JSON.parse(localStorage.getItem('assessly_offline_errors') || '[]');
-        offlineErrors.push(payload);
-        localStorage.setItem('assessly_offline_errors', JSON.stringify(offlineErrors.slice(-50)));
       }
     };
 
-    reportError();
+    report();
   }, [errorId, error, errorInfo, userId, organizationId]);
 };
 
@@ -183,8 +252,12 @@ const ErrorIcon = memo(({ category, size = 80 }) => {
       <ErrorOutline sx={{ fontSize: size, color }} />
       {category === ERROR_CATEGORIES.NETWORK && (
         <Warning sx={{
-          position: 'absolute', top: '50%', left: '50%',
-          transform: 'translate(-50%, -50%)', fontSize: size * 0.4, color: theme.palette.warning.contrastText
+          position: 'absolute', 
+          top: '50%', 
+          left: '50%',
+          transform: 'translate(-50%, -50%)', 
+          fontSize: size * 0.4, 
+          color: theme.palette.warning.contrastText
         }} />
       )}
     </Box>
@@ -193,10 +266,26 @@ const ErrorIcon = memo(({ category, size = 80 }) => {
 
 ErrorIcon.displayName = 'ErrorIcon';
 
-const ErrorDisplay = ({
-  error, errorInfo, errorId, recoveryAttempts, isRecovering, copySuccess, showDetails,
-  onReload, onGoHome, onReset, onToggleDetails, onCopyErrorDetails, onCreateSupportTicket,
-  enableRecovery, customMessage, alwaysShowDetails, showSupportOptions, errorCategory, recoveryStrategy
+const ErrorDisplay = memo(({
+  error, 
+  errorInfo, 
+  errorId, 
+  recoveryAttempts, 
+  isRecovering, 
+  copySuccess, 
+  showDetails,
+  onReload, 
+  onGoHome, 
+  onReset, 
+  onToggleDetails, 
+  onCopyErrorDetails, 
+  onCreateSupportTicket,
+  enableRecovery, 
+  customMessage, 
+  alwaysShowDetails, 
+  showSupportOptions, 
+  errorCategory, 
+  recoveryStrategy
 }) => {
   const theme = useTheme();
   const showTechDetails = import.meta.env.DEV || alwaysShowDetails;
@@ -204,34 +293,53 @@ const ErrorDisplay = ({
   if (isRecovering) {
     return (
       <Fade in={isRecovering}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', gap: 2, p: 3 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          minHeight: '100vh', 
+          gap: 2, 
+          p: 3,
+          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.05)} 0%, ${alpha(theme.palette.secondary.light, 0.05)} 100%)`,
+        }}>
           <CircularProgress size={60} thickness={4} />
-          <Typography>Attempting to recover...</Typography>
-          <Typography variant="body2">Strategy: {recoveryStrategy.replace('_', ' ').toUpperCase()}</Typography>
-          <Typography variant="caption">Attempt {recoveryAttempts + 1} of 3</Typography>
+          <Typography variant="h6">Attempting to recover...</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Strategy: {recoveryStrategy.replace('_', ' ').toUpperCase()}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Attempt {recoveryAttempts + 1} of 3
+          </Typography>
         </Box>
       </Fade>
     );
   }
 
-  const errorTitle = (() => {
+  const getErrorTitle = () => {
     switch (errorCategory) {
-      case ERROR_CATEGORIES.NETWORK: return 'Network Issue';
-      case ERROR_CATEGORIES.CHUNK: return 'Loading Issue';
-      case ERROR_CATEGORIES.SYNTAX: return 'Syntax Error';
-      case ERROR_CATEGORIES.INTEGRATION: return 'Service Error';
+      case ERROR_CATEGORIES.NETWORK: return 'Network Connection Issue';
+      case ERROR_CATEGORIES.CHUNK: return 'Application Loading Issue';
+      case ERROR_CATEGORIES.SYNTAX: return 'Application Syntax Error';
+      case ERROR_CATEGORIES.INTEGRATION: return 'Service Integration Error';
       default: return 'Something went wrong';
     }
-  })();
+  };
 
-  const errorMessage = customMessage || (() => {
+  const getErrorMessage = () => {
+    if (customMessage) return customMessage;
+    
     switch (errorCategory) {
-      case ERROR_CATEGORIES.NETWORK: return 'Network error. Check your connection.';
-      case ERROR_CATEGORIES.CHUNK: return 'Problem loading the app.';
-      case ERROR_CATEGORIES.INTEGRATION: return 'Service integration failed.';
-      default: return 'Unexpected issue. Our team has been notified.';
+      case ERROR_CATEGORIES.NETWORK:
+        return 'We encountered a network issue. Please check your connection and try again.';
+      case ERROR_CATEGORIES.CHUNK:
+        return 'There was a problem loading the application. This is usually temporary.';
+      case ERROR_CATEGORIES.INTEGRATION:
+        return 'A service integration failed. This might be a temporary service issue.';
+      default:
+        return "We've encountered an unexpected issue. Our team has been notified.";
     }
-  })();
+  };
 
   const handleCopy = useCallback(async () => {
     const details = formatErrorDetails(error, errorInfo, errorId);
@@ -240,35 +348,159 @@ const ErrorDisplay = ({
 
   return (
     <Zoom in>
-      <Container maxWidth="md" sx={{ mt: 8, mb: 8 }} role="alert" aria-live="assertive">
-        <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, borderLeft: '6px solid', borderColor: errorCategory === ERROR_CATEGORIES.NETWORK ? 'warning.main' : 'error.main' }}>
-          <Chip icon={<BugReport />} label={`Error ID: ${errorId}`} color={errorCategory === ERROR_CATEGORIES.NETWORK ? "warning" : "error"} size="small" sx={{ mb: 2 }} />
-          <ErrorIcon category={errorCategory} size={80} />
-          <Typography variant="h4" color={errorCategory === ERROR_CATEGORIES.NETWORK ? "warning.main" : "error"} gutterBottom>{errorTitle}</Typography>
-          <Typography sx={{ mb: 4 }}>{errorMessage}</Typography>
+      <Container maxWidth="md" sx={{ mt: 8, mb: 8 }}>
+        <Paper sx={{ 
+          p: 4, 
+          textAlign: 'center', 
+          borderRadius: 2,
+          borderLeft: '4px solid',
+          borderColor: errorCategory === ERROR_CATEGORIES.NETWORK ? 'warning.main' : 'error.main',
+          boxShadow: 3,
+        }}>
+          {/* Error ID */}
+          <Chip 
+            icon={<BugReport />} 
+            label={`Error ID: ${errorId}`} 
+            color={errorCategory === ERROR_CATEGORIES.NETWORK ? "warning" : "error"} 
+            size="small" 
+            sx={{ mb: 3 }}
+          />
+          
+          {/* Error Icon */}
+          <ErrorIcon category={errorCategory} size={60} />
+          
+          {/* Title */}
+          <Typography variant="h5" color="text.primary" fontWeight={600} gutterBottom sx={{ mt: 2 }}>
+            {getErrorTitle()}
+          </Typography>
+          
+          {/* Message */}
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
+            {getErrorMessage()}
+          </Typography>
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" mb={4}>
-            <Button variant="contained" color={errorCategory === ERROR_CATEGORIES.NETWORK ? "warning" : "primary"} startIcon={<Refresh />} onClick={onReload}>Reload Page</Button>
-            <Button variant="outlined" startIcon={<Home />} onClick={onGoHome}>Go Home</Button>
-            {enableRecovery && isRecoverableError(error) && <Button startIcon={<AutoFixHigh />} onClick={onReset}>Try Again</Button>}
-          </Stack>
-
-          {showSupportOptions && (
-            <Stack direction="row" spacing={2} justifyContent="center">
-              <Button startIcon={copySuccess ? <CheckCircle /> : <ContentCopy />} onClick={handleCopy} color={copySuccess ? "success" : "primary"}>{copySuccess ? "Copied!" : "Copy Details"}</Button>
-              <Button startIcon={<SupportAgent />} onClick={onCreateSupportTicket}>Support Ticket</Button>
-              <Button startIcon={<Send />} component="a" href={`mailto:assesslyinc@gmail.com?subject=Error Report ${errorId}`}>Email Support</Button>
-            </Stack>
+          {/* Recovery attempts notice */}
+          {recoveryAttempts > 0 && (
+            <Alert severity="info" sx={{ mb: 3, textAlign: 'left' }}>
+              Recovery attempted {recoveryAttempts} time{recoveryAttempts > 1 ? 's' : ''}
+            </Alert>
           )}
 
-          {showTechDetails && (
-            <Box sx={{ mt: 4 }}>
-              <Button endIcon={showDetails ? <ExpandLess /> : <ExpandMore />} onClick={onToggleDetails}>
-                {showDetails ? "Hide Technical Details" : "Show Technical Details"}
+          <Divider sx={{ my: 3 }} />
+
+          {/* Action Buttons */}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" mb={4}>
+            <Button 
+              variant="contained" 
+              color="primary"
+              startIcon={<Refresh />} 
+              onClick={onReload}
+              size="medium"
+              sx={{ minWidth: 140 }}
+            >
+              Reload Page
+            </Button>
+            
+            <Button 
+              variant="outlined" 
+              color="primary"
+              startIcon={<Home />} 
+              onClick={onGoHome}
+              size="medium"
+              sx={{ minWidth: 140 }}
+            >
+              Go to Home
+            </Button>
+            
+            {enableRecovery && isRecoverableError(error) && (
+              <Button 
+                variant="text" 
+                color="primary"
+                startIcon={<AutoFixHigh />} 
+                onClick={onReset}
+                size="medium"
+                sx={{ minWidth: 140 }}
+              >
+                Try Again
               </Button>
+            )}
+          </Stack>
+
+          {/* Support Options */}
+          {showSupportOptions && (
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Need additional help?
+              </Typography>
+              <Stack direction="row" spacing={1} justifyContent="center" flexWrap="wrap">
+                <Tooltip title={copySuccess ? "Copied!" : "Copy error details"}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={copySuccess ? <CheckCircle color="success" /> : <ContentCopy />}
+                    onClick={handleCopy}
+                  >
+                    {copySuccess ? "Copied!" : "Copy Details"}
+                  </Button>
+                </Tooltip>
+                
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<SupportAgent />}
+                  onClick={onCreateSupportTicket}
+                >
+                  Support
+                </Button>
+                
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<Send />}
+                  component="a"
+                  href={`mailto:assesslyinc@gmail.com?subject=Error Report ${errorId}`}
+                  target="_blank"
+                >
+                  Email
+                </Button>
+              </Stack>
+            </Box>
+          )}
+
+          {/* Technical Details */}
+          {showTechDetails && (
+            <Box sx={{ mt: 3 }}>
+              <Button
+                size="small"
+                variant="outlined"
+                endIcon={showDetails ? <ExpandLess /> : <ExpandMore />}
+                onClick={onToggleDetails}
+                sx={{ mb: 1 }}
+              >
+                {showDetails ? "Hide Details" : "Technical Details"}
+              </Button>
+              
               <Collapse in={showDetails}>
-                <Alert severity="info" sx={{ textAlign: 'left', mt: 2 }}>
-                  <Box component="pre" sx={{ fontSize: '0.75rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 250, overflow: 'auto', backgroundColor: 'grey.50', p: 2, borderRadius: 1 }}>
+                <Alert severity="info" sx={{ textAlign: 'left', mt: 1 }}>
+                  <Typography variant="subtitle2" gutterBottom fontWeight={600}>
+                    Technical Information
+                  </Typography>
+                  <Box
+                    component="pre"
+                    sx={{
+                      fontSize: '0.75rem',
+                      fontFamily: 'monospace',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      maxHeight: 200,
+                      overflow: 'auto',
+                      backgroundColor: 'grey.50',
+                      p: 2,
+                      borderRadius: 1,
+                      border: '1px solid',
+                      borderColor: 'grey.200'
+                    }}
+                  >
                     {formatErrorDetails(error, errorInfo, errorId)}
                   </Box>
                 </Alert>
@@ -279,12 +511,43 @@ const ErrorDisplay = ({
       </Container>
     </Zoom>
   );
+});
+
+ErrorDisplay.displayName = 'ErrorDisplay';
+
+ErrorDisplay.propTypes = {
+  error: PropTypes.instanceOf(Error),
+  errorInfo: PropTypes.object,
+  errorId: PropTypes.string.isRequired,
+  recoveryAttempts: PropTypes.number,
+  isRecovering: PropTypes.bool,
+  copySuccess: PropTypes.bool,
+  showDetails: PropTypes.bool,
+  onReload: PropTypes.func.isRequired,
+  onGoHome: PropTypes.func.isRequired,
+  onReset: PropTypes.func.isRequired,
+  onToggleDetails: PropTypes.func.isRequired,
+  onCopyErrorDetails: PropTypes.func.isRequired,
+  onCreateSupportTicket: PropTypes.func.isRequired,
+  enableRecovery: PropTypes.bool,
+  customMessage: PropTypes.string,
+  alwaysShowDetails: PropTypes.bool,
+  showSupportOptions: PropTypes.bool,
+  errorCategory: PropTypes.string,
+  recoveryStrategy: PropTypes.string,
 };
 
-// ===================== MAIN FUNCTIONAL ERROR BOUNDARY =====================
+// ===================== MAIN ERROR BOUNDARY =====================
 const ErrorBoundary = ({
-  children, userId, organizationId, enableRecovery = true, customMessage, alwaysShowDetails = import.meta.env.DEV,
-  showSupportOptions = true, fallback
+  children,
+  userId,
+  organizationId,
+  enableRecovery = true,
+  customMessage,
+  alwaysShowDetails = import.meta.env.DEV,
+  showSupportOptions = true,
+  fallback,
+  onError
 }) => {
   const [error, setError] = useState(null);
   const [errorInfo, setErrorInfo] = useState(null);
@@ -296,54 +559,192 @@ const ErrorBoundary = ({
   const [recoveryStrategy, setRecoveryStrategy] = useState(RECOVERY_STRATEGIES.FALLBACK);
   const [showDetails, setShowDetails] = useState(false);
 
+  // Error reporting
   useErrorReporting(errorId, error, errorInfo, userId, organizationId);
 
-  const handleError = (err, info) => {
-    setError(err);
-    setErrorInfo(info);
-    const category = categorizeError(err);
-    setErrorCategory(category);
-    setRecoveryStrategy(getRecoveryStrategy(err));
-    setErrorId(generateErrorId());
-    if (isRecoverableError(err)) attemptRecovery();
-  };
+  // Handle errors
+  useEffect(() => {
+    const handleError = (event) => {
+      if (!error && event.error) {
+        const err = event.error;
+        const category = categorizeError(err);
+        const strategy = getRecoveryStrategy(err);
+        
+        setError(err);
+        setErrorCategory(category);
+        setRecoveryStrategy(strategy);
+        setErrorId(generateErrorId());
+        
+        // Call custom error handler
+        if (onError) {
+          onError(err, { category, strategy, timestamp: new Date().toISOString() });
+        }
+        
+        // Attempt recovery for recoverable errors
+        if (isRecoverableError(err)) {
+          attemptRecovery();
+        }
+      }
+    };
 
-  const attemptRecovery = () => {
-    if (recoveryAttempts < 3) {
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, [error, onError]);
+
+  // Attempt recovery
+  const attemptRecovery = useCallback(() => {
+    if (recoveryAttempts < 2) { // Max 2 attempts
       setIsRecovering(true);
       setTimeout(() => {
         setRecoveryAttempts(prev => prev + 1);
         setIsRecovering(false);
-      }, 2000 * (recoveryAttempts + 1));
+        
+        if (recoveryAttempts === 0) {
+          executeRecoveryStrategy();
+        }
+      }, 1500 * (recoveryAttempts + 1));
     }
-  };
+  }, [recoveryAttempts]);
 
-  const handleReset = () => {
-    setError(null); setErrorInfo(null); setErrorId(generateErrorId()); setRecoveryAttempts(0);
-    setIsRecovering(false); setCopySuccess(false); setErrorCategory(ERROR_CATEGORIES.UNKNOWN); setRecoveryStrategy(RECOVERY_STRATEGIES.FALLBACK);
-  };
+  // Execute recovery strategy
+  const executeRecoveryStrategy = useCallback(() => {
+    switch (recoveryStrategy) {
+      case RECOVERY_STRATEGIES.CLEAR_CACHE:
+        clearCache();
+        break;
+      case RECOVERY_STRATEGIES.RESET_STATE:
+        resetState();
+        break;
+      default:
+        // Do nothing, let user reload
+        break;
+    }
+  }, [recoveryStrategy]);
 
-  const handleCopy = async (details) => {
-    try { await navigator.clipboard.writeText(details); setCopySuccess(true); setTimeout(() => setCopySuccess(false), 3000); } catch {}
-  };
+  // Clear cache for chunk errors
+  const clearCache = useCallback(() => {
+    try {
+      // Clear problematic cache keys
+      Object.keys(localStorage).forEach(key => {
+        if (key.includes('chunk') || key.includes('module')) {
+          localStorage.removeItem(key);
+        }
+      });
+      
+      // Clear service worker cache
+      if ('caches' in window) {
+        caches.keys().then(cacheNames => {
+          cacheNames.forEach(cacheName => caches.delete(cacheName));
+        });
+      }
+    } catch (err) {
+      console.warn('Cache clearing failed:', err);
+    }
+  }, []);
 
-  const handleCreateSupportTicket = () => window.open(`https://support.assessly.com/new?error=${errorId}`, '_blank');
+  // Reset state for integration errors
+  const resetState = useCallback(() => {
+    try {
+      // Clear authentication state
+      localStorage.removeItem(getStorageKey('token'));
+      localStorage.removeItem(getStorageKey('user'));
+    } catch (err) {
+      console.warn('State reset failed:', err);
+    }
+  }, []);
 
+  // Reset error boundary
+  const handleReset = useCallback(() => {
+    setError(null);
+    setErrorInfo(null);
+    setErrorId(generateErrorId());
+    setRecoveryAttempts(0);
+    setIsRecovering(false);
+    setCopySuccess(false);
+    setErrorCategory(ERROR_CATEGORIES.UNKNOWN);
+    setRecoveryStrategy(RECOVERY_STRATEGIES.FALLBACK);
+    setShowDetails(false);
+  }, []);
+
+  // Copy error details
+  const handleCopyErrorDetails = useCallback(async (details) => {
+    try {
+      await navigator.clipboard.writeText(details);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 3000);
+    } catch (err) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = details;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 3000);
+    }
+  }, []);
+
+  // Create support ticket
+  const handleCreateSupportTicket = useCallback(() => {
+    const supportUrl = `https://support.assessly.com/new?error=${errorId}`;
+    window.open(supportUrl, '_blank', 'noopener,noreferrer');
+  }, [errorId]);
+
+  // Handle component errors
+  useEffect(() => {
+    const originalConsoleError = console.error;
+    console.error = (...args) => {
+      originalConsoleError.apply(console, args);
+      
+      // Check for React errors
+      const errorStr = args.join(' ').toLowerCase();
+      if (errorStr.includes('error boundary') || errorStr.includes('react error')) {
+        const syntheticError = new Error('React component error');
+        setError(syntheticError);
+        setErrorCategory(ERROR_CATEGORIES.RUNTIME);
+      }
+    };
+
+    return () => {
+      console.error = originalConsoleError;
+    };
+  }, []);
+
+  // If we have an error, show error display
   if (error) {
-    if (fallback) return typeof fallback === 'function' ? fallback(error, errorInfo, errorId) : fallback;
+    if (fallback) {
+      return typeof fallback === 'function' 
+        ? fallback(error, errorInfo, errorId) 
+        : fallback;
+    }
 
     return (
       <ErrorDisplay
-        error={error} errorInfo={errorInfo} errorId={errorId} recoveryAttempts={recoveryAttempts} isRecovering={isRecovering}
-        copySuccess={copySuccess} showDetails={showDetails} onReload={() => window.location.reload()} onGoHome={() => window.location.href = '/'}
-        onReset={handleReset} onToggleDetails={() => setShowDetails(prev => !prev)} onCopyErrorDetails={handleCopy}
-        onCreateSupportTicket={handleCreateSupportTicket} enableRecovery={enableRecovery && isRecoverableError(error)}
-        customMessage={customMessage} alwaysShowDetails={alwaysShowDetails} showSupportOptions={showSupportOptions}
-        errorCategory={errorCategory} recoveryStrategy={recoveryStrategy}
+        error={error}
+        errorInfo={errorInfo}
+        errorId={errorId}
+        recoveryAttempts={recoveryAttempts}
+        isRecovering={isRecovering}
+        copySuccess={copySuccess}
+        showDetails={showDetails}
+        onReload={() => window.location.reload()}
+        onGoHome={() => window.location.href = '/'}
+        onReset={handleReset}
+        onToggleDetails={() => setShowDetails(prev => !prev)}
+        onCopyErrorDetails={handleCopyErrorDetails}
+        onCreateSupportTicket={handleCreateSupportTicket}
+        enableRecovery={enableRecovery && isRecoverableError(error)}
+        customMessage={customMessage}
+        alwaysShowDetails={alwaysShowDetails}
+        showSupportOptions={showSupportOptions}
+        errorCategory={errorCategory}
+        recoveryStrategy={recoveryStrategy}
       />
     );
   }
 
+  // Otherwise, render children
   return children;
 };
 
@@ -356,15 +757,39 @@ ErrorBoundary.propTypes = {
   alwaysShowDetails: PropTypes.bool,
   showSupportOptions: PropTypes.bool,
   fallback: PropTypes.oneOfType([PropTypes.node, PropTypes.func]),
+  onError: PropTypes.func,
+};
+
+ErrorBoundary.defaultProps = {
+  enableRecovery: true,
+  alwaysShowDetails: import.meta.env.DEV,
+  showSupportOptions: true,
+};
+
+// ===================== EXPORT UTILITIES =====================
+export const withErrorBoundary = (WrappedComponent, errorBoundaryProps = {}) => {
+  const ComponentWithErrorBoundary = (props) => (
+    <ErrorBoundary {...errorBoundaryProps}>
+      <WrappedComponent {...props} />
+    </ErrorBoundary>
+  );
+  
+  ComponentWithErrorBoundary.displayName = `withErrorBoundary(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`;
+  
+  return ComponentWithErrorBoundary;
+};
+
+export const ErrorContext = createContext({
+  reportError: () => {},
+  clearError: () => {},
+});
+
+export const useErrorHandler = () => {
+  const context = useContext(ErrorContext);
+  if (!context) {
+    throw new Error('useErrorHandler must be used within ErrorProvider');
+  }
+  return context;
 };
 
 export default ErrorBoundary;
-
-// ===================== HOC =====================
-export const withErrorBoundary = (WrappedComponent, errorBoundaryProps = {}) => (props) => (
-  <ErrorBoundary {...errorBoundaryProps}><WrappedComponent {...props} /></ErrorBoundary>
-);
-
-// ===================== CONTEXT =====================
-export const ErrorContext = createContext({ reportError: () => {}, clearError: () => {} });
-export const useErrorHandler = () => useContext(ErrorContext);
