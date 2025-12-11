@@ -1,7 +1,7 @@
 /**
- * server.js – Assessly Platform API v1.0.0
- * Production-ready multi-tenant assessment platform API
- * Implements complete API documentation as specified
+ * server.js – Assessly Platform API (Production Ready)
+ * Final version perfectly integrated with your existing repo structure
+ * Connects all your models, routes, and controllers
  */
 
 import 'dotenv/config';
@@ -23,15 +23,8 @@ import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 
-// Import route modules
-import authRoutes from './api/routes/auth.js';
-import userRoutes from './api/routes/users.js';
-import organizationRoutes from './api/routes/organizations.js';
-import assessmentRoutes from './api/routes/assessments.js';
-import responseRoutes from './api/routes/responses.js';
-import subscriptionRoutes from './api/routes/subscriptions.js';
-import analyticsRoutes from './api/routes/analytics.js';
-import monitoringRoutes from './api/routes/monitoring.js';
+// Import your main router that consolidates all routes
+import mainRouter from './api/routes/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,7 +32,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.set('trust proxy', 1);
 
-// Environment
+// ==================== Environment Configuration ====================
 const PORT = Number(process.env.PORT || 10000);
 const NODE_ENV = process.env.NODE_ENV || 'production';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://assessly-gedp.onrender.com';
@@ -56,7 +49,9 @@ for (const name of requiredEnvVars) {
   }
 }
 
-// ======== Request ID Middleware ========
+// ==================== Core Middleware Setup ====================
+
+// 1. Request ID Middleware
 app.use((req, res, next) => {
   try {
     req.id = crypto.randomUUID?.() || crypto.randomBytes(16).toString('hex');
@@ -67,7 +62,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// ======== Response Time Header Middleware ========
+// 2. Response Time Tracking
 app.use((req, res, next) => {
   const start = Date.now();
   const originalEnd = res.end;
@@ -82,10 +77,10 @@ app.use((req, res, next) => {
       }
 
       if (duration > 1000) {
-        console.log(chalk.yellow(`⚠️  Slow request detected: ${req.method} ${req.originalUrl} - ${duration}ms - Request ID: ${req.id}`));
+        console.log(chalk.yellow(`⚠️  Slow request: ${req.method} ${req.originalUrl} - ${duration}ms - ReqID: ${req.id}`));
       }
     } catch (err) {
-      console.error(chalk.red('Error while setting X-Response-Time header:'), err);
+      console.error(chalk.red('Error setting response time header:'), err);
     }
     return originalEnd.apply(this, args);
   };
@@ -93,17 +88,21 @@ app.use((req, res, next) => {
   next();
 });
 
-// ======== Rate Limiting Configuration ========
+// ==================== Rate Limiting Configuration ====================
+
 const authLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 10, // 10 requests per minute for auth
+  max: 10, // 10 requests per minute for auth endpoints
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.ip,
-  message: {
-    success: false,
-    error: 'Too many authentication attempts, please try again later.',
-    requestId: req.id
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many authentication attempts, please try again later.',
+      requestId: req.id,
+      retryAfter: '1 minute'
+    });
   }
 });
 
@@ -117,40 +116,27 @@ const apiLimiter = rateLimit({
     const orgId = req.headers['x-organization-id'] || req.user?.organization || req.ip;
     return `${req.ip}-${orgId}`;
   },
-  message: {
-    success: false,
-    error: 'Too many requests from this organization, please try again later.',
-    requestId: req.id
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many requests from this organization, please try again later.',
+      requestId: req.id,
+      retryAfter: '15 minutes'
+    });
   }
 });
 
-const uploadLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 5, // 5 uploads per minute
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    const userId = req.user?.id || req.ip;
-    return `${req.ip}-${userId}`;
-  },
-  message: {
-    success: false,
-    error: 'Too many file uploads, please try again later.',
-    requestId: req.id
-  }
-});
-
-// ======== Morgan Logging ========
+// ==================== Logging Configuration ====================
 morgan.token('request-id', (req) => req.id || '-');
 morgan.token('x-response-time', (req, res) => res.getHeader('X-Response-Time') || '-');
 
 const morganFormat = isProd
-  ? ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :x-response-time - reqid=:request-id'
-  : ':method :url :status :res[content-length] - :x-response-time - reqid=:request-id';
+  ? ':remote-addr - :method :url :status :res[content-length] - :response-time ms - reqid=:request-id'
+  : ':method :url :status :res[content-length] - :response-time ms - reqid=:request-id';
 
 app.use(morgan(morganFormat));
 
-// ======== CORS Configuration ========
+// ==================== Security Middleware ====================
 const corsOptions = {
   origin: [FRONTEND_URL, 'http://localhost:3000', 'http://localhost:5173'],
   credentials: true,
@@ -160,7 +146,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// ======== Security Middleware ========
+// Security headers
 app.use(helmet({
   contentSecurityPolicy: isProd ? {
     directives: {
@@ -174,6 +160,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
+
 app.use(xss());
 app.use(mongoSanitize());
 app.use(hpp());
@@ -182,24 +169,31 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(compression());
 
-// ======== Status Monitor (dev only) ========
+// ==================== Development Tools ====================
 if (!isProd) {
   app.use(statusMonitor());
+  console.log(chalk.yellow('🔧 Development mode: Status monitor enabled'));
 }
 
-// ======== Root & Health Endpoints ========
+// ==================== Service Endpoints (Before API Routes) ====================
+
+// Root endpoint
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: '🚀 Assessly Platform API v1.0.0',
+    message: '🚀 Assessly Platform API',
+    version: '1.0.0',
+    description: 'Multitenant assessment platform for organizations and teams',
     status: 'operational',
     timestamp: new Date().toISOString(),
     requestId: req.id,
+    environment: NODE_ENV,
     links: {
       frontend: FRONTEND_URL,
       apiDocumentation: `${BACKEND_URL}/api/docs`,
       healthCheck: `${BACKEND_URL}/health`,
-      serviceStatus: `${BACKEND_URL}/api/v1/health/status`,
+      apiHealth: `${BACKEND_URL}/api/v1/health`,
+      serviceStatus: `${BACKEND_URL}/api/v1/status`,
       platformDocumentation: 'https://docs.assessly.com'
     },
     support: {
@@ -211,6 +205,7 @@ app.get('/', (req, res) => {
   });
 });
 
+// Global health check (outside API versioning)
 app.get('/health', (req, res) => {
   const dbState = mongoose.connection.readyState;
   const dbStatus = dbState === 1 ? 'connected' : dbState === 2 ? 'connecting' : 'disconnected';
@@ -233,7 +228,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// ======== Error Logging Endpoint (for client-side errors) ========
+// Client error logging endpoint (from your frontend issue)
 app.post('/errors/log', (req, res) => {
   try {
     const errorData = req.body;
@@ -264,43 +259,7 @@ app.post('/errors/log', (req, res) => {
   }
 });
 
-// ======== Authentication Middleware ========
-const authenticateToken = (req, res, next) => {
-  try {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: 'Access token required',
-        requestId: req.id
-      });
-    }
-    
-    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-      if (err) {
-        return res.status(403).json({
-          success: false,
-          error: 'Invalid or expired token',
-          requestId: req.id
-        });
-      }
-      
-      req.user = user;
-      next();
-    });
-  } catch (error) {
-    console.error(chalk.red(`❌ Authentication error [${req.id}]:`), error);
-    res.status(500).json({
-      success: false,
-      error: 'Authentication failed',
-      requestId: req.id
-    });
-  }
-};
-
-// ======== JWT Refresh Endpoint ========
+// ==================== JWT Refresh Endpoint (BEFORE auth rate limiting) ====================
 async function handleRefresh(req, res) {
   try {
     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
@@ -351,55 +310,26 @@ async function handleRefresh(req, res) {
   }
 }
 
-// Expose both GET and POST for refresh endpoint
+// Refresh endpoint (explicit, outside main router)
 app.get('/api/v1/auth/refresh', handleRefresh);
 app.post('/api/v1/auth/refresh', handleRefresh);
 
-// ======== API Routes ========
-const apiRouter = express.Router();
+// ==================== Apply Rate Limiters ====================
 
-// Apply rate limiters to specific routes
-apiRouter.post('/auth/register', authLimiter);
-apiRouter.post('/auth/login', authLimiter);
-apiRouter.post('/auth/forgot-password', authLimiter);
-apiRouter.post('/auth/reset-password', authLimiter);
+// Apply auth limiter to specific endpoints
+app.post('/api/v1/auth/login', authLimiter);
+app.post('/api/v1/auth/register', authLimiter);
+app.post('/api/v1/auth/forgot-password', authLimiter);
+app.post('/api/v1/auth/reset-password', authLimiter);
 
-// Apply API limiter to all other routes
-apiRouter.use(apiLimiter);
+// Apply general API limiter to all other API routes
+app.use('/api/v1', apiLimiter);
 
-// Protected routes (require authentication)
-apiRouter.use('/users', authenticateToken, userRoutes);
-apiRouter.use('/organizations', authenticateToken, organizationRoutes);
-apiRouter.use('/assessments', authenticateToken, assessmentRoutes);
-apiRouter.use('/responses', authenticateToken, responseRoutes);
-apiRouter.use('/subscriptions', authenticateToken, subscriptionRoutes);
-apiRouter.use('/analytics', authenticateToken, analyticsRoutes);
+// ==================== Mount Your Main Router ====================
+// This connects ALL your routes from index.js
+app.use('/api/v1', mainRouter);
 
-// Public routes (no authentication required)
-apiRouter.use('/auth', authRoutes);
-apiRouter.use('/health', monitoringRoutes);
-
-// Apply upload limiter to file upload routes
-apiRouter.post('/assessments/:id/upload', authenticateToken, uploadLimiter);
-apiRouter.post('/users/:id/avatar', authenticateToken, uploadLimiter);
-
-// Health check endpoint
-apiRouter.get('/status', (req, res) => {
-  res.json({
-    success: true,
-    status: 'operational',
-    service: 'Assessly API',
-    version: '1.0.0',
-    timestamp: new Date().toISOString(),
-    uptime: Math.floor(process.uptime()),
-    requestId: req.id
-  });
-});
-
-// Register API router
-app.use('/api/v1', apiRouter);
-
-// ======== Swagger Documentation ========
+// ==================== Swagger Documentation ====================
 if (!isProd) {
   try {
     const swaggerJsdoc = await import('swagger-jsdoc');
@@ -434,174 +364,6 @@ if (!isProd) {
               type: 'http',
               scheme: 'bearer',
               bearerFormat: 'JWT'
-            },
-            OAuth2: {
-              type: 'oauth2',
-              flows: {
-                authorizationCode: {
-                  authorizationUrl: `${BACKEND_URL}/api/v1/auth/google`,
-                  tokenUrl: `${BACKEND_URL}/api/v1/auth/google/callback`,
-                  scopes: {
-                    'profile': 'Access user profile',
-                    'email': 'Access user email'
-                  }
-                }
-              }
-            }
-          },
-          schemas: {
-            Error: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean', example: false },
-                message: { type: 'string' },
-                code: { type: 'string' },
-                errors: { type: 'object' },
-                stack: { type: 'string' }
-              }
-            },
-            SuccessResponse: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean', example: true },
-                message: { type: 'string' },
-                data: { type: 'object' }
-              }
-            },
-            AuthResponse: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' },
-                message: { type: 'string' },
-                token: { type: 'string' },
-                refreshToken: { type: 'string' },
-                user: { $ref: '#/components/schemas/User' }
-              }
-            },
-            User: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                name: { type: 'string' },
-                email: { type: 'string', format: 'email' },
-                role: { type: 'string' },
-                isActive: { type: 'boolean' },
-                emailVerified: { type: 'boolean' },
-                organization: { type: 'string' },
-                profile: { type: 'object' },
-                preferences: { type: 'object' },
-                lastLogin: { type: 'string', format: 'date-time' },
-                createdAt: { type: 'string', format: 'date-time' },
-                updatedAt: { type: 'string', format: 'date-time' }
-              }
-            },
-            Organization: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                name: { type: 'string' },
-                slug: { type: 'string' },
-                description: { type: 'string' },
-                industry: { type: 'string' },
-                size: { type: 'string' },
-                contact: { type: 'object' },
-                settings: { type: 'object' },
-                subscription: { type: 'object' },
-                metadata: { type: 'object' },
-                createdAt: { type: 'string', format: 'date-time' },
-                updatedAt: { type: 'string', format: 'date-time' }
-              }
-            },
-            Assessment: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                title: { type: 'string' },
-                description: { type: 'string' },
-                slug: { type: 'string' },
-                questions: {
-                  type: 'array',
-                  items: { $ref: '#/components/schemas/Question' }
-                },
-                settings: { $ref: '#/components/schemas/AssessmentSettings' },
-                status: { type: 'string' },
-                category: { type: 'string' },
-                tags: { type: 'array', items: { type: 'string' } },
-                totalPoints: { type: 'integer' },
-                passingScore: { type: 'integer' },
-                access: { type: 'string' },
-                isTemplate: { type: 'boolean' },
-                createdBy: { type: 'string' },
-                organization: { type: 'string' },
-                schedule: { type: 'object' },
-                metadata: { type: 'object' },
-                createdAt: { type: 'string', format: 'date-time' },
-                updatedAt: { type: 'string', format: 'date-time' }
-              }
-            },
-            Question: {
-              type: 'object',
-              properties: {
-                type: { type: 'string', enum: ['multiple_choice', 'true_false', 'short_answer', 'essay', 'coding'] },
-                question: { type: 'string' },
-                description: { type: 'string' },
-                points: { type: 'integer' },
-                options: {
-                  type: 'array',
-                  items: { $ref: '#/components/schemas/QuestionOption' }
-                },
-                correctAnswer: { type: 'string' },
-                explanation: { type: 'string' },
-                metadata: { type: 'object' }
-              }
-            },
-            QuestionOption: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                text: { type: 'string' },
-                isCorrect: { type: 'boolean' }
-              }
-            },
-            AssessmentSettings: {
-              type: 'object',
-              properties: {
-                duration: { type: 'integer' },
-                attempts: { type: 'integer' },
-                shuffleQuestions: { type: 'boolean' },
-                shuffleOptions: { type: 'boolean' },
-                showResults: { type: 'boolean' },
-                allowBacktracking: { type: 'boolean' },
-                requireFullScreen: { type: 'boolean' },
-                webcamMonitoring: { type: 'boolean' },
-                disableCopyPaste: { type: 'boolean' }
-              }
-            },
-            Subscription: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                organization: { type: 'string' },
-                plan: { type: 'string' },
-                status: { type: 'string' },
-                billingCycle: { type: 'string' },
-                price: { type: 'object' },
-                features: { type: 'object' },
-                period: { type: 'object' },
-                createdAt: { type: 'string', format: 'date-time' },
-                updatedAt: { type: 'string', format: 'date-time' }
-              }
-            },
-            Pagination: {
-              type: 'object',
-              properties: {
-                page: { type: 'integer', minimum: 1 },
-                limit: { type: 'integer', minimum: 1, maximum: 100 },
-                total: { type: 'integer' },
-                pages: { type: 'integer' },
-                hasNext: { type: 'boolean' },
-                hasPrev: { type: 'boolean' }
-              }
             }
           }
         },
@@ -609,13 +371,12 @@ if (!isProd) {
           BearerAuth: []
         }]
       },
-      apis: ['./api/routes/*.js']
+      apis: ['./api/routes/*.js'] // Auto-document your routes
     };
 
     const swaggerSpec = swaggerJsdoc.default(swaggerOptions);
     app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
       explorer: true,
-      customCss: '.swagger-ui .topbar { display: none }',
       customSiteTitle: 'Assessly Platform API Documentation'
     }));
 
@@ -625,7 +386,7 @@ if (!isProd) {
   }
 }
 
-// ======== 404 Handler ========
+// ==================== 404 Handler ====================
 app.use((req, res) => {
   if (req.path.startsWith('/api/v1')) {
     return res.status(404).json({
@@ -634,13 +395,19 @@ app.use((req, res) => {
       path: req.path,
       method: req.method,
       requestId: req.id,
+      apiVersion: 'v1',
       availableEndpoints: {
-        docs: '/api/docs',
-        v1: '/api/v1',
-        health: '/health',
-        apiHealth: '/api/v1/health'
+        authentication: '/api/v1/auth/*',
+        users: '/api/v1/users/*',
+        organizations: '/api/v1/organizations/*',
+        assessments: '/api/v1/assessments/*',
+        assessmentResponses: '/api/v1/assessment-responses/*',
+        subscriptions: '/api/v1/subscriptions/*',
+        userActivities: '/api/v1/user-activities/*',
+        contact: '/api/v1/contact/*',
+        system: ['/api/v1/health', '/api/v1/status', '/api/v1/features']
       },
-      suggestion: `This is an API server. For the web application, visit: ${FRONTEND_URL}`
+      suggestion: `Check API docs: ${BACKEND_URL}/api/docs or visit ${FRONTEND_URL} for web application`
     });
   }
 
@@ -649,44 +416,50 @@ app.use((req, res) => {
     error: 'Route not found',
     path: req.path,
     requestId: req.id,
-    suggestion: `Check API docs: ${BACKEND_URL}/api/docs`
+    suggestion: `This is an API server. Web application is available at: ${FRONTEND_URL}`
   });
 });
 
-// ======== Global Error Handler ========
+// ==================== Global Error Handler ====================
 app.use((err, req, res, next) => {
-  console.error(chalk.red(`❌ Error [${req.id}]: ${err?.message || err}`));
-  if (err?.stack && !isProd) console.error(err.stack);
+  console.error(chalk.red(`❌ Global Error [${req.id}]:`), err.message);
+  if (!isProd && err.stack) {
+    console.error(err.stack);
+  }
 
-  const statusCode = err?.statusCode || 500;
-  const payload = {
-    success: false,
-    error: err?.message || 'Internal Server Error',
-    requestId: req.id
-  };
+  const statusCode = err.statusCode || err.status || 500;
   
+  const errorResponse = {
+    success: false,
+    error: err.message || 'Internal Server Error',
+    requestId: req.id,
+    path: req.originalUrl,
+    timestamp: new Date().toISOString()
+  };
+
   // Add validation errors if present
   if (err.name === 'ValidationError') {
-    payload.errors = err.errors;
-    payload.code = 'VALIDATION_ERROR';
+    errorResponse.errors = err.errors;
+    errorResponse.code = 'VALIDATION_ERROR';
   }
-  
-  // Add stack trace in development
-  if (!isProd && err?.stack) {
-    payload.stack = err.stack;
+
+  // Add stack trace in development only
+  if (!isProd && err.stack) {
+    errorResponse.stack = err.stack;
   }
-  
-  res.status(statusCode).json(payload);
+
+  res.status(statusCode).json(errorResponse);
 });
 
-// ======== Database Connection & Server Start ========
+// ==================== Database Connection & Server Start ====================
 async function startServer() {
   let server;
+  
   try {
     console.log(chalk.blue('🔗 Connecting to MongoDB...'));
 
     await mongoose.connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000,
       maxPoolSize: 10,
       socketTimeoutMS: 45000,
       connectTimeoutMS: 10000,
@@ -694,12 +467,19 @@ async function startServer() {
     });
 
     console.log(chalk.green('✅ MongoDB Connected Successfully'));
+    
+    // Display connected models
+    const modelNames = mongoose.modelNames();
+    if (modelNames.length > 0) {
+      console.log(chalk.blue('📦 Loaded Models:'), modelNames.join(', '));
+    }
 
     // Seed database if needed
     if (process.env.SEED_DATABASE === 'true') {
       try {
-        const { seedDatabase } = await import('./api/utils/seedDatabase.js');
         console.log(chalk.yellow('🌱 Seeding database...'));
+        // Import and run your seed function if it exists
+        const { seedDatabase } = await import('./api/utils/seedDatabase.js');
         await seedDatabase();
         console.log(chalk.green('✅ Database seeded successfully'));
       } catch (seedError) {
@@ -708,21 +488,29 @@ async function startServer() {
     }
 
     server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(chalk.green(`🚀 Server running on port ${PORT}`));
-      console.log(chalk.cyan(`🌐 Backend URL: ${BACKEND_URL}`));
-      console.log(chalk.cyan(`🌍 Frontend URL: ${FRONTEND_URL}`));
-      console.log(chalk.yellow(`📚 API Documentation: ${BACKEND_URL}/api/docs`));
-      console.log(chalk.magenta(`⚡ Environment: ${NODE_ENV}`));
-      console.log(chalk.blue(`🔑 Authentication: JWT Bearer & Google OAuth`));
-      console.log(chalk.blue(`🏢 Multi-tenant: Enabled`));
-      console.log(chalk.blue(`⏱️  Rate limiting: Enabled`));
+      console.log(chalk.green(`\n🚀 Assessly Platform API Server Running`));
+      console.log(chalk.cyan('══════════════════════════════════════════'));
+      console.log(chalk.white(`   Port:          ${PORT}`));
+      console.log(chalk.white(`   Environment:   ${NODE_ENV}`));
+      console.log(chalk.white(`   Backend URL:   ${BACKEND_URL}`));
+      console.log(chalk.white(`   Frontend URL:  ${FRONTEND_URL}`));
+      console.log(chalk.white(`   API Base:      ${BACKEND_URL}/api/v1`));
+      console.log(chalk.white(`   API Docs:      ${BACKEND_URL}/api/docs`));
+      console.log(chalk.white(`   Health Check:  ${BACKEND_URL}/health`));
+      console.log(chalk.cyan('══════════════════════════════════════════'));
+      console.log(chalk.blue(`\n🔐 Authentication: JWT Bearer & Google OAuth`));
+      console.log(chalk.blue(`🏢 Multi-tenant:   Enabled (${modelNames.length} models)`));
+      console.log(chalk.blue(`📊 Rate limiting:  Enabled (tiered)`));
+      console.log(chalk.blue(`📝 Error logging:  Enabled (/errors/log)`));
+      console.log(chalk.green('\n✅ Server is ready to handle requests\n'));
     });
 
-    // Graceful shutdown
+    // ==================== Graceful Shutdown ====================
     const gracefulShutdown = async (signal) => {
       try {
-        console.log(chalk.yellow(`⚠️  ${signal || 'SIGTERM'} received. Shutting down gracefully...`));
+        console.log(chalk.yellow(`\n⚠️  ${signal || 'SIGTERM'} received. Shutting down gracefully...`));
         
+        // Stop accepting new connections
         if (server) {
           await new Promise((resolve, reject) => 
             server.close((err) => (err ? reject(err) : resolve()))
@@ -730,6 +518,7 @@ async function startServer() {
           console.log(chalk.green('✅ HTTP server closed'));
         }
 
+        // Close database connections
         try {
           await mongoose.connection.close(false);
           console.log(chalk.green('✅ MongoDB connection closed'));
@@ -748,9 +537,11 @@ async function startServer() {
       }
     };
 
+    // Register shutdown handlers
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+    // Handle uncaught errors
     process.on('uncaughtException', (error) => {
       console.error(chalk.red('❌ Uncaught Exception:'), error);
       gracefulShutdown('uncaughtException');
@@ -761,7 +552,7 @@ async function startServer() {
     });
 
   } catch (err) {
-    console.error(chalk.red('❌ Startup Failed:'), err);
+    console.error(chalk.red('❌ Server startup failed:'), err);
     if (server && server.close) {
       try { server.close(); } catch (e) { /* ignore */ }
     }
@@ -769,6 +560,9 @@ async function startServer() {
   }
 }
 
-startServer();
+// Start the server
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
 
 export default app;
