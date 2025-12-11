@@ -65,14 +65,16 @@ const initializeApp = () => {
   const rootElement = document.getElementById("root");
 
   if (!rootElement) {
+    console.error("❌ Root element not found!");
     document.body.innerHTML = `
       <div style="
         display:flex; align-items:center; justify-content:center; height:100vh;
         font-family: sans-serif; text-align:center; background:#f8f9fa; color:#333;
       ">
         <div>
-          <h1>⚠️ App Failed to Load</h1>
-          <p>Critical error detected. Please contact support.</p>
+          <h1>⚠️ Root Element Missing</h1>
+          <p>The &lt;div id="root"&gt; element was not found in the HTML.</p>
+          <p>Please check your index.html file.</p>
           <button onclick="window.location.reload()" style="
             padding:0.8rem 1.5rem; margin-top:1rem; background:#3498db; color:white;
             border:none; border-radius:6px; cursor:pointer;
@@ -84,25 +86,9 @@ const initializeApp = () => {
   }
 
   try {
-    // Show temporary loading
-    rootElement.innerHTML = `
-      <div style="
-        display:flex; align-items:center; justify-content:center; height:100vh;
-        font-family: sans-serif; text-align:center; background:#f0f4f8; color:#333;
-      ">
-        <div>
-          <div style="
-            width:50px; height:50px; border:4px solid #f3f3f3; border-top:4px solid #667eea;
-            border-radius:50%; animation:spin 1s linear infinite; margin:0 auto 15px;
-          "></div>
-          <p>Loading Assessly Platform...</p>
-        </div>
-      </div>
-      <style>
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-      </style>
-    `;
-
+    // Clear any loading state
+    rootElement.innerHTML = "";
+    
     // Mount React App
     const root = createRoot(rootElement);
     root.render(
@@ -121,6 +107,25 @@ const initializeApp = () => {
     setTimeout(registerServiceWorker, 500);
   } catch (err) {
     console.error("❌ Failed to initialize app:", err);
+    
+    // Fallback error display
+    rootElement.innerHTML = `
+      <div style="
+        display:flex; flex-direction:column; align-items:center; justify-content:center; 
+        height:100vh; font-family: sans-serif; text-align:center; padding:2rem;
+      ">
+        <h2 style="color:#c62828;">Application Failed to Load</h2>
+        <p style="margin:1rem 0;">A critical error occurred during initialization.</p>
+        <pre style="
+          background:#f5f5f5; padding:1rem; border-radius:4px; 
+          text-align:left; max-width:600px; overflow:auto;
+        ">${err.message}</pre>
+        <button onclick="window.location.reload()" style="
+          padding:0.8rem 1.5rem; margin-top:1rem; background:#3498db; color:white;
+          border:none; border-radius:6px; cursor:pointer;
+        ">Reload Application</button>
+      </div>
+    `;
   }
 };
 
@@ -129,19 +134,23 @@ const initializeApp = () => {
  * 🚦 Application Startup
  * -----------------------------
  */
-const startApplication = () => {
+// **FIXED**: Direct execution without complex DOM ready checks
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("📄 DOM is ready, starting app initialization...");
   initMonitoring();
   registerErrorHandlers();
+  initializeApp();
+});
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initializeApp, { once: true });
-  } else {
-    setTimeout(initializeApp, 0);
-  }
-};
-
-// Start the app
-startApplication();
+// Fallback for already loaded DOM
+if (document.readyState === "interactive" || document.readyState === "complete") {
+  console.log("⚡ DOM already loaded, initializing immediately...");
+  setTimeout(() => {
+    initMonitoring();
+    registerErrorHandlers();
+    initializeApp();
+  }, 0);
+}
 
 /**
  * -----------------------------
@@ -150,8 +159,14 @@ startApplication();
  */
 if (import.meta.env.DEV) {
   window.devUtils = {
-    clearStorage: () => { localStorage.clear(); sessionStorage.clear(); window.location.reload(); },
+    clearStorage: () => { 
+      localStorage.clear(); 
+      sessionStorage.clear(); 
+      console.log("🧹 Storage cleared");
+      window.location.reload(); 
+    },
     getAppMetrics: () => window.appMetrics,
+    forceError: () => { throw new Error("Test error from devUtils"); }
   };
 
   console.log("%c🔧 Development Mode Active", "color:white; background:#667eea; padding:4px 8px; border-radius:4px;");
