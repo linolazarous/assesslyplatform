@@ -1,152 +1,69 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#3f51b5" />
-    <meta name="description" content="Create, manage, and analyze assessments using AI." />
-    <meta property="og:title" content="Assessly | AI-Powered Assessment Platform" />
-    <meta property="og:description" content="Create, manage, and analyze assessments using AI." />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
     <title>Assessly | AI-Powered Assessment Platform</title>
 
     <link rel="icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/logo.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
 
-    <!-- Fonts: use crossorigin and avoid preloading fonts via rel=preload unless you need subset preload -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
 
     <style>
-      /* Optimized Critical CSS */
-      * { 
-        margin: 0; 
-        padding: 0; 
-        box-sizing: border-box; 
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: Inter, sans-serif;
+        background: #f8fafc;
+        color: #111827;
       }
-      
-      html {
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
-      
-      body { 
-        font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif; 
-        background: #f8fafc; 
-        color: #111827; 
-        line-height: 1.5;
-        overflow-x: hidden;
-      }
-      
-      #root { 
-        min-height: 100vh; 
-      }
-      
-      #loading-fallback { 
+      #root { min-height: 100vh; }
+      #loading-fallback {
         position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        display: flex; 
-        align-items: center; 
-        justify-content: center; 
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-        color: #fff;
-        z-index: 9999;
-        transition: opacity 0.3s ease, visibility 0.3s ease;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
       }
-      
-      .react-loaded #loading-fallback { 
-        opacity: 0;
-        visibility: hidden;
-        pointer-events: none;
-      }
-      
-      /* Loading animation */
       .loading-spinner {
-        display: inline-block;
         width: 40px;
         height: 40px;
-        border: 3px solid rgba(255, 255, 255, 0.3);
+        border: 3px solid rgba(255,255,255,0.3);
+        border-top-color: white;
         border-radius: 50%;
-        border-top-color: #fff;
-        animation: spin 1s ease-in-out infinite;
-        margin-bottom: 1rem;
+        animation: spin 1s linear infinite;
       }
-      
       @keyframes spin {
         to { transform: rotate(360deg); }
       }
-      
-      /* Content fade-in */
-      @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-      }
-      
-      .fade-in {
-        animation: fadeIn 0.5s ease-out;
-      }
     </style>
-    
-    <!-- Preload main script for faster loading -->
-    <link rel="modulepreload" href="/src/main.jsx" as="script" />
   </head>
+
   <body>
     <div id="loading-fallback">
-      <div style="text-align:center;padding:2rem;" class="fade-in">
+      <div style="text-align:center">
         <div class="loading-spinner"></div>
-        <h1 style="margin:0;font-size:2rem;font-weight:600">Assessly</h1>
-        <p style="margin-top:0.5rem;opacity:0.85">Loading…</p>
+        <p>Loading...</p>
       </div>
     </div>
 
     <div id="root"></div>
 
     <script type="module" src="/src/main.jsx"></script>
+
     <script>
-      // Enhanced loading fallback with better UX
-      window.addEventListener('load', () => {
-        const loadingFallback = document.getElementById('loading-fallback');
-        const root = document.getElementById('root');
-        
-        // Check if React already hydrated
-        if (root.children.length > 0) {
-          document.body.classList.add('react-loaded');
-          return;
-        }
-        
-        // Set maximum wait time
-        const maxWaitTimeout = setTimeout(() => {
-          document.body.classList.add('react-loaded');
-        }, 5000);
-        
-        // Watch for React hydration
-        const observer = new MutationObserver(() => {
-          if (root.children.length > 0) {
-            document.body.classList.add('react-loaded');
-            clearTimeout(maxWaitTimeout);
-            observer.disconnect();
-          }
-        });
-        
-        observer.observe(root, { childList: true, subtree: true });
-        
-        // Minimum show time for branding
-        setTimeout(() => {
-          if (!document.body.classList.contains('react-loaded')) {
-            document.body.classList.add('react-loaded');
-            observer.disconnect();
-            clearTimeout(maxWaitTimeout);
-          }
-        }, 300);
-      });
-      
-      // Global error handler
-      window.addEventListener('error', (event) => {
-        console.error('Global error:', event.error);
+      window.addEventListener("load", () => {
+        document.getElementById("loading-fallback").style.display = "none";
       });
     </script>
   </body>
