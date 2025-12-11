@@ -17,7 +17,11 @@
 
     "start": "vite preview --host --port $PORT",
     "render-build": "npm ci && npm run build",
-    "clean-install": "rm -rf node_modules package-lock.json && npm install"
+    "clean-install": "rm -rf node_modules package-lock.json && npm install",
+    
+    // Add these scripts for Render deployment
+    "render-dev": "vite",
+    "render-start": "vite preview --port $PORT --host"
   },
 
   "dependencies": {
@@ -53,6 +57,7 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.2.1",
+    "@vitejs/plugin-react-swc": "^3.6.0",  // ADD THIS LINE
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.1",
     "eslint-plugin-react-hooks": "^4.6.2",
