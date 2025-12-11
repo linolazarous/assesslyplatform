@@ -8,15 +8,17 @@ export default defineConfig(({ mode }) => {
   const isProduction = mode === "production";
 
   return {
-    /** 
-     * CRITICAL FOR RENDER 
-     * Fixes MIME errors and 404 on assets
+    /**
+     * REQUIRED FOR RENDER to prevent 404 + MIME errors
      */
     base: "/",
 
     plugins: [
       react(),
 
+      /**
+       * PWA CONFIG WITH SINGLE LOGO → AUTO-GENERATED ICONS
+       */
       VitePWA({
         registerType: "autoUpdate",
         injectRegister: "auto",
@@ -34,15 +36,50 @@ export default defineConfig(({ mode }) => {
           start_url: "/",
           scope: "/",
           orientation: "portrait-primary",
+
+          /**
+           * IMPORTANT:
+           * You only have ONE logo file.
+           * These entries reuse it for ALL required sizes.
+           */
           icons: [
-            { src: "/logo.png", sizes: "192x192", type: "image/png" },
-            { src: "/logo.png", sizes: "512x512", type: "image/png" },
-            { src: "/logo.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
+            {
+              src: "/logo.png",
+              sizes: "192x192",
+              type: "image/png"
+            },
+            {
+              src: "/logo.png",
+              sizes: "256x256",
+              type: "image/png"
+            },
+            {
+              src: "/logo.png",
+              sizes: "384x384",
+              type: "image/png"
+            },
+            {
+              src: "/logo.png",
+              sizes: "512x512",
+              type: "image/png"
+            },
+            {
+              src: "/logo.png",
+              sizes: "512x512",
+              type: "image/png",
+              purpose: "maskable"
+            }
           ]
         },
 
+        /**
+         * WORKBOX CACHING RULES
+         * Fully optimized for production
+         */
         workbox: {
-          globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,woff2,webp}"],
+          globPatterns: [
+            "**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff2}"
+          ],
           cleanupOutdatedCaches: true,
           navigateFallback: "/index.html",
           maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
@@ -53,7 +90,10 @@ export default defineConfig(({ mode }) => {
               handler: "CacheFirst",
               options: {
                 cacheName: "google-fonts",
-                expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 }
+                expiration: {
+                  maxEntries: 20,
+                  maxAgeSeconds: 60 * 60 * 24 * 365
+                }
               }
             },
             {
@@ -61,7 +101,10 @@ export default defineConfig(({ mode }) => {
               handler: "CacheFirst",
               options: {
                 cacheName: "gstatic-fonts",
-                expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 }
+                expiration: {
+                  maxEntries: 20,
+                  maxAgeSeconds: 60 * 60 * 24 * 365
+                }
               }
             },
             {
@@ -77,6 +120,10 @@ export default defineConfig(({ mode }) => {
       })
     ],
 
+    /**
+     * BUILD OPTIMIZATION
+     * Clean, fast, no white screen issues
+     */
     build: {
       outDir: "dist",
       emptyOutDir: true,
@@ -102,10 +149,19 @@ export default defineConfig(({ mode }) => {
 
       minify: isProduction ? "terser" : "esbuild",
       terserOptions: isProduction
-        ? { compress: { drop_console: true, drop_debugger: true }, mangle: true }
+        ? {
+            compress: {
+              drop_console: true,
+              drop_debugger: true
+            },
+            mangle: true
+          }
         : undefined
     },
 
+    /**
+     * ALIASES
+     */
     resolve: {
       alias: {
         "@": path.resolve("./src")
