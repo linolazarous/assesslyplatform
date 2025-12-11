@@ -24,7 +24,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 
 // Import your main router that consolidates all routes
-import mainRouter from './api/routes/index.js';
+import mainRouter from './routes/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
