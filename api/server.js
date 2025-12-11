@@ -25,6 +25,9 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import fs from 'fs';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // Import your main router that consolidates all routes
 import mainRouter from './routes/index.js';
 
@@ -668,6 +671,122 @@ function getAvailableEndpoints() {
 
 // Initialize Swagger
 setupSwagger();
+
+// ==================== SPA Fallback for Frontend Routes ====================
+// This handles all frontend routes and serves the index.html
+// so that React Router can take over client-side routing
+
+// Serve static files from 'public' directory if they exist
+app.use(express.static(path.join(__dirname, 'public')));
+
+// For all other routes that are not API routes, serve the SPA index.html
+app.get('*', (req, res, next) => {
+  // Skip API routes - they should be handled by your API
+  if (req.path.startsWith('/api/') || 
+      req.path.startsWith('/health') || 
+      req.path.startsWith('/errors/') ||
+      req.path === '/favicon.ico') {
+    return next();
+  }
+
+  // Check if the file exists in the public directory
+  const filePath = path.join(__dirname, 'public', 'index.html');
+  
+  // In production, you should have a build directory
+  // If using Create React App/Vite, it's usually 'dist' or 'build'
+  const possiblePaths = [
+    path.join(__dirname, 'public', 'index.html'),
+    path.join(__dirname, 'dist', 'index.html'),
+    path.join(__dirname, 'build', 'index.html'),
+    path.join(__dirname, 'client', 'dist', 'index.html'),
+    path.join(__dirname, 'client', 'build', 'index.html')
+  ];
+
+  let foundPath = null;
+  for (const p of possiblePaths) {
+    try {
+      if (fs.existsSync(p)) {
+        foundPath = p;
+        break;
+      }
+    } catch (err) {
+      // Continue checking other paths
+    }
+  }
+
+  if (foundPath) {
+    console.log(chalk.blue(`📄 Serving SPA from: ${foundPath}`));
+    return res.sendFile(foundPath);
+  } else {
+    // If no index.html found, provide a helpful message
+    console.warn(chalk.yellow(`⚠️  SPA index.html not found for route: ${req.path}`));
+    
+    // For frontend routes that don't have a file, still serve a basic HTML
+    // that tells the user to use the frontend URL
+    return res.status(200).send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Assessly Platform</title>
+        <style>
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            margin: 0; padding: 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+          }
+          .container { max-width: 600px; text-align: center; }
+          h1 { font-size: 3em; margin-bottom: 20px; }
+          p { font-size: 1.2em; line-height: 1.6; margin-bottom: 30px; opacity: 0.9; }
+          .card { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); 
+                  border-radius: 20px; padding: 40px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+          .btn { display: inline-block; background: white; color: #667eea; 
+                 padding: 15px 30px; border-radius: 50px; text-decoration: none;
+                 font-weight: bold; margin-top: 20px; transition: transform 0.3s; }
+          .btn:hover { transform: translateY(-3px); }
+          .links { margin-top: 30px; display: flex; gap: 20px; justify-content: center; }
+          .link { color: white; opacity: 0.8; text-decoration: none; }
+          .link:hover { opacity: 1; }
+          .error { background: rgba(255,0,0,0.1); padding: 15px; border-radius: 10px; 
+                   margin: 20px 0; border-left: 4px solid #ff4757; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="card">
+            <h1>🚀 Assessly Platform</h1>
+            <p>This is the backend API server. The frontend application should be accessed separately.</p>
+            
+            ${req.path.includes('auth/login') ? `
+            <div class="error">
+              <strong>Note:</strong> You're trying to access <code>${req.path}</code><br>
+              This is a frontend route that should be handled by the React application.
+            </div>
+            ` : ''}
+            
+            <p>
+              <strong>Frontend URL:</strong> 
+              <a href="${FRONTEND_URL}" style="color: white; text-decoration: underline;">
+                ${FRONTEND_URL}
+              </a>
+            </p>
+            
+            <a href="${FRONTEND_URL}" class="btn">Go to Assessly Application</a>
+            
+            <div class="links">
+              <a href="/health" class="link">API Health</a>
+              <a href="/api/docs" class="link">API Documentation</a>
+              <a href="/api/monitor" class="link">System Monitor</a>
+              <a href="https://docs.assessly.com" class="link">Documentation</a>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+});
 
 // ==================== 404 Handler ====================
 app.use((req, res) => {
