@@ -2,6 +2,7 @@
  * server.js – Assessly Platform API (Production Ready)
  * Final version perfectly integrated with your existing repo structure
  * Connects all your models, routes, and controllers
+ * Now with API documentation and monitoring endpoints
  */
 
 import 'dotenv/config';
@@ -22,6 +23,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import fs from 'fs';
 
 // Import your main router that consolidates all routes
 import mainRouter from './routes/index.js';
@@ -228,6 +230,87 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ==================== API Monitoring Endpoint ====================
+app.get('/api/monitor', (req, res) => {
+  const dbState = mongoose.connection.readyState;
+  const memoryUsage = process.memoryUsage();
+  const uptime = process.uptime();
+  
+  // Calculate uptime in human readable format
+  const days = Math.floor(uptime / 86400);
+  const hours = Math.floor((uptime % 86400) / 3600);
+  const minutes = Math.floor((uptime % 3600) / 60);
+  const seconds = Math.floor(uptime % 60);
+  
+  res.json({
+    success: true,
+    status: 'healthy',
+    service: 'Assessly Platform API',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    requestId: req.id,
+    environment: NODE_ENV,
+    
+    // System information
+    system: {
+      nodeVersion: process.version,
+      platform: process.platform,
+      architecture: process.arch,
+      pid: process.pid,
+      cpuUsage: process.cpuUsage(),
+      title: process.title,
+      argv: process.argv.slice(0, 3) // Show first 3 args only
+    },
+    
+    // Uptime information
+    uptime: {
+      seconds: Math.floor(uptime),
+      humanReadable: `${days}d ${hours}h ${minutes}m ${seconds}s`,
+      startedAt: new Date(Date.now() - uptime * 1000).toISOString()
+    },
+    
+    // Memory usage
+    memory: {
+      rss: `${Math.round(memoryUsage.rss / 1024 / 1024)} MB`,
+      heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)} MB`,
+      heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)} MB`,
+      external: `${Math.round(memoryUsage.external / 1024 / 1024)} MB`,
+      arrayBuffers: `${Math.round(memoryUsage.arrayBuffers / 1024 / 1024)} MB`,
+      percentageUsed: Math.round((memoryUsage.heapUsed / memoryUsage.heapTotal) * 100)
+    },
+    
+    // Database status
+    database: {
+      status: dbState === 1 ? 'connected' : 'disconnected',
+      readyState: dbState,
+      host: mongoose.connection.host || 'unknown',
+      name: mongoose.connection.name || 'unknown',
+      models: mongoose.modelNames().length
+    },
+    
+    // Active connections
+    connections: {
+      max: process.env.maxConnections || 'unlimited',
+      current: 'dynamic' // You can add connection pool metrics here
+    },
+    
+    // Environment
+    env: {
+      nodeEnv: NODE_ENV,
+      port: PORT,
+      frontendUrl: FRONTEND_URL,
+      backendUrl: BACKEND_URL
+    },
+    
+    // Service metrics
+    metrics: {
+      totalRequests: 'tracked_in_logs', // You can implement request counting
+      averageResponseTime: 'tracked_in_x-response-time_header',
+      errorRate: 'tracked_in_error_logs'
+    }
+  });
+});
+
 // Client error logging endpoint (from your frontend issue)
 app.post('/errors/log', (req, res) => {
   try {
@@ -329,19 +412,76 @@ app.use('/api/v1', apiLimiter);
 // This connects ALL your routes from index.js
 app.use('/api/v1', mainRouter);
 
-// ==================== Swagger Documentation ====================
-if (!isProd) {
+// ==================== API Documentation (Swagger) ====================
+// Initialize Swagger documentation
+async function setupSwagger() {
   try {
-    const swaggerJsdoc = await import('swagger-jsdoc');
-    const swaggerUi = await import('swagger-ui-express');
-    
+    // Check if we're in production and docs are disabled
+    if (isProd && process.env.ENABLE_API_DOCS !== 'true') {
+      console.log(chalk.yellow('📚 API documentation is disabled in production'));
+      
+      // Still provide a basic docs endpoint with info
+      app.get('/api/docs', (req, res) => {
+        res.json({
+          success: true,
+          message: 'API Documentation',
+          note: 'API documentation is disabled in production for security. Enable with ENABLE_API_DOCS=true',
+          endpoints: {
+            authentication: '/api/v1/auth/*',
+            users: '/api/v1/users/*',
+            organizations: '/api/v1/organizations/*',
+            assessments: '/api/v1/assessments/*',
+            subscriptions: '/api/v1/subscriptions/*',
+            contact: '/api/v1/contact/*',
+            monitoring: '/api/monitor',
+            health: '/health'
+          },
+          requestId: req.id,
+          timestamp: new Date().toISOString()
+        });
+      });
+      return;
+    }
+
+    // Try to load swagger dependencies
+    let swaggerJsdoc, swaggerUi;
+    try {
+      const swaggerModule = await import('swagger-jsdoc');
+      swaggerJsdoc = swaggerModule.default;
+    } catch (err) {
+      console.warn(chalk.yellow('⚠️ swagger-jsdoc not installed. Installing recommended...'));
+      console.log(chalk.blue('💡 Run: npm install swagger-jsdoc swagger-ui-express'));
+      
+      // Provide fallback docs endpoint
+      app.get('/api/docs', (req, res) => {
+        res.json({
+          success: true,
+          message: 'API Documentation',
+          note: 'Install swagger dependencies for full documentation: npm install swagger-jsdoc swagger-ui-express',
+          endpoints: getAvailableEndpoints(),
+          requestId: req.id
+        });
+      });
+      return;
+    }
+
+    try {
+      const swaggerUiModule = await import('swagger-ui-express');
+      swaggerUi = swaggerUiModule.default;
+    } catch (err) {
+      console.warn(chalk.yellow('⚠️ swagger-ui-express not installed'));
+      return;
+    }
+
+    // Swagger configuration
     const swaggerOptions = {
       definition: {
-        openapi: '3.1.0',
+        openapi: '3.0.0',
         info: {
           title: 'Assessly Platform API',
           version: '1.0.0',
-          description: 'Comprehensive multi-tenant assessment platform API',
+          description: 'Comprehensive multi-tenant assessment platform API for organizations, teams, and assessments',
+          termsOfService: 'https://assessly.com/terms',
           contact: {
             name: 'Assessly Platform Support',
             email: 'assesslyinc@gmail.com',
@@ -356,6 +496,10 @@ if (!isProd) {
           {
             url: `${BACKEND_URL}/api/v1`,
             description: 'Production Server'
+          },
+          {
+            url: 'http://localhost:10000/api/v1',
+            description: 'Local Development Server'
           }
         ],
         components: {
@@ -363,28 +507,167 @@ if (!isProd) {
             BearerAuth: {
               type: 'http',
               scheme: 'bearer',
-              bearerFormat: 'JWT'
+              bearerFormat: 'JWT',
+              description: 'JWT Authorization header using the Bearer scheme. Example: "Authorization: Bearer {token}"'
+            },
+            ApiKeyAuth: {
+              type: 'apiKey',
+              in: 'header',
+              name: 'X-API-Key',
+              description: 'API key for external services'
+            }
+          },
+          schemas: {
+            User: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                email: { type: 'string', format: 'email' },
+                firstName: { type: 'string' },
+                lastName: { type: 'string' },
+                role: { type: 'string', enum: ['admin', 'manager', 'member', 'viewer'] },
+                organization: { type: 'string' }
+              }
+            },
+            Error: {
+              type: 'object',
+              properties: {
+                success: { type: 'boolean', example: false },
+                error: { type: 'string' },
+                requestId: { type: 'string' },
+                timestamp: { type: 'string', format: 'date-time' }
+              }
             }
           }
         },
         security: [{
           BearerAuth: []
-        }]
+        }],
+        externalDocs: {
+          description: 'Assessly Platform Documentation',
+          url: 'https://docs.assessly.com'
+        }
       },
-      apis: ['./api/routes/*.js'] // Auto-document your routes
+      apis: [
+        './routes/*.js',
+        './routes/**/*.js',
+        './api/routes/*.js',
+        './api/controllers/*.js'
+      ]
     };
 
-    const swaggerSpec = swaggerJsdoc.default(swaggerOptions);
-    app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    const swaggerSpec = swaggerJsdoc(swaggerOptions);
+    
+    // Custom Swagger UI options
+    const swaggerUiOptions = {
       explorer: true,
-      customSiteTitle: 'Assessly Platform API Documentation'
-    }));
+      customSiteTitle: 'Assessly Platform API Documentation',
+      customCss: '.swagger-ui .topbar { display: none }',
+      customfavIcon: '/favicon.ico',
+      swaggerOptions: {
+        persistAuthorization: true,
+        displayRequestDuration: true,
+        docExpansion: 'list',
+        filter: true,
+        showExtensions: true,
+        showCommonExtensions: true,
+        tryItOutEnabled: true
+      }
+    };
 
-    console.log(chalk.cyan(`📚 Swagger docs available at ${BACKEND_URL}/api/docs`));
+    // Serve Swagger UI
+    app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerUiOptions));
+    
+    // Serve raw JSON spec
+    app.get('/api/docs/json', (req, res) => {
+      res.json(swaggerSpec);
+    });
+
+    console.log(chalk.green(`📚 Swagger docs available at ${BACKEND_URL}/api/docs`));
+    console.log(chalk.blue(`📋 API Spec available at ${BACKEND_URL}/api/docs/json`));
+
   } catch (err) {
-    console.warn(chalk.yellow('⚠️ Swagger setup warning:'), err?.message || err);
+    console.error(chalk.red('❌ Swagger setup error:'), err.message || err);
+    
+    // Fallback docs endpoint
+    app.get('/api/docs', (req, res) => {
+      res.json({
+        success: true,
+        message: 'Assessly Platform API Documentation',
+        note: 'Swagger documentation is currently unavailable',
+        availableEndpoints: getAvailableEndpoints(),
+        quickStart: {
+          authentication: 'POST /api/v1/auth/login with {email, password}',
+          protectedRoute: 'Use "Authorization: Bearer {token}" header',
+          rateLimits: '100 requests per 15 minutes per organization'
+        },
+        requestId: req.id,
+        support: 'assesslyinc@gmail.com'
+      });
+    });
   }
 }
+
+// Helper function to get available endpoints
+function getAvailableEndpoints() {
+  return {
+    authentication: {
+      login: 'POST /api/v1/auth/login',
+      register: 'POST /api/v1/auth/register',
+      logout: 'POST /api/v1/auth/logout',
+      refresh: 'POST /api/v1/auth/refresh',
+      forgotPassword: 'POST /api/v1/auth/forgot-password',
+      resetPassword: 'POST /api/v1/auth/reset-password',
+      verifyEmail: 'POST /api/v1/auth/verify-email'
+    },
+    users: {
+      getProfile: 'GET /api/v1/users/profile',
+      updateProfile: 'PUT /api/v1/users/profile',
+      listUsers: 'GET /api/v1/users',
+      getUser: 'GET /api/v1/users/:id',
+      updateUser: 'PUT /api/v1/users/:id',
+      deleteUser: 'DELETE /api/v1/users/:id'
+    },
+    organizations: {
+      create: 'POST /api/v1/organizations',
+      list: 'GET /api/v1/organizations',
+      get: 'GET /api/v1/organizations/:id',
+      update: 'PUT /api/v1/organizations/:id',
+      delete: 'DELETE /api/v1/organizations/:id',
+      invite: 'POST /api/v1/organizations/:id/invite',
+      members: 'GET /api/v1/organizations/:id/members'
+    },
+    assessments: {
+      create: 'POST /api/v1/assessments',
+      list: 'GET /api/v1/assessments',
+      get: 'GET /api/v1/assessments/:id',
+      update: 'PUT /api/v1/assessments/:id',
+      delete: 'DELETE /api/v1/assessments/:id',
+      publish: 'POST /api/v1/assessments/:id/publish',
+      responses: 'GET /api/v1/assessments/:id/responses'
+    },
+    subscriptions: {
+      plans: 'GET /api/v1/subscriptions/plans',
+      subscribe: 'POST /api/v1/subscriptions/subscribe',
+      current: 'GET /api/v1/subscriptions/current',
+      invoices: 'GET /api/v1/subscriptions/invoices'
+    },
+    system: {
+      health: 'GET /health',
+      monitor: 'GET /api/monitor',
+      apiHealth: 'GET /api/v1/health',
+      status: 'GET /api/v1/status',
+      features: 'GET /api/v1/features'
+    },
+    contact: {
+      sendMessage: 'POST /api/v1/contact',
+      listMessages: 'GET /api/v1/contact (admin only)'
+    }
+  };
+}
+
+// Initialize Swagger
+setupSwagger();
 
 // ==================== 404 Handler ====================
 app.use((req, res) => {
@@ -396,17 +679,7 @@ app.use((req, res) => {
       method: req.method,
       requestId: req.id,
       apiVersion: 'v1',
-      availableEndpoints: {
-        authentication: '/api/v1/auth/*',
-        users: '/api/v1/users/*',
-        organizations: '/api/v1/organizations/*',
-        assessments: '/api/v1/assessments/*',
-        assessmentResponses: '/api/v1/assessment-responses/*',
-        subscriptions: '/api/v1/subscriptions/*',
-        userActivities: '/api/v1/user-activities/*',
-        contact: '/api/v1/contact/*',
-        system: ['/api/v1/health', '/api/v1/status', '/api/v1/features']
-      },
+      availableEndpoints: getAvailableEndpoints(),
       suggestion: `Check API docs: ${BACKEND_URL}/api/docs or visit ${FRONTEND_URL} for web application`
     });
   }
@@ -416,7 +689,10 @@ app.use((req, res) => {
     error: 'Route not found',
     path: req.path,
     requestId: req.id,
-    suggestion: `This is an API server. Web application is available at: ${FRONTEND_URL}`
+    suggestion: `This is an API server. Web application is available at: ${FRONTEND_URL}`,
+    apiDocumentation: `${BACKEND_URL}/api/docs`,
+    apiHealth: `${BACKEND_URL}/health`,
+    apiMonitor: `${BACKEND_URL}/api/monitor`
   });
 });
 
@@ -497,11 +773,13 @@ async function startServer() {
       console.log(chalk.white(`   API Base:      ${BACKEND_URL}/api/v1`));
       console.log(chalk.white(`   API Docs:      ${BACKEND_URL}/api/docs`));
       console.log(chalk.white(`   Health Check:  ${BACKEND_URL}/health`));
+      console.log(chalk.white(`   API Monitor:   ${BACKEND_URL}/api/monitor`));
       console.log(chalk.cyan('══════════════════════════════════════════'));
       console.log(chalk.blue(`\n🔐 Authentication: JWT Bearer & Google OAuth`));
       console.log(chalk.blue(`🏢 Multi-tenant:   Enabled (${modelNames.length} models)`));
       console.log(chalk.blue(`📊 Rate limiting:  Enabled (tiered)`));
       console.log(chalk.blue(`📝 Error logging:  Enabled (/errors/log)`));
+      console.log(chalk.blue(`📚 API Docs:       ${process.env.ENABLE_API_DOCS === 'true' ? 'Enabled' : 'Basic info only'}`));
       console.log(chalk.green('\n✅ Server is ready to handle requests\n'));
     });
 
