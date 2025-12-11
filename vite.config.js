@@ -6,21 +6,17 @@ import path from "path";
 
 export default defineConfig(({ mode }) => {
   const isProduction = mode === "production";
-  
+
   return {
-    /**
-     * ✅ CRITICAL:
-     * Render/Vercel/Netlify require absolute base "/"
-     * Fixes MIME errors + asset 404 issues
+    /** 
+     * CRITICAL FOR RENDER 
+     * Fixes MIME errors and 404 on assets
      */
     base: "/",
 
     plugins: [
       react(),
 
-      /** ------------------------------
-       * 🔥 Progressive Web App (PWA)
-       * ------------------------------ */
       VitePWA({
         registerType: "autoUpdate",
         injectRegister: "auto",
@@ -29,56 +25,35 @@ export default defineConfig(({ mode }) => {
 
         manifest: {
           id: "/",
-          lang: "en",
           name: "Assessly",
           short_name: "Assessly",
           description: "AI-Powered Assessment Platform",
           theme_color: "#3f51b5",
           background_color: "#ffffff",
           display: "standalone",
-          scope: "/",
           start_url: "/",
+          scope: "/",
           orientation: "portrait-primary",
-
           icons: [
-            {
-              src: "/logo.png",
-              sizes: "192x192",
-              type: "image/png",
-            },
-            {
-              src: "/logo.png",
-              sizes: "512x512",
-              type: "image/png",
-            },
-            {
-              src: "/logo.png",
-              sizes: "512x512",
-              type: "image/png",
-              purpose: "maskable",
-            }
+            { src: "/logo.png", sizes: "192x192", type: "image/png" },
+            { src: "/logo.png", sizes: "512x512", type: "image/png" },
+            { src: "/logo.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
           ]
         },
 
         workbox: {
-          globPatterns: [
-            "**/*.{js,css,html,ico,png,svg,jpg,jpeg,woff2,webp}"
-          ],
-
+          globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,woff2,webp}"],
           cleanupOutdatedCaches: true,
-          maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-
-          /** 🌐 SPA fallback */
           navigateFallback: "/index.html",
+          maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
 
-          /** ⚡ Runtime cache rules */
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
               handler: "CacheFirst",
               options: {
                 cacheName: "google-fonts",
-                expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 }
+                expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 }
               }
             },
             {
@@ -86,7 +61,7 @@ export default defineConfig(({ mode }) => {
               handler: "CacheFirst",
               options: {
                 cacheName: "gstatic-fonts",
-                expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 }
+                expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 }
               }
             },
             {
@@ -94,23 +69,14 @@ export default defineConfig(({ mode }) => {
               handler: "NetworkFirst",
               options: {
                 cacheName: "api-cache",
-                networkTimeoutSeconds: 10,
-                expiration: { maxEntries: 50, maxAgeSeconds: 300 }
+                networkTimeoutSeconds: 8
               }
             }
           ]
-        },
-
-        devOptions: {
-          enabled: !isProduction,
-          type: "module"
         }
       })
     ],
 
-    /** ------------------------------
-     * Build Config
-     * ------------------------------ */
     build: {
       outDir: "dist",
       emptyOutDir: true,
@@ -124,54 +90,25 @@ export default defineConfig(({ mode }) => {
               "@mui/material",
               "@mui/icons-material",
               "@emotion/react",
-              "@emotion/styled",
+              "@emotion/styled"
             ],
-            "utils-vendor": [
-              "axios",
-              "dayjs",
-              "jwt-decode",
-              "notistack"
-            ]
+            "utils-vendor": ["axios", "dayjs", "notistack", "jwt-decode"]
           },
-
           chunkFileNames: "assets/[name]-[hash].js",
           entryFileNames: "assets/[name]-[hash].js",
           assetFileNames: "assets/[name]-[hash].[ext]"
         }
       },
 
-      /** Prevent broken deploys */
       minify: isProduction ? "terser" : "esbuild",
       terserOptions: isProduction
-        ? {
-            compress: { drop_console: true, drop_debugger: true },
-            mangle: true
-          }
-        : undefined,
-
-      chunkSizeWarningLimit: 1000
+        ? { compress: { drop_console: true, drop_debugger: true }, mangle: true }
+        : undefined
     },
-
-    /** Dev server fixes */
-    server: {
-      port: 3000,
-      host: true,
-      headers: { "Cache-Control": "no-store" },
-
-      proxy: {
-        "/api": {
-          target: "http://localhost:5000",
-          changeOrigin: true,
-          rewrite: (p) => p.replace(/^\/api/, "")
-        }
-      }
-    },
-
-    preview: { port: 4173, host: true },
 
     resolve: {
       alias: {
-        "@": path.resolve(__dirname, "./src"),
+        "@": path.resolve("./src")
       }
     }
   };
