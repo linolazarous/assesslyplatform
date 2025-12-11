@@ -1,6 +1,5 @@
-// vite.config.js
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react-swc";
+import react from "@vitejs/plugin-react-swc"; // This is now installed
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 
@@ -37,11 +36,6 @@ export default defineConfig(({ mode }) => {
           scope: "/",
           orientation: "portrait-primary",
 
-          /**
-           * IMPORTANT:
-           * You only have ONE logo file.
-           * These entries reuse it for ALL required sizes.
-           */
           icons: [
             {
               src: "/logo.png",
@@ -72,10 +66,6 @@ export default defineConfig(({ mode }) => {
           ]
         },
 
-        /**
-         * WORKBOX CACHING RULES
-         * Fully optimized for production
-         */
         workbox: {
           globPatterns: [
             "**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff2}"
@@ -122,7 +112,6 @@ export default defineConfig(({ mode }) => {
 
     /**
      * BUILD OPTIMIZATION
-     * Clean, fast, no white screen issues
      */
     build: {
       outDir: "dist",
@@ -166,6 +155,24 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@": path.resolve("./src")
       }
+    },
+
+    /**
+     * SERVER CONFIGURATION FOR RENDER
+     */
+    server: {
+      port: 5173,
+      host: true,
+      strictPort: true,
+      hmr: {
+        clientPort: 443
+      }
+    },
+
+    preview: {
+      port: 4173,
+      host: true,
+      strictPort: true
     }
   };
 });
