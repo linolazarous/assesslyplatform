@@ -2,7 +2,6 @@
   "name": "assessly-frontend",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "description": "Assessly - Modern AI-Powered Assessment Platform",
 
   "engines": {
@@ -15,8 +14,8 @@
     "build": "vite build",
     "serve": "vite preview --host",
     "preview": "vite preview --port 4173 --host",
-    "start": "vite preview --host --port $PORT",
 
+    "start": "vite preview --host --port $PORT",
     "render-build": "npm ci && npm run build",
     "clean-install": "rm -rf node_modules package-lock.json && npm install"
   },
@@ -46,9 +45,6 @@
     "react-hook-form": "^7.52.3",
     "react-router-dom": "^6.26.1",
     "recharts": "^2.15.0",
-    "vite": "^5.2.0",
-    "@vitejs/plugin-react": "^4.2.1",
-    "vite-plugin-pwa": "^1.2.0",
     "xlsx": "^0.18.5",
     "yup": "^1.4.0"
   },
@@ -56,10 +52,13 @@
   "devDependencies": {
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.2.1",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.1",
     "eslint-plugin-react-hooks": "^4.6.2",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vite": "^5.2.0",
+    "vite-plugin-pwa": "^1.2.0"
   },
 
   "browserslist": {
