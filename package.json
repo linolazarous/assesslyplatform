@@ -6,7 +6,7 @@
   "description": "Assessly - Modern AI-Powered Assessment Platform",
 
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
 
@@ -17,9 +17,8 @@
     "preview": "vite preview --port 4173 --host",
     "start": "vite preview --host --port $PORT",
 
-    "analyze": "npm run build -- --mode analyze",
-    "render-build": "npm ci --legacy-peer-deps && npm run build",
-    "clean-install": "rm -rf node_modules package-lock.json && npm install --legacy-peer-deps"
+    "render-build": "npm ci && npm run build",
+    "clean-install": "rm -rf node_modules package-lock.json && npm install"
   },
 
   "dependencies": {
@@ -47,24 +46,19 @@
     "react-hook-form": "^7.52.3",
     "react-router-dom": "^6.26.1",
     "recharts": "^2.15.0",
-    "vite": "^7.2.7",
+    "vite": "^5.2.0",
+    "@vitejs/plugin-react": "^4.2.1",
     "vite-plugin-pwa": "^1.2.0",
     "xlsx": "^0.18.5",
     "yup": "^1.4.0"
   },
 
   "devDependencies": {
-    "@babel/preset-react": "^7.24.7",
-    "@emotion/babel-plugin": "^11.11.0",
-    "@types/chart.js": "^2.9.41",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "dotenv": "^16.3.1",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.1",
     "eslint-plugin-react-hooks": "^4.6.2",
-    "eslint-plugin-react-refresh": "^0.4.7",
-    "rollup-plugin-visualizer": "^5.12.0",
     "typescript": "^5.4.5"
   },
 
@@ -87,9 +81,7 @@
     "react",
     "vite",
     "education",
-    "frontend",
-    "cors",
-    "axios"
+    "frontend"
   ],
 
   "license": "MIT"
