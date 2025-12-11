@@ -1,19 +1,16 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react-swc";
+import react from "@vitejs/plugin-react"; // Changed back to regular plugin
 import { VitePWA } from "vite-plugin-pwa";
-import path from "path";
 
 export default defineConfig({
-  // The base URL is crucial for correctly resolving asset paths
-  base: "./", // Changed from '/' to relative path './'
-
+  // Base path for production
+  base: "./",
+  
   plugins: [
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      injectRegister: "auto",
-      // Include only the core assets that definitely exist
-      includeAssets: ["favicon.ico"],
+      includeAssets: ['favicon.ico'],
       manifest: {
         name: "Assessly",
         short_name: "Assessly",
@@ -21,44 +18,39 @@ export default defineConfig({
         theme_color: "#3f51b5",
         background_color: "#ffffff",
         display: "standalone",
-        // Start URL should be relative
-        start_url: "./",
-        scope: "./",
+        start_url: ".",
         icons: [
           {
-            src: "./logo.png", // Changed to relative path
+            src: "logo-192.png",
             sizes: "192x192",
             type: "image/png"
           },
           {
-            src: "./logo.png",
+            src: "logo-512.png",
             sizes: "512x512",
             type: "image/png"
           }
         ]
       },
-      // Simplified workbox configuration
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff2}"],
-        navigateFallback: "./index.html",
-        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        navigateFallback: 'index.html',
       }
     })
   ],
-
+  
   build: {
-    outDir: "dist",
-    // This helps the plugin find the correct paths
+    outDir: 'dist',
+    sourcemap: false,
     rollupOptions: {
-      input: {
-        main: path.resolve(__dirname, "index.html")
+      output: {
+        manualChunks: undefined // Disable manual chunks for now to simplify
       }
     }
   },
-
-  resolve: {
-    alias: {
-      "@": path.resolve("./src")
-    }
+  
+  server: {
+    port: 5173,
+    host: true
   }
 });
