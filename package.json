@@ -19,7 +19,6 @@
     "render-build": "npm ci && npm run build",
     "clean-install": "rm -rf node_modules package-lock.json && npm install",
     
-    // Add these scripts for Render deployment
     "render-dev": "vite",
     "render-start": "vite preview --port $PORT --host"
   },
