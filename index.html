@@ -3,7 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-
     <title>Assessly | AI-Powered Assessment Platform</title>
 
     <link rel="icon" href="/favicon.ico" />
@@ -12,7 +11,6 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
       rel="stylesheet"
@@ -23,9 +21,8 @@
       body {
         font-family: Inter, sans-serif;
         background: #f8fafc;
-        color: #111827;
+        min-height: 100vh;
       }
-      #root { min-height: 100vh; }
       #loading-fallback {
         position: fixed;
         inset: 0;
@@ -34,6 +31,7 @@
         justify-content: center;
         background: linear-gradient(135deg, #667eea, #764ba2);
         color: white;
+        z-index: 9999;
       }
       .loading-spinner {
         width: 40px;
@@ -43,9 +41,7 @@
         border-radius: 50%;
         animation: spin 1s linear infinite;
       }
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
+      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   </head>
 
@@ -53,13 +49,14 @@
     <div id="loading-fallback">
       <div style="text-align:center">
         <div class="loading-spinner"></div>
-        <p>Loading...</p>
+        <p>Loading Assessly...</p>
       </div>
     </div>
 
     <div id="root"></div>
 
-    <script type="module" src="/src/main.jsx"></script>
+    <!-- Vite injects final built JS automatically -->
+    <script type="module" src="/assets/index.js"></script>
 
     <script>
       window.addEventListener("load", () => {
