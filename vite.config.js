@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
     /**
      * REQUIRED FOR RENDER to prevent 404 + MIME errors
      */
-    base: "/",
+    base: "./",
 
     plugins: [
       react(),
