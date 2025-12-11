@@ -2,7 +2,7 @@
   "root": "dist",
   "clean_urls": true,
   "error_page": "index.html",
-  
+
   "routes": {
     "/*": "index.html"
   },
@@ -20,6 +20,10 @@
       "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0"
     },
 
+    "/manifest.webmanifest": {
+      "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0"
+    },
+
     "/sw.js": {
       "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0"
     },
@@ -28,19 +32,15 @@
       "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0"
     },
 
-    "/manifest.webmanifest": {
-      "Cache-Control": "no-cache, max-age=0"
-    },
-
     "/assets/**": {
       "Cache-Control": "public, max-age=31536000, immutable"
     },
 
-    "/*.js": {
+    "/**/*.js": {
       "Cache-Control": "public, max-age=31536000, immutable"
     },
 
-    "/*.css": {
+    "/**/*.css": {
       "Cache-Control": "public, max-age=31536000, immutable"
     },
 
@@ -48,27 +48,27 @@
       "Cache-Control": "public, max-age=31536000, immutable"
     },
 
-    "/*.ico": {
+    "/favicon.ico": {
       "Cache-Control": "public, max-age=86400"
     },
 
-    "/*.png": {
+    "/**/*.png": {
       "Cache-Control": "public, max-age=86400"
     },
 
-    "/*.jpg": {
+    "/**/*.jpg": {
       "Cache-Control": "public, max-age=86400"
     },
 
-    "/*.jpeg": {
+    "/**/*.jpeg": {
       "Cache-Control": "public, max-age=86400"
     },
 
-    "/*.svg": {
+    "/**/*.svg": {
       "Cache-Control": "public, max-age=86400"
     },
 
-    "/*.webp": {
+    "/**/*.webp": {
       "Cache-Control": "public, max-age=86400"
     },
 
@@ -84,24 +84,12 @@
   "https_only": true,
   "basic_auth": false,
   "encoding": "utf-8",
-  
+
   "rewrites": [
-    {
-      "source": "/api/**",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/admin/**",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/dashboard/**",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/auth/**",
-      "destination": "/index.html"
-    }
+    { "source": "/api/**", "destination": "/index.html" },
+    { "source": "/admin/**", "destination": "/index.html" },
+    { "source": "/dashboard/**", "destination": "/index.html" },
+    { "source": "/auth/**", "destination": "/index.html" }
   ],
 
   "redirects": [
@@ -112,17 +100,9 @@
     }
   ],
 
-  "i18n": {
-    "defaultLocale": "en",
-    "locales": {
-      "en": "/en",
-      "es": "/es"
-    }
-  },
-
   "proxies": {
     "/api": {
-      "origin": "${API_BASE_URL:-https://assesslyplatform-t49h.onrender.com}"
+      "origin": "https://assesslyplatform-t49h.onrender.com"
     }
   }
 }
