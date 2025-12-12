@@ -1,210 +1,192 @@
-// src/ErrorBoundary.jsx
-import React, { Component } from 'react';
-import { 
-  Box, 
-  Button, 
-  Typography, 
-  Container,
+import React from "react";
+import {
+  Box,
+  Typography,
+  Button,
+  Paper,
+  IconButton,
+  Collapse,
   Alert,
-  CircularProgress
-} from '@mui/material';
-import { Refresh, Home, BugReport } from '@mui/icons-material';
+  Stack,
+} from "@mui/material";
+import { Refresh, BugReport, ExpandMore, ExpandLess, Home, Report } from "@mui/icons-material";
+import PropTypes from "prop-types";
 
-class ErrorBoundary extends Component {
+/**
+ * ðŸš€ Production-Ready ErrorBoundary
+ * - Clean design
+ * - Error tracking integration ready
+ * - Copy error details
+ * - Safe recovery options
+ */
+class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { 
-      hasError: false, 
-      error: null, 
+    this.state = {
+      hasError: false,
+      error: null,
       errorInfo: null,
-      isRecovering: false 
+      showDetails: false,
+      errorId: null,
     };
   }
 
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
+  static getDerivedStateFromError() {
+    return {
+      hasError: true,
+      errorId: Date.now().toString(36) + Math.random().toString(36).substring(2, 10),
+    };
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('ErrorBoundary caught error:', error);
-    console.error('Error details:', errorInfo);
-    
-    // Store for debugging
-    this.setState({ errorInfo });
-    
-    // Report to your API if needed
-    this.reportError(error, errorInfo);
+    this.setState({ error, errorInfo });
+    this.logError(error, errorInfo);
   }
 
-  reportError = async (error, errorInfo) => {
+  logError = (error, errorInfo) => {
+    const payload = {
+      id: this.state.errorId,
+      message: error?.toString(),
+      stack: error?.stack,
+      componentStack: errorInfo?.componentStack,
+      url: window.location.href,
+      timestamp: new Date().toISOString(),
+      userAgent: navigator.userAgent,
+    };
+
+    console.error("ðŸš¨ ErrorBoundary caught an error:", payload);
+
+    // ðŸ”§ Optional: Send to external service (e.g., Sentry)
+    if (this.props.onError) {
+      this.props.onError(payload);
+    }
+  };
+
+  handleReload = () => window.location.reload();
+  handleGoHome = () => (window.location.href = "/");
+  handleReset = () => this.setState({ hasError: false, error: null, errorInfo: null });
+  toggleDetails = () => this.setState((prev) => ({ showDetails: !prev.showDetails }));
+
+  copyErrorDetails = async () => {
+    const { error, errorInfo, errorId } = this.state;
+    const details = `Error ID: ${errorId}\nTime: ${new Date().toLocaleString()}\nURL: ${
+      window.location.href
+    }\nError: ${error?.toString()}\nStack: ${error?.stack}\nComponent Stack: ${
+      errorInfo?.componentStack
+    }`;
     try {
-      await fetch('https://assesslyplatform-t49h.onrender.com/api/v1/errors/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: error?.message || 'Unknown error',
-          stack: error?.stack,
-          componentStack: errorInfo?.componentStack,
-          url: window.location.href,
-          timestamp: new Date().toISOString()
-        })
-      });
-    } catch (err) {
-      console.warn('Failed to report error:', err);
+      await navigator.clipboard.writeText(details);
+      alert("Error details copied to clipboard");
+    } catch {
+      alert("Failed to copy error details");
     }
   };
 
-  handleReset = () => {
-    this.setState({ 
-      hasError: false, 
-      error: null, 
-      errorInfo: null,
-      isRecovering: false 
-    });
-  };
+  renderErrorContent() {
+    const { showDetails, errorId } = this.state;
+    const { enableRecovery = true } = this.props;
 
-  handleReload = () => {
-    this.setState({ isRecovering: true });
-    setTimeout(() => {
-      window.location.reload();
-    }, 1000);
-  };
-
-  render() {
-    if (this.state.isRecovering) {
-      return (
-        <Box sx={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          height: '100vh',
-          gap: 3
-        }}>
-          <CircularProgress size={60} />
-          <Typography variant="h6">Recovering application...</Typography>
-        </Box>
-      );
-    }
-
-    if (this.state.hasError) {
-      const isDev = import.meta.env.DEV;
-      
-      return (
-        <Container maxWidth="md" sx={{ mt: 8 }}>
-          <Box sx={{ 
-            p: 4, 
-            borderRadius: 2,
-            bgcolor: 'background.paper',
-            boxShadow: 3
-          }}>
-            {/* Error Header */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-              <BugReport color="error" sx={{ fontSize: 40 }} />
-              <Typography variant="h4" fontWeight="bold">
-                Something went wrong
-              </Typography>
-            </Box>
-
-            {/* Error Message */}
-            <Alert severity="error" sx={{ mb: 3 }}>
-              <Typography variant="body1" fontWeight="medium">
-                {this.state.error?.message || 'An unexpected error occurred'}
-              </Typography>
-            </Alert>
-
-            {/* Development Details */}
-            {isDev && this.state.errorInfo && (
-              <Box sx={{ 
-                mb: 3, 
-                p: 2, 
-                bgcolor: 'grey.100', 
-                borderRadius: 1,
-                overflow: 'auto',
-                maxHeight: 300
-              }}>
-                <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                  Error Details:
-                </Typography>
-                <pre style={{ 
-                  margin: 0, 
-                  fontSize: '0.85rem',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word'
-                }}>
-                  {this.state.error?.toString()}
-                </pre>
-                <Typography variant="subtitle2" fontWeight="bold" gutterBottom sx={{ mt: 2 }}>
-                  Component Stack:
-                </Typography>
-                <pre style={{ 
-                  margin: 0, 
-                  fontSize: '0.85rem',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word'
-                }}>
-                  {this.state.errorInfo.componentStack}
-                </pre>
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: "100vh",
+          p: 3,
+          backgroundColor: "background.default",
+        }}
+      >
+        <Paper elevation={8} sx={{ p: { xs: 3, md: 5 }, maxWidth: 600, borderRadius: 3, textAlign: "center" }}>
+          <BugReport sx={{ fontSize: 64, color: "error.main", mb: 2 }} />
+          <Typography variant="h4" color="error" fontWeight="bold" gutterBottom>
+            Something Went Wrong
+          </Typography>
+          <Typography color="text.secondary" sx={{ mb: 4 }}>
+            Weâ€™ve encountered an unexpected issue. Please try again.
+            {errorId && (
+              <Box component="span" sx={{ display: "block", mt: 1, fontFamily: "monospace" }}>
+                Error ID: {errorId}
               </Box>
             )}
+          </Typography>
 
-            {/* Action Buttons */}
-            <Box sx={{ 
-              display: 'flex', 
-              gap: 2, 
-              flexWrap: 'wrap',
-              justifyContent: 'center'
-            }}>
-              <Button
-                variant="contained"
-                startIcon={<Refresh />}
-                onClick={this.handleReload}
-                size="large"
-                sx={{ minWidth: 180 }}
-              >
-                Reload Application
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} justifyContent="center" mb={3}>
+            <Button variant="contained" color="primary" startIcon={<Refresh />} onClick={this.handleReload}>
+              Refresh
+            </Button>
+            <Button variant="outlined" startIcon={<Home />} onClick={this.handleGoHome}>
+              Home
+            </Button>
+            {enableRecovery && (
+              <Button variant="text" onClick={this.handleReset}>
+                Try Again
               </Button>
-              
+            )}
+          </Stack>
+
+          {/* ðŸ§© Toggle Technical Details (only in dev) */}
+          {process.env.NODE_ENV === "development" && (
+            <Box sx={{ mt: 2 }}>
               <Button
-                variant="outlined"
-                startIcon={<Home />}
-                onClick={() => window.location.href = '/'}
-                size="large"
-                sx={{ minWidth: 180 }}
+                size="small"
+                variant="text"
+                endIcon={showDetails ? <ExpandLess /> : <ExpandMore />}
+                onClick={this.toggleDetails}
               >
-                Go to Home
+                {showDetails ? "Hide" : "Show"} Details
               </Button>
-              
-              {isDev && (
-                <Button
-                  variant="text"
-                  onClick={this.handleReset}
-                  size="large"
+              <Collapse in={showDetails}>
+                <Alert
+                  severity="error"
+                  action={
+                    <IconButton size="small" onClick={this.copyErrorDetails}>
+                      <Report fontSize="small" />
+                    </IconButton>
+                  }
+                  sx={{ textAlign: "left", mt: 2 }}
                 >
-                  Try to Recover
-                </Button>
-              )}
+                  <Typography variant="subtitle2">Technical Details</Typography>
+                  <Box
+                    component="pre"
+                    sx={{
+                      fontSize: "0.75rem",
+                      fontFamily: "monospace",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-all",
+                      overflow: "auto",
+                      maxHeight: 180,
+                      mt: 1,
+                    }}
+                  >
+                    {this.state.error?.stack || "No stack trace available."}
+                  </Box>
+                </Alert>
+              </Collapse>
             </Box>
+          )}
 
-            {/* Help Text */}
-            <Typography 
-              variant="body2" 
-              color="text.secondary" 
-              align="center" 
-              sx={{ mt: 4 }}
-            >
-              If the problem persists, please contact support at{' '}
-              <a href="mailto:assesslyinc@gmail.com" style={{ color: '#1976d2' }}>
-                assesslyinc@gmail.com
-              </a>
-            </Typography>
-          </Box>
-        </Container>
-      );
-    }
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 3, display: "block" }}>
+            Contact support with the above Error ID if this issue persists.
+          </Typography>
+        </Paper>
+      </Box>
+    );
+  }
 
-    return this.props.children;
+  render() {
+    return this.state.hasError ? this.renderErrorContent() : this.props.children;
   }
 }
+
+ErrorBoundary.propTypes = {
+  children: PropTypes.node.isRequired,
+  onError: PropTypes.func,
+  enableRecovery: PropTypes.bool,
+};
+
+ErrorBoundary.defaultProps = {
+  enableRecovery: process.env.NODE_ENV === "development",
+};
 
 export default ErrorBoundary;
