@@ -2,7 +2,6 @@ import React, { Suspense, StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import ErrorBoundary from "./ErrorBoundary";
-import "./index.css";
 
 const LoadingFallback = () => (
   <div style={{ textAlign: "center", padding: "20px" }}>
