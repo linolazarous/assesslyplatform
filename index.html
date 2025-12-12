@@ -7,39 +7,25 @@
 
     <link rel="icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/logo.png" />
+
+    <!-- FIXED: remove /auth/ -->
     <link rel="manifest" href="/manifest.webmanifest" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body {
-        font-family: Inter, sans-serif;
-        background: #f8fafc;
-        min-height: 100vh;
-      }
+      body { font-family: Inter, sans-serif; background: #f8fafc; min-height: 100vh; }
       #loading-fallback {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: linear-gradient(135deg, #667eea, #764ba2);
-        color: white;
-        z-index: 9999;
+        position: fixed; inset: 0; display: flex; align-items: center;
+        justify-content: center; background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white; z-index: 9999;
       }
       .loading-spinner {
-        width: 40px;
-        height: 40px;
-        border: 3px solid rgba(255,255,255,0.3);
-        border-top-color: white;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
+        width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.3);
+        border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
     </style>
@@ -55,7 +41,7 @@
 
     <div id="root"></div>
 
-    <!-- Vite injects final built JS automatically -->
+    <!-- FIXED: absolute path -->
     <script type="module" src="/src/main.jsx"></script>
 
     <script>
