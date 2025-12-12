@@ -1,7 +1,7 @@
 import React, { Suspense, StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import ErrorBoundary from "./components/ErrorBoundary/ErrorBoundary";
+import ErrorBoundary from "./ErrorBoundary";
 import "./index.css";
 
 const LoadingFallback = () => (
