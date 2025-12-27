@@ -1,0 +1,72 @@
+{
+  "name": "assessly-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Assessly - Modern AI-Powered Assessment Platform",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "serve": "vite preview --host",
+    "preview": "vite preview --port 4173 --host",
+    "render-build": "npm ci --only=production && npm run build"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.13.5",
+    "@emotion/styled": "^11.13.5",
+    "@mui/icons-material": "^5.16.7",
+    "@mui/material": "^5.16.7",
+    "@tanstack/react-query": "^5.62.3",
+    "@vitejs/plugin-react-swc": "^4.2.2",
+    "axios": "^1.7.2",
+    "date-fns": "^4.1.0",
+    "dayjs": "^1.11.13",
+    "framer-motion": "^12.23.24",
+    "jspdf": "^3.0.3",
+    "jspdf-autotable": "^5.0.2",
+    "jwt-decode": "^4.0.0",
+    "notistack": "^3.0.1",
+    "prop-types": "^15.8.1",
+    "react": "^18.3.1",
+    "react-confetti": "^6.1.0",
+    "react-dom": "^18.3.1",
+    "react-helmet-async": "^2.0.4",
+    "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^6.26.1",
+    "recharts": "^2.15.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "vite": "^7.1.12",
+    "vite-plugin-pwa": "^1.1.0"
+  },
+  "devDependencies": {
+    "@babel/preset-react": "^7.24.7",
+    "@emotion/babel-plugin": "^11.11.0",
+    "dotenv": "^16.3.1"
+  },
+  "browserslist": {
+    "production": [
+      ">0.3%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 2 chrome versions",
+      "last 2 firefox versions",
+      "last 2 edge versions"
+    ]
+  },
+  "keywords": [
+    "assessly",
+    "ai-assessment",
+    "react",
+    "vite",
+    "education",
+    "frontend",
+    "cors",
+    "axios"
+  ],
+  "license": "MIT"
+}

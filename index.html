@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#3f51b5" />
+    <meta name="description" content="Create, manage, and analyze assessments using AI." />
+    <meta property="og:title" content="Assessly | AI-Powered Assessment Platform" />
+    <meta property="og:description" content="Create, manage, and analyze assessments using AI." />
+    <title>Assessly | AI-Powered Assessment Platform</title>
+
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Fonts: use crossorigin and avoid preloading fonts via rel=preload unless you need subset preload -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" crossorigin="anonymous" />
+
+    <style>
+      body { margin: 0; font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #111827; }
+      #root { min-height: 100vh; }
+      #loading-fallback { display:flex; align-items:center; justify-content:center; height:100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:#fff; }
+      .react-loaded #loading-fallback { display:none; }
+      * { box-sizing: border-box; }
+    </style>
+  </head>
+  <body>
+    <div id="loading-fallback">
+      <div style="text-align:center;padding:2rem;">
+        <h1 style="margin:0;font-size:2rem">Assessly</h1>
+        <p style="margin-top:0.5rem;opacity:0.85">Loading…</p>
+      </div>
+    </div>
+
+    <div id="root"></div>
+
+    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Small safety fallback if React hydrates after a long time:
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const loadingFallback = document.getElementById('loading-fallback');
+          if (loadingFallback) {
+            loadingFallback.style.display = 'none';
+            document.body.classList.add('react-loaded');
+          }
+        }, 300);
+      });
+    </script>
+  </body>
+</html>

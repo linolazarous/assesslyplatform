@@ -1,0 +1,122 @@
+// src/contexts/AuthContext.jsx
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+} from 'react';
+import PropTypes from 'prop-types';
+import api, { apiEvents, TokenManager } from '@/api';
+
+const STORAGE = {
+  USER: 'assessly_user',
+  ORG: 'assessly_org',
+};
+
+const AuthContext = createContext(null);
+
+export const AuthProvider = ({ children }) => {
+  const mounted = useRef(true);
+  const refreshTimer = useRef(null);
+
+  const [token, setToken] = useState(() => TokenManager.getToken());
+  const [claims, setClaims] = useState(() =>
+    token ? TokenManager.isTokenExpired() ? {} : parseJwt(token) : {}
+  );
+  const [currentUser, setCurrentUser] = useState(() =>
+    safeJSON(localStorage.getItem(STORAGE.USER))
+  );
+  const [currentOrganization, setCurrentOrganization] = useState(() =>
+    safeJSON(localStorage.getItem(STORAGE.ORG))
+  );
+  const [loading, setLoading] = useState(true);
+
+  function parseJwt(t) {
+    try {
+      return JSON.parse(atob(t.split('.')[1]));
+    } catch {
+      return {};
+    }
+  }
+
+  function safeJSON(v) {
+    try {
+      return JSON.parse(v);
+    } catch {
+      return null;
+    }
+  }
+
+  const logout = useCallback(() => {
+    TokenManager.clearAll();
+    Object.values(STORAGE).forEach(k => localStorage.removeItem(k));
+    setToken(null);
+    setClaims({});
+    setCurrentUser(null);
+    setCurrentOrganization(null);
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+  }, []);
+
+  const scheduleRefresh = useCallback((access) => {
+    if (!access) return;
+    const c = parseJwt(access);
+    if (!c?.exp) return;
+
+    const delay = c.exp * 1000 - Date.now() - 5 * 60 * 1000;
+    if (delay <= 0) return;
+
+    refreshTimer.current = setTimeout(() => {
+      api.post('/auth/refresh').catch(() => {});
+    }, delay);
+  }, []);
+
+  /* Initial load */
+  useEffect(() => {
+    const t = TokenManager.getToken();
+    if (t && !TokenManager.isTokenExpired()) {
+      setToken(t);
+      setClaims(parseJwt(t));
+      scheduleRefresh(t);
+    } else {
+      logout();
+    }
+    setLoading(false);
+    return () => {
+      mounted.current = false;
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    };
+  }, [logout, scheduleRefresh]);
+
+  /* Listen for session expiration */
+  useEffect(() => {
+    const handler = () => logout();
+    apiEvents.on('session:expired', handler);
+    return () => apiEvents.off('session:expired', handler);
+  }, [logout]);
+
+  const value = useMemo(
+    () => ({
+      loading,
+      token,
+      claims,
+      currentUser,
+      currentOrganization,
+      logout,
+      api,
+    }),
+    [loading, token, claims, currentUser, currentOrganization, logout]
+  );
+
+  if (loading) return null;
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+AuthProvider.propTypes = {
+  children: PropTypes.node.isRequired,
+};
+
+export const useAuth = () => useContext(AuthContext);

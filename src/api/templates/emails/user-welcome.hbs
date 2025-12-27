@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to {{organizationName}}</title>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: #2d3748;
+      margin: 0;
+      padding: 0;
+      background-color: #f7fafc;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .header {
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      color: white;
+      padding: 40px 20px;
+      text-align: center;
+      border-radius: 10px 10px 0 0;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+    }
+    .logo {
+      height: 50px;
+      margin-bottom: 20px;
+    }
+    .content {
+      background: white;
+      padding: 40px;
+      border-radius: 0 0 10px 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    }
+    .welcome-text {
+      font-size: 18px;
+      color: #4a5568;
+      margin-bottom: 30px;
+    }
+    .highlight {
+      background: #f0f4ff;
+      border-left: 4px solid #4f46e5;
+      padding: 20px;
+      margin: 30px 0;
+      border-radius: 4px;
+    }
+    .cta-button {
+      display: inline-block;
+      background: #4f46e5;
+      color: white;
+      padding: 16px 32px;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 16px;
+      transition: background 0.3s;
+      text-align: center;
+      margin: 20px 0;
+    }
+    .cta-button:hover {
+      background: #4338ca;
+    }
+    .features {
+      margin: 40px 0;
+    }
+    .feature {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    .feature-icon {
+      color: #4f46e5;
+      margin-right: 15px;
+      font-size: 20px;
+    }
+    .footer {
+      text-align: center;
+      color: #718096;
+      font-size: 14px;
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .support {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #4a5568;
+    }
+    @media (max-width: 600px) {
+      .container {
+        padding: 10px;
+      }
+      .content {
+        padding: 20px;
+      }
+      .header {
+        padding: 30px 15px;
+      }
+      .header h1 {
+        font-size: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Welcome to {{organizationName}}!</h1>
+      <p style="opacity: 0.9; margin-top: 10px;">Your assessment platform is ready</p>
+    </div>
+    
+    <div class="content">
+      <div class="welcome-text">
+        <p>Hello <strong>{{name}}</strong>,</p>
+        <p>Welcome to {{organizationName}}! Your account has been successfully created with the role of <strong>{{role}}</strong>.</p>
+      </div>
+      
+      <div class="highlight">
+        <p style="margin: 0; font-weight: 600; color: #2d3748;">Your account is now active and ready to use. You can access all platform features immediately.</p>
+      </div>
+      
+      <div style="text-align: center;">
+        <a href="{{loginUrl}}" class="cta-button">Get Started Now</a>
+      </div>
+      
+      <div class="features">
+        <p style="font-weight: 600; color: #2d3748; margin-bottom: 20px;">With your new account, you can:</p>
+        
+        <div class="feature">
+          <span class="feature-icon">✓</span>
+          <span>Create and manage assessments</span>
+        </div>
+        
+        <div class="feature">
+          <span class="feature-icon">✓</span>
+          <span>Invite candidates and track progress</span>
+        </div>
+        
+        <div class="feature">
+          <span class="feature-icon">✓</span>
+          <span>Access detailed analytics and reports</span>
+        </div>
+        
+        {{#ifCond role 'admin'}}
+        <div class="feature">
+          <span class="feature-icon">✓</span>
+          <span>Manage organization settings and users</span>
+        </div>
+        {{/ifCond}}
+      </div>
+      
+      <div class="support">
+        <p><strong>Need help getting started?</strong></p>
+        <p>Check out our <a href="https://docs.assessly.com" style="color: #4f46e5;">documentation</a> or contact our support team at <a href="mailto:support@assessly.com" style="color: #4f46e5;">support@assessly.com</a>.</p>
+      </div>
+    </div>
+    
+    <div class="footer">
+      <p>&copy; {{currentYear}} {{organizationName}}. All rights reserved.</p>
+      <p style="font-size: 12px; margin-top: 10px; opacity: 0.7;">
+        This email was sent to {{email}}. If you didn't request this, please ignore this email.
+      </p>
+    </div>
+  </div>
+</body>
+</html>

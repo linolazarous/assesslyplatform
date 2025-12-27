@@ -1,0 +1,1 @@
+[PASTE THE FIXED ProtectedRoute.jsx CODE ABOVE HERE]
