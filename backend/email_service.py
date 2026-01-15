@@ -1,28 +1,31 @@
 import os
-import resend
 from typing import Optional
+import resend
 
 # ---------------------------
-# Resend Configuration
+# Configuration
 # ---------------------------
-RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 FROM_EMAIL = "Assessly Platform <noreply@assesslyplatform.com>"
 
-if not RESEND_API_KEY:
-    raise RuntimeError("RESEND_API_KEY environment variable is not set")
+def _init_resend():
+    api_key = os.getenv("RESEND_API_KEY")
+    if not api_key:
+        raise RuntimeError("RESEND_API_KEY is not set in environment variables")
+    resend.api_key = api_key
 
-resend.api_key = RESEND_API_KEY
 
 # ---------------------------
 # Internal Helper
 # ---------------------------
 def _send_email(params: dict) -> bool:
     try:
+        _init_resend()
         resend.Emails.send(params)
         return True
     except Exception as e:
-        print(f"[EMAIL ERROR] {str(e)}")
+        print(f"[EMAIL ERROR] {e}")
         return False
+
 
 # ---------------------------
 # Email Services
@@ -48,6 +51,7 @@ async def send_contact_notification(
             <p><small>Sent from Assessly Platform</small></p>
         """
     })
+
 
 async def send_demo_request_notification(
     name: str,
@@ -75,6 +79,7 @@ async def send_demo_request_notification(
             <p><small>Sent from Assessly Platform</small></p>
         """
     })
+
 
 async def send_welcome_email(
     name: str,
