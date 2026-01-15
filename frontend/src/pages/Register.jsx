@@ -52,7 +52,7 @@ const Register = () => {
             Back to Home
           </Link>
           <img 
-            src="https:/images/logo.png" 
+            src="/images/logo.png" 
             alt="Assessly Platform" 
             className="h-12 w-auto mx-auto mb-4"
           />
