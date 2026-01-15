@@ -52,8 +52,8 @@ const Register = () => {
             Back to Home
           </Link>
           <img 
-            src="https://customer-assets.emergentagent.com/job_511a146b-da91-4265-9e1f-65fd48a29bda/artifacts/kz1mhqzy_logo.png" 
-            alt="Assessly" 
+            src="https:/images/logo.png" 
+            alt="Assessly Platform" 
             className="h-12 w-auto mx-auto mb-4"
           />
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Your Account</h1>
