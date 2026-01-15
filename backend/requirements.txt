@@ -1,27 +1,36 @@
+# Core FastAPI and server
 fastapi==0.110.1
 uvicorn==0.25.0
 starlette==0.37.2
 
+# MongoDB
 motor==3.3.1
 pymongo==4.5.0
 dnspython==2.8.0
 
+# Data validation
 pydantic==2.12.5
 email-validator==2.3.0
 
+# Environment
 python-dotenv==1.2.1
 
+# Security
 passlib==1.7.4
 bcrypt==4.1.3
 cryptography==46.0.3
 
+# JWT
 PyJWT==2.10.1
 python-jose==3.5.0
 
+# Stripe
 stripe==14.1.0
 python-multipart==0.0.21
 
-requests==2.32.5
+# Networking / async
 anyio==4.12.0
+requests==2.31.0  # aligned with resend
 
+# Email service
 resend==0.8.0
