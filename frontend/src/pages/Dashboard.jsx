@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, Users, FileText, BarChart3, Settings, 
+import {
+  LayoutDashboard, Users, FileText, BarChart3, Settings,
   Plus, TrendingUp, Target, Clock, Award, ChevronRight
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
@@ -20,16 +20,14 @@ const Dashboard = () => {
       navigate('/login');
       return;
     }
-    
+
     const userData = localStorage.getItem('assessly_user');
     if (userData) {
       setUser(JSON.parse(userData));
     }
   }, [navigate]);
 
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
   const stats = [
     { label: 'Total Assessments', value: 24, change: '+12%', icon: FileText, color: 'blue' },
@@ -48,7 +46,7 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
-      
+
       <div className="pt-16">
         {/* Header */}
         <div className="bg-white border-b">
@@ -91,9 +89,11 @@ const Dashboard = () => {
                     {stat.value}
                   </div>
                   <div className="flex items-center text-sm">
-                    <TrendingUp className={`h-4 w-4 mr-1 ${
-                      stat.change.startsWith('+') ? 'text-green-600' : 'text-red-600'
-                    }`} />
+                    <TrendingUp
+                      className={`h-4 w-4 mr-1 ${
+                        stat.change.startsWith('+') ? 'text-green-600' : 'text-red-600'
+                      }`}
+                    />
                     <span className={stat.change.startsWith('+') ? 'text-green-600' : 'text-red-600'}>
                       {stat.change}
                     </span>
@@ -126,17 +126,17 @@ const Dashboard = () => {
                 <CardContent>
                   <div className="space-y-4">
                     {recentAssessments.map((assessment) => (
-                      <div 
+                      <div
                         key={assessment.id}
                         className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                       >
                         <div className="flex-1">
                           <div className="flex items-center">
                             <h4 className="font-semibold text-gray-900">{assessment.title}</h4>
-                            <Badge 
+                            <Badge
                               className={`ml-3 ${
-                                assessment.status === 'active' 
-                                  ? 'bg-green-100 text-green-700' 
+                                assessment.status === 'active'
+                                  ? 'bg-green-100 text-green-700'
                                   : 'bg-gray-100 text-gray-700'
                               }`}
                             >
@@ -154,14 +154,7 @@ const Dashboard = () => {
                         <div className="ml-4">
                           <div className="w-16 h-16 relative">
                             <svg className="w-16 h-16 transform -rotate-90">
-                              <circle
-                                cx="32"
-                                cy="32"
-                                r="28"
-                                stroke="#e5e7eb"
-                                strokeWidth="4"
-                                fill="none"
-                              />
+                              <circle cx="32" cy="32" r="28" stroke="#e5e7eb" strokeWidth="4" fill="none" />
                               <circle
                                 cx="32"
                                 cy="32"
@@ -190,7 +183,6 @@ const Dashboard = () => {
 
             {/* Quick Actions & Insights */}
             <div className="space-y-6">
-              {/* Quick Actions */}
               <Card className="border-2">
                 <CardHeader>
                   <CardTitle className="flex items-center">
@@ -218,7 +210,6 @@ const Dashboard = () => {
                 </CardContent>
               </Card>
 
-              {/* Performance Insights */}
               <Card className="border-2 bg-gradient-to-br from-blue-50 to-teal-50">
                 <CardHeader>
                   <CardTitle className="flex items-center">
