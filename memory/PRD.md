@@ -196,7 +196,7 @@ RESEND_API_KEY=""
 
 ### Frontend Environment Variables (`.env`)
 ```bash
-REACT_APP_BACKEND_URL=https://smartassess-6.preview.emergentagent.com
+REACT_APP_BACKEND_URL=https://assesslyplatform-pfm1.onrender.com/api
 WDS_SOCKET_PORT=443
 ENABLE_HEALTH_CHECK=false
 
