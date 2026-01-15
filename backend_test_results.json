@@ -1,0 +1,70 @@
+{
+  "summary": {
+    "total_tests": 10,
+    "passed_tests": 9,
+    "success_rate": "90.0%",
+    "timestamp": "2026-01-15T09:57:15.402861"
+  },
+  "detailed_results": [
+    {
+      "test": "API Health Check",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-15T09:57:14.523890"
+    },
+    {
+      "test": "User Registration",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-15T09:57:14.860215"
+    },
+    {
+      "test": "User Login",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-15T09:57:15.137715"
+    },
+    {
+      "test": "Get Current User",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-15T09:57:15.175263"
+    },
+    {
+      "test": "Get Current Subscription",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-15T09:57:15.210750"
+    },
+    {
+      "test": "Get Current Organization",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-15T09:57:15.247590"
+    },
+    {
+      "test": "Contact Form Submission",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-15T09:57:15.289121"
+    },
+    {
+      "test": "Demo Request Submission",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-15T09:57:15.334749"
+    },
+    {
+      "test": "Unauthorized Access Test",
+      "success": false,
+      "details": "Expected 401, got 403. Error: {'detail': 'Not authenticated'}",
+      "timestamp": "2026-01-15T09:57:15.368726"
+    },
+    {
+      "test": "Invalid Login Test",
+      "success": true,
+      "details": "Status: 401",
+      "timestamp": "2026-01-15T09:57:15.401950"
+    }
+  ]
+}
