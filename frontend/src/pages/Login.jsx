@@ -4,7 +4,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { mockLogin } from '../utils/mock';
+import { authAPI } from '../services/api';
 import { toast } from 'sonner';
 import { Mail, Lock, ArrowLeft } from 'lucide-react';
 
@@ -17,17 +17,21 @@ const Login = () => {
     setLoading(true);
     
     const formData = new FormData(e.target);
-    const email = formData.get('email');
-    const password = formData.get('password');
+    const credentials = {
+      email: formData.get('email'),
+      password: formData.get('password')
+    };
 
     try {
-      const result = await mockLogin(email, password);
-      localStorage.setItem('assessly_token', result.token);
+      const result = await authAPI.login(credentials);
+      localStorage.setItem('assessly_token', result.access_token);
       localStorage.setItem('assessly_user', JSON.stringify(result.user));
       toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (error) {
-      toast.error('Invalid credentials. Please try again.');
+      console.error('Login error:', error);
+      const errorMessage = error.response?.data?.detail || 'Invalid credentials. Please try again.';
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

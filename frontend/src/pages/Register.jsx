@@ -4,7 +4,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { mockRegister } from '../utils/mock';
+import { authAPI } from '../services/api';
 import { toast } from 'sonner';
 import { Building2, Mail, Lock, User, ArrowLeft } from 'lucide-react';
 
@@ -24,17 +24,20 @@ const Register = () => {
       email: formData.get('email'),
       organization: formData.get('organization'),
       password: formData.get('password'),
+      role: 'admin',
       plan: selectedPlan
     };
 
     try {
-      const result = await mockRegister(data);
-      localStorage.setItem('assessly_token', result.token);
+      const result = await authAPI.register(data);
+      localStorage.setItem('assessly_token', result.access_token);
       localStorage.setItem('assessly_user', JSON.stringify(result.user));
       toast.success('Account created successfully!');
       navigate('/dashboard');
     } catch (error) {
-      toast.error('Registration failed. Please try again.');
+      console.error('Registration error:', error);
+      const errorMessage = error.response?.data?.detail || 'Registration failed. Please try again.';
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
