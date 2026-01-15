@@ -15,11 +15,11 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
+
     const formData = new FormData(e.target);
     const credentials = {
       email: formData.get('email'),
-      password: formData.get('password')
+      password: formData.get('password'),
     };
 
     try {
@@ -30,7 +30,8 @@ const Login = () => {
       navigate('/dashboard');
     } catch (error) {
       console.error('Login error:', error);
-      const errorMessage = error.response?.data?.detail || 'Invalid credentials. Please try again.';
+      const errorMessage =
+        error.response?.data?.detail || 'Invalid credentials. Please try again.';
       toast.error(errorMessage);
     } finally {
       setLoading(false);
@@ -45,11 +46,13 @@ const Login = () => {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Home
           </Link>
-          <img 
-            src="https://customer-assets.emergentagent.com/job_511a146b-da91-4265-9e1f-65fd48a29bda/artifacts/kz1mhqzy_logo.png" 
-            alt="Assessly" 
+
+          <img
+            src="/images/logo.png"
+            alt="Assessly Platform"
             className="h-12 w-auto mx-auto mb-4"
           />
+
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
           <p className="text-gray-600">Sign in to your Assessly account</p>
         </div>
@@ -68,11 +71,11 @@ const Login = () => {
                   <Mail className="mr-2 h-4 w-4" />
                   Email
                 </Label>
-                <Input 
-                  id="email" 
-                  name="email" 
-                  type="email" 
-                  required 
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
                   placeholder="john@company.com"
                   className="mt-1"
                 />
@@ -83,23 +86,26 @@ const Login = () => {
                   <Lock className="mr-2 h-4 w-4" />
                   Password
                 </Label>
-                <Input 
-                  id="password" 
-                  name="password" 
-                  type="password" 
-                  required 
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
                   placeholder="••••••••"
                   className="mt-1"
                 />
                 <div className="text-right mt-1">
-                  <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700">
+                  <Link
+                    to="/forgot-password"
+                    className="text-sm text-blue-600 hover:text-blue-700"
+                  >
                     Forgot password?
                   </Link>
                 </div>
               </div>
 
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="w-full bg-gradient-to-r from-blue-600 via-teal-500 to-green-500 hover:opacity-90 transition-opacity"
                 disabled={loading}
               >
@@ -118,7 +124,9 @@ const Login = () => {
 
         <div className="mt-6 text-center text-sm text-gray-600">
           <p>Demo credentials for testing:</p>
-          <p className="font-mono text-xs mt-1">demo@assesslyplatform.com / password123</p>
+          <p className="font-mono text-xs mt-1">
+            demo@assesslyplatform.com / password123
+          </p>
         </div>
       </div>
     </div>
