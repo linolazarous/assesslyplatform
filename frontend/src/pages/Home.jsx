@@ -17,11 +17,9 @@ import {
   mockFeatures, 
   mockCapabilities, 
   mockAssessmentTypes, 
-  mockTrustMetrics,
-  mockPricingPlans,
-  mockContactSubmission,
-  mockDemoRequest
+  mockPricingPlans
 } from '../utils/mock';
+import { contactAPI, demoAPI } from '../services/api';
 import { toast } from 'sonner';
 
 const iconMap = {
@@ -81,10 +79,11 @@ const Home = () => {
     const data = Object.fromEntries(formData);
     
     try {
-      const result = await mockContactSubmission(data);
-      toast.success(result.message);
+      await contactAPI.submitContactForm(data);
+      toast.success('Message sent successfully! We\'ll get back to you soon.');
       e.target.reset();
     } catch (error) {
+      console.error('Contact form error:', error);
       toast.error('Failed to send message. Please try again.');
     }
   };
@@ -96,10 +95,11 @@ const Home = () => {
     const data = Object.fromEntries(formData);
     
     try {
-      const result = await mockDemoRequest(data);
-      toast.success(result.message);
+      await demoAPI.submitDemoRequest(data);
+      toast.success('Demo request received! Our team will contact you within 24 hours.');
       e.target.reset();
     } catch (error) {
+      console.error('Demo request error:', error);
       toast.error('Failed to submit demo request. Please try again.');
     }
   };
