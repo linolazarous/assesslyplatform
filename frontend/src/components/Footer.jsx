@@ -10,8 +10,8 @@ const Footer = () => {
           {/* Logo & Tagline */}
           <div className="col-span-1 md:col-span-2">
             <img 
-              src="https://customer-assets.emergentagent.com/job_511a146b-da91-4265-9e1f-65fd48a29bda/artifacts/kz1mhqzy_logo.png" 
-              alt="Assessly" 
+              src="/images/logo.png" 
+              alt="Assessly Platform" 
               className="h-12 w-auto mb-4"
             />
             <p className="text-gray-400 max-w-md">
