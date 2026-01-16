@@ -2,18 +2,15 @@
   "name": "frontend",
   "version": "1.0.0",
   "private": true,
-
   "type": "module",
 
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-
     "react-router-dom": "^7.5.1",
     "react-hook-form": "^7.56.2",
     "react-day-picker": "8.10.1",
     "date-fns": "^2.29.3",
-
     "axios": "^1.8.4",
     "clsx": "^2.1.1",
     "class-variance-authority": "^0.7.0",
@@ -21,13 +18,10 @@
     "tailwindcss-animate": "^1.0.7",
     "lucide-react": "^0.507.0",
     "zod": "^3.24.4",
-
     "recharts": "^3.6.0",
     "react-is": "^18.3.1",
-
     "sonner": "^1.5.0",
     "next-themes": "^0.3.0",
-
     "@radix-ui/react-label": "^2.1.0",
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-dialog": "^1.1.2",
@@ -54,7 +48,6 @@
   "devDependencies": {
     "vite": "^5.1.4",
     "@vitejs/plugin-react": "^4.2.1",
-
     "tailwindcss": "^3.4.17",
     "postcss": "^8.4.49",
     "autoprefixer": "^10.4.20"
