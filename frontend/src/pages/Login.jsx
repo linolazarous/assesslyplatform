@@ -1,38 +1,58 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Button } from '../components/ui/button';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { authAPI } from '../services/api';
+import { authAPI, paymentAPI } from '../services/api';
 import { toast } from 'sonner';
-import { Mail, Lock, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, User, ArrowLeft } from 'lucide-react';
 
-const Login = () => {
+const Register = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
+  const [plan, setPlan] = useState(location.state?.plan || 'professional');
+
+  useEffect(() => {
+    const token = localStorage.getItem('assessly_token');
+    if (token) navigate('/dashboard');
+  }, [navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     const formData = new FormData(e.target);
-    const credentials = {
+    const userData = {
+      name: formData.get('name'),
       email: formData.get('email'),
       password: formData.get('password'),
+      organization: formData.get('organization'),
+      plan,
     };
 
     try {
-      const result = await authAPI.login(credentials);
+      // Register user
+      const result = await authAPI.register(userData);
+
+      // Store token & user
       localStorage.setItem('assessly_token', result.access_token);
       localStorage.setItem('assessly_user', JSON.stringify(result.user));
-      toast.success('Welcome back!');
-      navigate('/dashboard');
+      toast.success('Registration successful!');
+
+      // Redirect to payment for paid plans
+      if (plan !== 'free') {
+        const session = await paymentAPI.createCheckoutSession(result.user.id, plan);
+        window.location.href = session.url; // Stripe Checkout
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error) {
-      console.error('Login error:', error);
-      const errorMessage =
-        error.response?.data?.detail || 'Invalid credentials. Please try again.';
-      toast.error(errorMessage);
+      console.error('Registration error:', error);
+      const message =
+        error?.response?.data?.detail || 'Registration failed. Please try again.';
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -41,44 +61,34 @@ const Login = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-green-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center text-blue-600 hover:text-blue-700 mb-6">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Home
-          </Link>
-
-          <img
-            src="/images/logo.png"
-            alt="Assessly Platform"
-            className="h-12 w-auto mx-auto mb-4"
-          />
-
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
-          <p className="text-gray-600">Sign in to your Assessly account</p>
-        </div>
+        <Link to="/" className="inline-flex items-center text-blue-600 hover:text-blue-700 mb-6">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Home
+        </Link>
 
         <Card className="border-2 shadow-xl">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl">Sign In</CardTitle>
+            <CardTitle className="text-2xl">Create Account</CardTitle>
             <CardDescription>
-              Enter your credentials to access your account
+              Fill in your details to start your free trial or paid plan
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
+                <Label htmlFor="name" className="flex items-center">
+                  <User className="mr-2 h-4 w-4" />
+                  Full Name
+                </Label>
+                <Input id="name" name="name" required placeholder="John Doe" className="mt-1" />
+              </div>
+
+              <div>
                 <Label htmlFor="email" className="flex items-center">
                   <Mail className="mr-2 h-4 w-4" />
                   Email
                 </Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  placeholder="john@company.com"
-                  className="mt-1"
-                />
+                <Input id="email" name="email" type="email" required placeholder="john@company.com" className="mt-1" />
               </div>
 
               <div>
@@ -86,22 +96,12 @@ const Login = () => {
                   <Lock className="mr-2 h-4 w-4" />
                   Password
                 </Label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  className="mt-1"
-                />
-                <div className="text-right mt-1">
-                  <Link
-                    to="/forgot-password"
-                    className="text-sm text-blue-600 hover:text-blue-700"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
+                <Input id="password" name="password" type="password" required placeholder="••••••••" className="mt-1" />
+              </div>
+
+              <div>
+                <Label htmlFor="organization">Organization</Label>
+                <Input id="organization" name="organization" required placeholder="Your Company" className="mt-1" />
               </div>
 
               <Button
@@ -109,28 +109,21 @@ const Login = () => {
                 className="w-full bg-gradient-to-r from-blue-600 via-teal-500 to-green-500 hover:opacity-90 transition-opacity"
                 disabled={loading}
               >
-                {loading ? 'Signing In...' : 'Sign In'}
+                {loading ? 'Creating Account...' : 'Register'}
               </Button>
 
               <p className="text-center text-sm text-gray-600 mt-4">
-                Don't have an account?{' '}
-                <Link to="/register" className="text-blue-600 hover:text-blue-700 font-medium">
-                  Sign up for free
+                Already have an account?{' '}
+                <Link to="/login" className="text-blue-600 hover:text-blue-700 font-medium">
+                  Sign in
                 </Link>
               </p>
             </form>
           </CardContent>
         </Card>
-
-        <div className="mt-6 text-center text-sm text-gray-600">
-          <p>Demo credentials for testing:</p>
-          <p className="font-mono text-xs mt-1">
-            demo@assesslyplatform.com / password123
-          </p>
-        </div>
       </div>
     </div>
   );
 };
 
-export default Login;
+export default Register;
