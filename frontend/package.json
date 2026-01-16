@@ -16,7 +16,9 @@
     "recharts": "^3.6.0",
     "tailwind-merge": "^3.2.0",
     "zod": "^3.24.4",
-    "sonner": "^1.5.0"
+    "sonner": "^1.5.0",
+    "next-themes": "^0.3.0",
+    "react-is": "^18.3.1"
   },
   "devDependencies": {
     "@craco/craco": "^7.1.0",
