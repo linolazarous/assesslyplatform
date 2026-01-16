@@ -8,23 +8,22 @@ import axios from "axios";
  * VITE_STRIPE_PUBLISHABLE_KEY=your_stripe_key_here
  */
 
-// Base URL for API calls
+// -----------------------------
+// BASE CONFIG
+// -----------------------------
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL;
 
-// Axios instance
 const api = axios.create({
-  baseURL: `${API_BASE_URL}/api`, // all endpoints are relative to /api
+  baseURL: `${API_BASE_URL}/api`,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// Interceptor to add auth token
+// Automatically add auth token if exists
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("assessly_token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
@@ -112,8 +111,43 @@ export const paymentAPI = {
 // ORGANIZATION APIs
 // -----------------------------
 export const organizationAPI = {
-  getCurrentOrganization: async () => {
+  getCurrent: async () => {
     const { data } = await api.get("/organizations/current");
+    return data;
+  },
+
+  update: async (payload) => {
+    const { data } = await api.put("/organizations/current", payload);
+    return data;
+  },
+};
+
+// -----------------------------
+// ASSESSMENT APIs
+// -----------------------------
+export const assessmentAPI = {
+  create: async (payload) => {
+    const { data } = await api.post("/assessments", payload);
+    return data;
+  },
+
+  getAll: async () => {
+    const { data } = await api.get("/assessments");
+    return data;
+  },
+
+  getById: async (id) => {
+    const { data } = await api.get(`/assessments/${id}`);
+    return data;
+  },
+
+  update: async (id, payload) => {
+    const { data } = await api.put(`/assessments/${id}`, payload);
+    return data;
+  },
+
+  delete: async (id) => {
+    const { data } = await api.delete(`/assessments/${id}`);
     return data;
   },
 };
