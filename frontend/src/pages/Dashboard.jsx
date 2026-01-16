@@ -9,10 +9,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Badge } from '../components/ui/badge';
 import Navigation from '../components/Navigation';
 import Footer from '../components/Footer';
+import { toast } from 'sonner';
+import { organizationAPI, assessmentAPI } from '../services/api';
+
+// Temporary Zap icon
+const Zap = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+  </svg>
+);
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [organization, setOrganization] = useState(null);
+  const [assessments, setAssessments] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('assessly_token');
@@ -22,26 +34,72 @@ const Dashboard = () => {
     }
 
     const userData = localStorage.getItem('assessly_user');
-    if (userData) {
-      setUser(JSON.parse(userData));
-    }
+    if (userData) setUser(JSON.parse(userData));
+
+    const fetchData = async () => {
+      try {
+        const org = await organizationAPI.getCurrentOrganization();
+        setOrganization(org);
+
+        const recent = await assessmentAPI.getAll(); // Fetch all assessments
+        setAssessments(recent);
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to load dashboard data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, [navigate]);
 
-  if (!user) return null;
+  if (!user || loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+
+  // Compute stats dynamically from assessments
+  const totalAssessments = assessments.length;
+  const activeCandidates = assessments.reduce((acc, a) => acc + (a.candidates || 0), 0);
+  const completionRate = assessments.length
+    ? Math.round(assessments.reduce((acc, a) => acc + (a.completion || 0), 0) / assessments.length)
+    : 0;
+  const avgResponseTime = '12m'; // Placeholder, can fetch from backend
 
   const stats = [
-    { label: 'Total Assessments', value: 24, change: '+12%', icon: FileText, color: 'blue' },
-    { label: 'Active Candidates', value: 487, change: '+8%', icon: Users, color: 'teal' },
-    { label: 'Completion Rate', value: '94.2%', change: '+2.1%', icon: Target, color: 'green' },
-    { label: 'Avg. Response Time', value: '12m', change: '-5%', icon: Clock, color: 'purple' }
+    { label: 'Total Assessments', value: totalAssessments, change: '+12%', icon: FileText, color: 'blue' },
+    { label: 'Active Candidates', value: activeCandidates, change: '+8%', icon: Users, color: 'teal' },
+    { label: 'Completion Rate', value: `${completionRate}%`, change: '+2.1%', icon: Target, color: 'green' },
+    { label: 'Avg. Response Time', value: avgResponseTime, change: '-5%', icon: Clock, color: 'purple' }
   ];
 
-  const recentAssessments = [
-    { id: 1, title: 'JavaScript Fundamentals', candidates: 45, completion: 88, status: 'active' },
-    { id: 2, title: 'Python for Data Science', candidates: 32, completion: 76, status: 'active' },
-    { id: 3, title: 'Cloud Architecture Basics', candidates: 28, completion: 92, status: 'completed' },
-    { id: 4, title: 'Product Management Skills', candidates: 18, completion: 65, status: 'active' }
-  ];
+  // -----------------------------
+  // Handlers
+  // -----------------------------
+  const handleCreateAssessment = async () => {
+    try {
+      const title = prompt("Enter assessment title:");
+      if (!title) return;
+
+      const payload = { title, description: "New assessment" };
+      const data = await assessmentAPI.create(payload);
+
+      toast.success(`Assessment "${data.title}" created!`);
+      setAssessments((prev) => [data, ...prev]); // Add new assessment
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to create assessment");
+    }
+  };
+
+  const handleSettings = async () => {
+    try {
+      const org = await organizationAPI.getCurrentOrganization();
+      toast(`Organization: ${org.name}`, { duration: 4000 });
+      // Replace toast with modal or redirect to Settings page
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load organization settings");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -56,14 +114,14 @@ const Dashboard = () => {
                 <h1 className="text-3xl font-bold text-gray-900">
                   Welcome back, {user.name}!
                 </h1>
-                <p className="text-gray-600 mt-1">{user.organization}</p>
+                <p className="text-gray-600 mt-1">{organization?.name}</p>
               </div>
               <div className="mt-4 md:mt-0 flex items-center space-x-3">
-                <Button variant="outline">
+                <Button variant="outline" onClick={handleSettings}>
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
                 </Button>
-                <Button className="bg-gradient-to-r from-blue-600 to-teal-600">
+                <Button className="bg-gradient-to-r from-blue-600 to-teal-600" onClick={handleCreateAssessment}>
                   <Plus className="mr-2 h-4 w-4" />
                   Create Assessment
                 </Button>
@@ -125,9 +183,9 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {recentAssessments.map((assessment) => (
+                    {assessments.map((assessment) => (
                       <div
-                        key={assessment.id}
+                        key={assessment._id}
                         className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                       >
                         <div className="flex-1">
@@ -145,10 +203,10 @@ const Dashboard = () => {
                           </div>
                           <div className="flex items-center mt-2 text-sm text-gray-600">
                             <Users className="h-4 w-4 mr-1" />
-                            <span>{assessment.candidates} candidates</span>
+                            <span>{assessment.candidates || 0} candidates</span>
                             <span className="mx-2">•</span>
                             <Target className="h-4 w-4 mr-1" />
-                            <span>{assessment.completion}% completion</span>
+                            <span>{assessment.completion || 0}% completion</span>
                           </div>
                         </div>
                         <div className="ml-4">
@@ -163,13 +221,13 @@ const Dashboard = () => {
                                 strokeWidth="4"
                                 fill="none"
                                 strokeDasharray={`${2 * Math.PI * 28}`}
-                                strokeDashoffset={`${2 * Math.PI * 28 * (1 - assessment.completion / 100)}`}
+                                strokeDashoffset={`${2 * Math.PI * 28 * (1 - (assessment.completion || 0) / 100)}`}
                                 strokeLinecap="round"
                               />
                             </svg>
                             <div className="absolute inset-0 flex items-center justify-center">
                               <span className="text-xs font-bold text-gray-700">
-                                {assessment.completion}%
+                                {assessment.completion || 0}%
                               </span>
                             </div>
                           </div>
@@ -191,7 +249,7 @@ const Dashboard = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Button className="w-full justify-start" variant="outline">
+                  <Button className="w-full justify-start" variant="outline" onClick={handleCreateAssessment}>
                     <Plus className="mr-2 h-4 w-4" />
                     New Assessment
                   </Button>
@@ -221,19 +279,19 @@ const Dashboard = () => {
                   <div>
                     <div className="flex justify-between text-sm mb-2">
                       <span className="text-gray-700">Assessments Created</span>
-                      <span className="font-semibold text-gray-900">8 / 10</span>
+                      <span className="font-semibold text-gray-900">{totalAssessments} / 10</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-gradient-to-r from-blue-500 to-teal-500 h-2 rounded-full" style={{ width: '80%' }} />
+                      <div className="bg-gradient-to-r from-blue-500 to-teal-500 h-2 rounded-full" style={{ width: `${totalAssessments * 10}%` }} />
                     </div>
                   </div>
                   <div>
                     <div className="flex justify-between text-sm mb-2">
                       <span className="text-gray-700">Candidates Assessed</span>
-                      <span className="font-semibold text-gray-900">487 / 500</span>
+                      <span className="font-semibold text-gray-900">{activeCandidates} / 500</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-gradient-to-r from-teal-500 to-green-500 h-2 rounded-full" style={{ width: '97.4%' }} />
+                      <div className="bg-gradient-to-r from-teal-500 to-green-500 h-2 rounded-full" style={{ width: `${completionRate}%` }} />
                     </div>
                   </div>
                   <div className="pt-4 border-t border-gray-300">
@@ -255,11 +313,5 @@ const Dashboard = () => {
     </div>
   );
 };
-
-const Zap = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-  </svg>
-);
 
 export default Dashboard;
