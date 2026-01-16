@@ -15,7 +15,8 @@
     "react-hook-form": "^7.56.2",
     "recharts": "^3.6.0",
     "tailwind-merge": "^3.2.0",
-    "zod": "^3.24.4"
+    "zod": "^3.24.4",
+    "sonner": "^1.5.0"
   },
   "devDependencies": {
     "@craco/craco": "^7.1.0",
