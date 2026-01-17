@@ -34,12 +34,12 @@ const STATS_COLORS = {
   teal: 'text-teal-600',
   green: 'text-green-600',
   purple: 'text-purple-600'
-} as const;
+}; // Removed: as const
 
 const ASSESSMENT_STATUS = {
   ACTIVE: 'active',
   COMPLETED: 'completed'
-} as const;
+}; // Removed: as const
 
 const Dashboard = () => {
   const navigate = useNavigate();
