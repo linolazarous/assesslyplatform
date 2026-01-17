@@ -14,12 +14,12 @@ import { Mail, Lock, ArrowLeft, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide
 const LOCAL_STORAGE_KEYS = {
   TOKEN: 'assessly_token',
   USER: 'assessly_user'
-} as const;
+}; // Removed: as const
 
 const DEMO_CREDENTIALS = {
   email: 'demo@assesslyplatform.com',
   password: 'password123'
-} as const;
+}; // Removed: as const
 
 const Login = () => {
   const navigate = useNavigate();
