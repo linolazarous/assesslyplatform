@@ -7,19 +7,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Checkbox } from '../components/ui/checkbox';
 import { Skeleton } from '../components/ui/skeleton';
+import { Badge } from '../components/ui/badge'; // Added Badge import
 import { authAPI } from '../services/api';
 import { toast } from 'sonner';
-import { 
-  Building2, Mail, Lock, User, ArrowLeft, 
+import {
+  Building2, Mail, Lock, User, ArrowLeft,
   AlertCircle, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Shield, Key
 } from 'lucide-react';
 
-// Constants
+// Constants - REMOVED "as const" since this is a JavaScript file
 const LOCAL_STORAGE_KEYS = {
   TOKEN: 'assessly_token',
   USER: 'assessly_user'
-} as const;
+}; // Removed: as const
 
 const PASSWORD_REQUIREMENTS = {
   minLength: 8,
@@ -27,13 +28,13 @@ const PASSWORD_REQUIREMENTS = {
   requireLowercase: true,
   requireNumbers: true,
   requireSpecialChars: true
-} as const;
+}; // Removed: as const
 
 const Register = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const selectedPlan = location.state?.plan || 'free';
-  
+
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formErrors, setFormErrors] = useState({});
@@ -52,7 +53,7 @@ const Register = () => {
   // Password strength calculator
   const calculatePasswordStrength = useCallback((password) => {
     let score = 0;
-    
+
     if (!password) return 0;
     
     // Length check
@@ -72,7 +73,7 @@ const Register = () => {
     const errors = {};
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const nameRegex = /^[a-zA-Z\s]{2,50}$/;
-    
+
     // Name validation
     if (!formData.name?.trim()) {
       errors.name = 'Full name is required';
@@ -134,7 +135,7 @@ const Register = () => {
   // Handle input changes
   const handleInputChange = useCallback((field, value) => {
     setFormErrors(prev => ({ ...prev, [field]: undefined }));
-    
+
     if (field === 'password') {
       const score = calculatePasswordStrength(value);
       setPasswordScore(score);
@@ -145,7 +146,7 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitted(true);
-    
+
     const formData = new FormData(e.target);
     const data = {
       name: formData.get('name')?.toString() || '',
