@@ -35,7 +35,7 @@ const iconMap = {
   BarChart3,
   Lock,
   Plug
-} as const;
+}; // Removed: as const
 
 const Home = () => {
   const navigate = useNavigate();
