@@ -13,9 +13,6 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 
 from models import (
     User, UserCreate, UserLogin, Token,
@@ -68,7 +65,6 @@ class Config:
     OPTIONAL_ENV_VARS = {
         "DB_NAME": ("assessly_platform", "Database name"),
         "ENVIRONMENT": ("development", "Application environment"),
-        "SENTRY_DSN": (None, "Sentry DSN for error tracking"),
         "EMAIL_HOST": (None, "SMTP host for emails"),
         "EMAIL_PORT": (587, "SMTP port"),
         "EMAIL_USER": (None, "SMTP username"),
@@ -103,7 +99,6 @@ class Config:
         # Optional variables with defaults
         self.DB_NAME = os.getenv("DB_NAME", "assessly_platform")
         self.ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-        self.SENTRY_DSN = os.getenv("SENTRY_DSN")
         self.EMAIL_HOST = os.getenv("EMAIL_HOST")
         self.EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
         self.EMAIL_USER = os.getenv("EMAIL_USER")
@@ -120,19 +115,6 @@ class Config:
         self.is_development = self.ENVIRONMENT == "development"
 
 config = Config()
-
-# ------------------------------
-# Sentry Integration
-# ------------------------------
-
-if config.SENTRY_DSN and config.is_production:
-    sentry_sdk.init(
-        dsn=config.SENTRY_DSN,
-        integrations=[FastApiIntegration()],
-        traces_sample_rate=0.1,
-        environment=config.ENVIRONMENT,
-        release=os.getenv("RENDER_GIT_COMMIT", "1.0.0")
-    )
 
 # ------------------------------
 # Logging Configuration
@@ -258,10 +240,6 @@ app.add_middleware(
 
 # Compression middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-
-# Sentry middleware
-if config.SENTRY_DSN and config.is_production:
-    app.add_middleware(SentryAsgiMiddleware)
 
 # ------------------------------
 # Authentication
@@ -1497,4 +1475,4 @@ if __name__ == "__main__":
         log_level="info",
         access_log=True,
         timeout_keep_alive=30
-        )
+            )
