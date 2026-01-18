@@ -20,7 +20,9 @@ if not SECRET_KEY:
     raise RuntimeError("JWT_SECRET_KEY environment variable is not set")
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24       # 1 day
+REFRESH_TOKEN_EXPIRE_DAYS = 7               # 7 days
 
 # ---------------------------
 # Password Utilities
@@ -47,9 +49,27 @@ def create_access_token(
         if expires_delta
         else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    to_encode.update({"exp": expire})
+
+    to_encode.update({
+        "exp": expire,
+        "type": "access"
+    })
 
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def create_refresh_token(data: dict) -> str:
+    """Create a signed JWT refresh token"""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+
+    to_encode.update({
+        "exp": expire,
+        "type": "refresh"
+    })
+
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
 
 def verify_token(token: str) -> Optional[dict]:
     """Verify and decode a JWT token"""
