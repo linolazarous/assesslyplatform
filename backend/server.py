@@ -149,39 +149,32 @@ db_manager = DatabaseManager()
 
 log_level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
 
+# Build handlers list dynamically (no None values)
+handlers = [logging.StreamHandler(sys.stdout)]
+
+if config.is_production:
+    try:
+        os.makedirs("/var/log/assessly", exist_ok=True)
+        file_handler = logging.FileHandler("/var/log/assessly/app.log", encoding="utf-8")
+        handlers.append(file_handler)
+    except Exception as e:
+        # Log to console if file logging fails
+        print(f"Warning: Could not set up file logging: {e}")
+
 # Configure root logger
 logging.basicConfig(
     level=log_level,
     format="%(asctime)s | %(levelname)s | %(name)s | %(module)s:%(lineno)d | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("/var/log/assessly/app.log", encoding="utf-8") if config.is_production else None
-    ]
+    handlers=handlers  # No None values here
 )
-
-# Clear any existing handlers
-root_logger = logging.getLogger()
-if root_logger.handlers:
-    for handler in list(root_logger.handlers):
-        root_logger.removeHandler(handler)
 
 # Configure our application logger
 logger = logging.getLogger("assessly-api")
 logger.setLevel(log_level)
 
-# Production file logging
-if config.is_production:
-    try:
-        os.makedirs("/var/log/assessly", exist_ok=True)
-        file_handler = logging.FileHandler("/var/log/assessly/app.log", encoding="utf-8")
-        file_handler.setFormatter(logging.Formatter(
-            "%(asctime)s | %(levelname)s | %(name)s | %(module)s:%(lineno)d | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
-        ))
-        logger.addHandler(file_handler)
-    except Exception as e:
-        logger.warning(f"Could not set up file logging: {e}")
+# Prevent duplicate logs by not propagating to root logger
+logger.propagate = False
 
 # ------------------------------
 # FastAPI App Configuration
