@@ -56,6 +56,7 @@ def validate_stripe_config() -> None:
         if plan not in ("free", "enterprise") and not price_id:
             raise RuntimeError(f"Missing Stripe price ID for plan: {plan}")
 
+
 # ---------------------------
 # Customers
 # ---------------------------
@@ -66,17 +67,21 @@ async def get_or_create_stripe_customer(
     name: str,
     organization: str
 ) -> Optional[str]:
+    """
+    Get existing Stripe customer by email or create a new one.
+    Combines customer creation and retrieval for long-term maintainability.
+    """
     try:
         validate_stripe_config()
 
-        customers = stripe.Customer.search(
-            query=f"email:'{email}'",
-            limit=1
-        )
-
+        # Search for existing customer
+        customers = stripe.Customer.search(query=f"email:'{email}'", limit=1)
         if customers.data:
-            return customers.data[0].id
+            customer_id = customers.data[0].id
+            logger.info(f"Found existing Stripe customer: {customer_id}")
+            return customer_id
 
+        # Create new customer
         customer = stripe.Customer.create(
             email=email,
             name=name,
@@ -86,13 +91,13 @@ async def get_or_create_stripe_customer(
                 "created_at": datetime.utcnow().isoformat()
             }
         )
-
-        logger.info(f"Stripe customer created: {customer.id}")
+        logger.info(f"Created new Stripe customer: {customer.id}")
         return customer.id
 
     except Exception as e:
         logger.error(f"Stripe customer error: {e}")
         return None
+
 
 # ---------------------------
 # Subscriptions
@@ -108,6 +113,7 @@ async def create_subscription(
         validate_stripe_config()
         _validate_plan(plan_id)
 
+        # Free plan
         if plan_id == "free":
             return {
                 "subscription_id": "free_plan",
@@ -116,6 +122,7 @@ async def create_subscription(
                 "is_free": True
             }
 
+        # Enterprise plan
         if plan_id == "enterprise":
             return {
                 "subscription_id": "enterprise_custom",
@@ -126,31 +133,21 @@ async def create_subscription(
 
         price_id = STRIPE_PRICE_IDS[plan_id]
 
+        # Attach payment method if provided
         if payment_method_id:
-            stripe.PaymentMethod.attach(
-                payment_method_id,
-                customer=customer_id
-            )
-
+            stripe.PaymentMethod.attach(payment_method_id, customer=customer_id)
             stripe.Customer.modify(
                 customer_id,
-                invoice_settings={
-                    "default_payment_method": payment_method_id
-                }
+                invoice_settings={"default_payment_method": payment_method_id}
             )
 
         subscription = stripe.Subscription.create(
             customer=customer_id,
             items=[{"price": price_id}],
             trial_period_days=trial_days if trial_days > 0 else None,
-            payment_settings={
-                "save_default_payment_method": "on_subscription"
-            },
+            payment_settings={"save_default_payment_method": "on_subscription"},
             expand=["latest_invoice.payment_intent"],
-            metadata={
-                "plan": plan_id,
-                "created_at": datetime.utcnow().isoformat()
-            }
+            metadata={"plan": plan_id, "created_at": datetime.utcnow().isoformat()}
         )
 
         invoice = subscription.latest_invoice
@@ -170,6 +167,7 @@ async def create_subscription(
     except Exception as e:
         logger.error(f"Subscription creation failed: {e}")
         return None
+
 
 # ---------------------------
 # Checkout Session
@@ -192,18 +190,12 @@ async def create_checkout_session(
             return {"url": success_url, "type": "free"}
 
         if plan_id == "enterprise":
-            return {
-                "url": f"{cancel_url}?plan=enterprise",
-                "type": "enterprise"
-            }
+            return {"url": f"{cancel_url}?plan=enterprise", "type": "enterprise"}
 
         session = stripe.checkout.Session.create(
             mode="subscription",
             payment_method_types=["card"],
-            line_items=[{
-                "price": STRIPE_PRICE_IDS[plan_id],
-                "quantity": 1
-            }],
+            line_items=[{"price": STRIPE_PRICE_IDS[plan_id], "quantity": 1}],
             customer=customer_id,
             customer_email=None if customer_id else email,
             subscription_data={
@@ -221,6 +213,7 @@ async def create_checkout_session(
         logger.error(f"Checkout session failed: {e}")
         return None
 
+
 # ---------------------------
 # Cancellation
 # ---------------------------
@@ -230,16 +223,13 @@ async def cancel_subscription(subscription_id: str) -> bool:
         if subscription_id in ("free_plan", "enterprise_custom"):
             return True
 
-        stripe.Subscription.modify(
-            subscription_id,
-            cancel_at_period_end=True
-        )
-
+        stripe.Subscription.modify(subscription_id, cancel_at_period_end=True)
         return True
 
     except Exception as e:
         logger.error(f"Cancel subscription failed: {e}")
         return False
+
 
 # ---------------------------
 # Webhooks
@@ -247,12 +237,7 @@ async def cancel_subscription(subscription_id: str) -> bool:
 
 async def handle_webhook_event(payload: bytes, sig_header: str) -> Optional[Dict]:
     try:
-        event = stripe.Webhook.construct_event(
-            payload,
-            sig_header,
-            STRIPE_WEBHOOK_SECRET
-        )
-
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
         logger.info(f"Stripe webhook received: {event.type}")
 
         handlers = {
@@ -270,16 +255,13 @@ async def handle_webhook_event(payload: bytes, sig_header: str) -> Optional[Dict
         logger.error(f"Webhook error: {e}")
         return None
 
+
 # ---------------------------
 # Webhook Handlers
 # ---------------------------
 
 async def _on_checkout_completed(session: Dict) -> Dict:
-    return {
-        "event": "checkout.session.completed",
-        "subscription_id": session.get("subscription"),
-        "customer_id": session.get("customer")
-    }
+    return {"event": "checkout.session.completed", "subscription_id": session.get("subscription"), "customer_id": session.get("customer")}
 
 
 async def _on_subscription_updated(subscription: Dict) -> Dict:
@@ -292,23 +274,12 @@ async def _on_subscription_updated(subscription: Dict) -> Dict:
 
 
 async def _on_subscription_deleted(subscription: Dict) -> Dict:
-    return {
-        "event": "subscription.deleted",
-        "id": subscription.get("id")
-    }
+    return {"event": "subscription.deleted", "id": subscription.get("id")}
 
 
 async def _on_payment_succeeded(invoice: Dict) -> Dict:
-    return {
-        "event": "payment.succeeded",
-        "invoice_id": invoice.get("id"),
-        "amount_paid": invoice.get("amount_paid")
-    }
+    return {"event": "payment.succeeded", "invoice_id": invoice.get("id"), "amount_paid": invoice.get("amount_paid")}
 
 
 async def _on_payment_failed(invoice: Dict) -> Dict:
-    return {
-        "event": "payment.failed",
-        "invoice_id": invoice.get("id"),
-        "attempts": invoice.get("attempt_count")
-    }
+    return {"event": "payment.failed", "invoice_id": invoice.get("id"), "attempts": invoice.get("attempt_count")}
