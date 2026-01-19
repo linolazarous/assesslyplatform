@@ -4,7 +4,7 @@ FROM python:3.11-slim
 # -------------------------
 # Set work directory
 # -------------------------
-WORKDIR /backend
+WORKDIR /app
 
 # -------------------------
 # Install system dependencies
@@ -39,6 +39,6 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 10000
 
 # -------------------------
-# Run backend
+# Run app
 # -------------------------
-CMD ["sh", "-c", "uvicorn server:backend --host 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-10000}"]
