@@ -193,8 +193,7 @@ app = FastAPI(
     description="Enterprise-grade assessment platform API",
     docs_url="/api/docs" if config.is_development else None,
     redoc_url="/api/redoc" if config.is_development else None,
-    openapi_url="/api/openapi.json" if config.is_development else None,
-    redoc_url=None if config.is_production else "/api/redoc"
+    openapi_url="/api/openapi.json" if config.is_development else None
 )
 
 # ------------------------------
