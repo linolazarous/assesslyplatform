@@ -132,77 +132,31 @@ logging.basicConfig(
 logger = logging.getLogger("assessly-api")
 
 # ------------------------------
-# Database Connection
+# Logging Configuration (PRODUCTION SAFE)
 # ------------------------------
 
-class Database:
-    """Database connection manager."""
-    
-    def __init__(self):
-        self.client = None
-        self.db = None
-    
-    async def connect(self):
-        """Establish database connection."""
-        try:
-            self.client = AsyncIOMotorClient(
-                config.MONGO_URL,
-                maxPoolSize=10,
-                minPoolSize=1,
-                retryWrites=True,
-                w="majority"
-            )
-            await self.client.admin.command('ping')
-            self.db = self.client[config.DB_NAME]
-            
-            # Create indexes
-            await self.create_indexes()
-            
-            logger.info(f"Connected to MongoDB database: {config.DB_NAME}")
-        except Exception as e:
-            logger.error(f"Failed to connect to MongoDB: {e}")
-            raise
-    
-    async def create_indexes(self):
-        """Create database indexes for performance."""
-        indexes = {
-            "users": [
-                {"key": [("email", 1)], "unique": True},
-                {"key": [("id", 1)], "unique": True},
-                {"key": [("stripe_customer_id", 1)]}
-            ],
-            "organizations": [
-                {"key": [("owner_id", 1)]},
-                {"key": [("slug", 1)], "unique": True}
-            ],
-            "contact_forms": [
-                {"key": [("created_at", -1)]}
-            ],
-            "demo_requests": [
-                {"key": [("created_at", -1)]}
-            ],
-            "subscriptions": [
-                {"key": [("user_id", 1)]},
-                {"key": [("stripe_subscription_id", 1)], "unique": True},
-                {"key": [("status", 1)]},
-                {"key": [("plan_id", 1)]}
-            ]
-        }
-        
-        for collection, collection_indexes in indexes.items():
-            for index in collection_indexes:
-                try:
-                    await self.db[collection].create_index(index["key"], unique=index.get("unique", False))
-                except Exception as e:
-                    logger.warning(f"Failed to create index on {collection}: {e}")
-    
-    async def disconnect(self):
-        """Close database connection."""
-        if self.client:
-            self.client.close()
-            logger.info("Disconnected from MongoDB")
+log_level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
 
-db_manager = Database()
+root_logger = logging.getLogger()
+
+# Remove any pre-configured or broken handlers (uvicorn, libs, etc.)
+if root_logger.handlers:
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+
+handlers = [logging.StreamHandler(sys.stdout)]
+
+if config.is_production:
+    handlers.append(logging.FileHandler("app.log", encoding="utf-8"))
+
+logging.basicConfig(
+    level=log_level,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(module)s:%(lineno)d | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=handlers,
+)
+
+logger = logging.getLogger("assessly-api")
 
 # ------------------------------
 # FastAPI App Configuration
