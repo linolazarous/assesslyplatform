@@ -1,7 +1,7 @@
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict
 import os
 
 # ---------------------------
@@ -21,8 +21,8 @@ if not SECRET_KEY:
 
 ALGORITHM = "HS256"
 
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24       # 1 day
-REFRESH_TOKEN_EXPIRE_DAYS = 7               # 7 days
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24   # 1 day
+REFRESH_TOKEN_EXPIRE_DAYS = 7           # 7 days
 
 # ---------------------------
 # Password Utilities
@@ -31,22 +31,22 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
     return pwd_context.verify(plain_password, hashed_password)
 
+
 def get_password_hash(password: str) -> str:
     """Hash a plaintext password"""
     return pwd_context.hash(password)
 
 # ---------------------------
-# JWT Utilities
+# JWT Creation
 # ---------------------------
 def create_access_token(
-    data: dict,
+    data: Dict,
     expires_delta: Optional[timedelta] = None
 ) -> str:
     """Create a signed JWT access token"""
     to_encode = data.copy()
     expire = datetime.utcnow() + (
-        expires_delta
-        if expires_delta
+        expires_delta if expires_delta
         else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
 
@@ -58,7 +58,7 @@ def create_access_token(
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_refresh_token(data: dict) -> str:
+def create_refresh_token(data: Dict) -> str:
     """Create a signed JWT refresh token"""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
@@ -70,10 +70,33 @@ def create_refresh_token(data: dict) -> str:
 
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-
-def verify_token(token: str) -> Optional[dict]:
-    """Verify and decode a JWT token"""
+# ---------------------------
+# JWT Verification
+# ---------------------------
+def verify_token(token: str) -> Dict:
+    """Verify and decode any JWT token"""
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
-        return None
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except JWTError as e:
+        raise ValueError("Invalid or expired token") from e
+
+
+def verify_access_token(token: str) -> Dict:
+    """Verify an access token"""
+    payload = verify_token(token)
+
+    if payload.get("type") != "access":
+        raise ValueError("Invalid access token type")
+
+    return payload
+
+
+def verify_refresh_token(token: str) -> Dict:
+    """Verify a refresh token"""
+    payload = verify_token(token)
+
+    if payload.get("type") != "refresh":
+        raise ValueError("Invalid refresh token type")
+
+    return payload
