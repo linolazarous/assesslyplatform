@@ -1,7 +1,7 @@
-// frontend/src/pages/legal/PrivacyPolicy.jsx
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Lock, FileText, Calendar, Mail, Building, ExternalLink } from 'lucide-react';
+import { Shield, Lock, FileText, Calendar, Mail, Building, ExternalLink, ArrowLeft } from 'lucide-react';
+import Navigation from '../components/Navigation'; // Add navigation
 
 const PrivacyPolicy = () => {
   const lastUpdated = 'January 1, 2025';
@@ -9,7 +9,21 @@ const PrivacyPolicy = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      {/* Add Navigation */}
+      <Navigation />
+      
+      {/* Add Back to Home Button */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-4">
+        <Link 
+          to="/" 
+          className="inline-flex items-center text-blue-600 hover:text-blue-700 mb-6"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Home
+        </Link>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
         {/* Header */}
         <div className="text-center mb-12">
           <div className="inline-flex items-center justify-center p-4 bg-gradient-to-r from-blue-50 to-teal-50 rounded-full mb-6">
