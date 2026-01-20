@@ -30,7 +30,8 @@ python-multipart==0.0.21
 
 # Networking / async
 anyio==4.12.0
-requests==2.31.0  # aligned with resend
+requests==2.31.0  
+httpx==0.28.1     
 
 # Email service
 resend==0.8.0
