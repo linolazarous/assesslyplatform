@@ -6,30 +6,38 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Skeleton } from '../components/ui/skeleton';
+import { Badge } from '../components/ui/badge';
 import { authAPI } from '../services/api';
 import { toast } from 'sonner';
-import { Mail, Lock, ArrowLeft, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
+import {
+  Mail, Lock, ArrowLeft, AlertCircle, Eye, EyeOff, Loader2,
+  CheckCircle2, User, Shield, Key, ExternalLink
+} from 'lucide-react';
 
-// Constants for better maintainability
+// Constants
 const LOCAL_STORAGE_KEYS = {
   TOKEN: 'assessly_token',
   USER: 'assessly_user'
-}; // Removed: as const
+};
 
-const DEMO_CREDENTIALS = {
-  email: 'demo@assesslyplatform.com',
-  password: 'password123'
-}; // Removed: as const
+// Environment variables
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "https://assesslyplatform-pfm1.onrender.com";
 
 const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formErrors, setFormErrors] = useState({});
-  const [isDemoMode, setIsDemoMode] = useState(false);
-  
-  // Check if user is already logged in
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [formSubmitTimeout, setFormSubmitTimeout] = useState(null);
+
+  // Get referral/redirect info
+  const from = location.state?.from?.pathname || '/dashboard';
+  const redirectMessage = location.state?.message;
+
+  // Redirect if already logged in
   useEffect(() => {
     const token = localStorage.getItem(LOCAL_STORAGE_KEYS.TOKEN);
     if (token) {
@@ -37,55 +45,116 @@ const Login = () => {
     }
   }, [navigate]);
 
-  // Handle redirect from protected routes
-  const from = location.state?.from?.pathname || '/dashboard';
+  // Show redirect message if present
+  useEffect(() => {
+    if (redirectMessage) {
+      toast.info(redirectMessage);
+    }
+    
+    // Track login page view
+    if (window.gtag) {
+      window.gtag('event', 'view_login_page', {
+        timestamp: new Date().toISOString(),
+        redirect_from: from !== '/dashboard' ? from : null
+      });
+    }
+  }, [redirectMessage, from]);
 
   // Form validation
-  const validateForm = useCallback((email, password) => {
+  const validateForm = useCallback((formData) => {
     const errors = {};
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!email?.trim()) {
+    // Email validation
+    if (!formData.email?.trim()) {
       errors.email = 'Email is required';
-    } else if (!emailRegex.test(email)) {
+    } else if (!emailRegex.test(formData.email)) {
       errors.email = 'Please enter a valid email address';
+    } else if (!formData.email.includes('@')) {
+      errors.email = 'Please include "@" in the email address';
     }
-
-    if (!password?.trim()) {
+    
+    // Password validation
+    if (!formData.password?.trim()) {
       errors.password = 'Password is required';
-    } else if (password.length < 6) {
+    } else if (formData.password.length < 6) {
       errors.password = 'Password must be at least 6 characters';
     }
-
+    
+    // Honeypot validation (if bot fills it)
+    if (formData.website?.trim()) {
+      errors.website = 'Bot detected';
+    }
+    
     return errors;
   }, []);
 
-  // Handle demo login
-  const handleDemoLogin = useCallback(async () => {
-    setIsDemoMode(true);
-    await handleLogin(DEMO_CREDENTIALS.email, DEMO_CREDENTIALS.password);
-    setIsDemoMode(false);
+  // Handle input changes
+  const handleInputChange = useCallback((field) => {
+    setFormErrors(prev => ({ ...prev, [field]: undefined }));
   }, []);
 
-  // Main login handler
-  const handleLogin = useCallback(async (email, password) => {
-    const errors = validateForm(email, password);
+  // Handle form submission
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmitted(true);
+
+    const formData = new FormData(e.target);
+    const data = {
+      email: formData.get('email')?.toString() || '',
+      password: formData.get('password')?.toString() || '',
+      website: formData.get('website')?.toString() || '', // Honeypot field
+      source: 'web_login',
+      user_agent: navigator.userAgent,
+      screen_resolution: `${window.screen.width}x${window.screen.height}`,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    };
+
+    const errors = validateForm(data);
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
-      toast.error('Please fix the form errors');
+      
+      // Track validation errors
+      if (window.gtag) {
+        window.gtag('event', 'form_validation_error', {
+          error_fields: Object.keys(errors),
+          form_type: 'login'
+        });
+      }
+      
+      toast.error('Please fix the errors in the form');
       return;
     }
 
     setLoading(true);
     setFormErrors({});
 
+    // Set timeout for login
+    const timeout = setTimeout(() => {
+      if (loading) {
+        setLoading(false);
+        toast.error('Login timed out. Please try again.');
+        
+        // Track timeout
+        if (window.gtag) {
+          window.gtag('event', 'login_timeout', {
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    }, 30000); // 30 second timeout
+    
+    setFormSubmitTimeout(timeout);
+
     try {
-      const credentials = { email, password };
-      const result = await authAPI.login(credentials);
+      const result = await authAPI.login(data);
       
       if (!result?.access_token) {
         throw new Error('Invalid response from server');
       }
+
+      // Clear timeout
+      clearTimeout(timeout);
 
       // Store authentication data
       localStorage.setItem(LOCAL_STORAGE_KEYS.TOKEN, result.access_token);
@@ -93,33 +162,133 @@ const Login = () => {
       
       // Track successful login
       if (window.gtag) {
-        window.gtag('event', 'login', {
-          method: isDemoMode ? 'demo' : 'credentials'
+        window.gtag('event', 'login_complete', {
+          method: 'credentials',
+          user_id: result.user.id?.substring(0, 8), // Anonymized user ID
+          email_provider: data.email.split('@')[1]
         });
+        
+        window.gtag('event', 'login', {
+          method: 'credentials'
+        });
+      }
+      
+      // Facebook Pixel conversion
+      if (window.fbq) {
+        window.fbq('track', 'Login', {
+          method: 'credentials'
+        });
+      }
+
+      // Handle unverified email
+      if (result.user?.is_verified === false) {
+        toast.warning('Please verify your email to access all features');
+        
+        // Track unverified login
+        if (window.gtag) {
+          window.gtag('event', 'login_unverified_email', {
+            email_provider: data.email.split('@')[1]
+          });
+        }
       }
 
       toast.success(`Welcome back, ${result.user?.name || 'User'}!`);
       
-      // Redirect to intended page or dashboard
-      navigate(from, { replace: true });
+      // Track successful redirect
+      if (window.gtag) {
+        window.gtag('event', 'login_to_dashboard', {
+          redirect_path: from,
+          time_to_redirect: '1000ms'
+        });
+      }
+      
+      // Redirect after short delay
+      setTimeout(() => {
+        navigate(from, { replace: true });
+      }, 1000);
       
     } catch (error) {
       console.error('Login error:', error);
       
-      // Handle different error types
+      // Clear timeout on error
+      clearTimeout(timeout);
+      
       let errorMessage = 'Login failed. Please try again.';
+      const fieldErrors = {};
       
       if (error.response) {
-        // Server responded with error
-        errorMessage = error.response.data?.detail || 
-                       error.response.data?.message || 
-                       `Server error: ${error.response.status}`;
+        const errorData = error.response.data;
+        
+        // Handle rate limiting
+        if (error.response.status === 429) {
+          errorMessage = 'Too many login attempts. Please try again in a few minutes.';
+          toast.error(errorMessage);
+          
+          // Track rate limiting
+          if (window.gtag) {
+            window.gtag('event', 'rate_limit_exceeded', {
+              endpoint: 'login',
+              status_code: 429
+            });
+          }
+          
+          // Disable form for 2 minutes
+          setTimeout(() => {
+            setLoading(false);
+          }, 120000);
+          return;
+        }
+        
+        // Handle field-specific validation errors from backend
+        if (errorData?.detail && typeof errorData.detail === 'object') {
+          Object.entries(errorData.detail).forEach(([field, messages]) => {
+            if (Array.isArray(messages)) {
+              fieldErrors[field] = messages[0];
+            }
+          });
+          setFormErrors(fieldErrors);
+          errorMessage = 'Please fix the errors in the form.';
+        } 
+        else if (errorData?.detail?.includes('Invalid credentials') || error.response.status === 401) {
+          errorMessage = 'Invalid email or password. Please try again.';
+          setFormErrors({ 
+            email: 'Invalid credentials',
+            password: 'Invalid credentials' 
+          });
+          
+          // Track failed login attempt
+          if (window.gtag) {
+            window.gtag('event', 'login_failed_invalid_credentials', {
+              email_hash: data.email.substring(0, 5) + '...' // Partial for privacy
+            });
+          }
+        } 
+        else if (errorData?.detail?.includes('account locked') || errorData?.detail?.includes('suspended')) {
+          errorMessage = 'Account is temporarily locked. Please contact support or try again later.';
+          toast.error(errorMessage);
+          
+          // Track account lock
+          if (window.gtag) {
+            window.gtag('event', 'account_locked', {
+              email_hash: data.email.substring(0, 5) + '...'
+            });
+          }
+        }
+        else if (errorData?.detail) {
+          errorMessage = errorData.detail;
+        } 
+        else if (error.response.status === 422) {
+          errorMessage = 'Please check your information and try again.';
+        }
       } else if (error.request) {
-        // Request was made but no response
-        errorMessage = 'Network error. Please check your connection.';
-      } else {
-        // Other errors
-        errorMessage = error.message || 'Login failed.';
+        errorMessage = 'Network error. Please check your connection and try again.';
+        
+        // Track network errors
+        if (window.gtag) {
+          window.gtag('event', 'network_error', {
+            endpoint: 'login'
+          });
+        }
       }
       
       toast.error(errorMessage);
@@ -131,27 +300,23 @@ const Login = () => {
     } finally {
       setLoading(false);
     }
-  }, [validateForm, navigate, from, isDemoMode]);
-
-  // Form submission handler
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const email = formData.get('email')?.toString() || '';
-    const password = formData.get('password')?.toString() || '';
-    
-    await handleLogin(email, password);
   };
 
-  // Handle input change to clear errors
-  const handleInputChange = (field) => {
-    if (formErrors[field]) {
-      setFormErrors(prev => ({ ...prev, [field]: undefined }));
+  // Handle social login
+  const handleSocialLogin = (provider) => {
+    // Track social login attempt
+    if (window.gtag) {
+      window.gtag('event', 'social_login_attempt', {
+        provider: provider
+      });
     }
+    
+    // Redirect to backend OAuth endpoint
+    window.location.href = `${API_BASE_URL}/api/auth/${provider}?redirect_uri=${encodeURIComponent(window.location.origin + '/dashboard')}`;
   };
 
   // Loading state
-  if (loading && isDemoMode) {
+  if (loading && !isSubmitted) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-green-50 flex items-center justify-center p-4">
         <div className="w-full max-w-md space-y-4">
@@ -184,6 +349,10 @@ const Login = () => {
               loading="lazy"
               width="48"
               height="48"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.parentElement.innerHTML = '<div class="h-12 w-12 bg-gradient-to-r from-blue-600 to-teal-600 rounded-lg mx-auto"></div>';
+              }}
             />
           </div>
 
@@ -191,7 +360,7 @@ const Login = () => {
             Welcome Back
           </h1>
           <p className="text-gray-600 text-sm sm:text-base">
-            Sign in to your Assessly account
+            Sign in to access your Assessly account
           </p>
         </header>
 
@@ -201,16 +370,95 @@ const Login = () => {
             <CardTitle className="text-xl sm:text-2xl">Sign In</CardTitle>
             <CardDescription>
               Enter your credentials to access your account
+              {from !== '/dashboard' && (
+                <Badge className="ml-2 bg-blue-100 text-blue-800 text-xs">
+                  Redirecting to: {from.split('/').pop() || 'dashboard'}
+                </Badge>
+              )}
             </CardDescription>
           </CardHeader>
           
           <CardContent>
+            {/* Social Login Options */}
+            <div className="mb-6">
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleSocialLogin('google')}
+                  disabled={loading}
+                  className="hover:bg-gray-50"
+                >
+                  <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                    />
+                  </svg>
+                  Google
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleSocialLogin('github')}
+                  disabled={loading}
+                  className="hover:bg-gray-50"
+                >
+                  <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                  </svg>
+                  GitHub
+                </Button>
+              </div>
+
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">Or continue with email</span>
+                </div>
+              </div>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+              {/* Honeypot field (invisible to humans) */}
+              <div className="absolute opacity-0 h-0 overflow-hidden" aria-hidden="true">
+                <Label htmlFor="website">Website</Label>
+                <Input 
+                  id="website" 
+                  name="website" 
+                  type="text" 
+                  tabIndex="-1" 
+                  autoComplete="off" 
+                  placeholder="Leave this blank"
+                  onChange={(e) => handleInputChange('website')}
+                />
+                {formErrors.website && (
+                  <Alert variant="destructive" className="mt-2 py-2 text-sm">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{formErrors.website}</AlertDescription>
+                  </Alert>
+                )}
+              </div>
+
               {/* Email Field */}
               <div>
                 <Label htmlFor="email" className="flex items-center">
                   <Mail className="mr-2 h-4 w-4" aria-hidden="true" />
-                  Email
+                  Email Address
                 </Label>
                 <Input
                   id="email"
@@ -221,9 +469,10 @@ const Login = () => {
                   className="mt-1"
                   aria-describedby={formErrors.email ? "email-error" : undefined}
                   aria-invalid={!!formErrors.email}
-                  onChange={() => handleInputChange('email')}
-                  autoComplete="email"
+                  onChange={(e) => handleInputChange('email')}
                   disabled={loading}
+                  autoComplete="email"
+                  inputMode="email"
                 />
                 {formErrors.email && (
                   <Alert variant="destructive" className="mt-2 py-2 text-sm">
@@ -244,6 +493,13 @@ const Login = () => {
                     to="/forgot-password"
                     className="text-sm text-blue-600 hover:text-blue-700 focus:outline-none focus:underline"
                     aria-label="Reset your password"
+                    onClick={() => {
+                      if (window.gtag) {
+                        window.gtag('event', 'click_forgot_password', {
+                          location: 'login_page'
+                        });
+                      }
+                    }}
                   >
                     Forgot password?
                   </Link>
@@ -258,9 +514,9 @@ const Login = () => {
                     className="pr-10"
                     aria-describedby={formErrors.password ? "password-error" : undefined}
                     aria-invalid={!!formErrors.password}
-                    onChange={() => handleInputChange('password')}
-                    autoComplete="current-password"
+                    onChange={(e) => handleInputChange('password')}
                     disabled={loading}
+                    autoComplete="current-password"
                     minLength={6}
                   />
                   <button
@@ -288,7 +544,7 @@ const Login = () => {
               {/* Submit Button */}
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-blue-600 via-teal-500 to-green-500 hover:opacity-90 transition-opacity disabled:opacity-50"
+                className="w-full bg-gradient-to-r from-blue-600 via-teal-500 to-green-500 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={loading}
                 aria-label="Sign in to your account"
               >
@@ -298,29 +554,27 @@ const Login = () => {
                     Signing In...
                   </>
                 ) : (
-                  'Sign In'
+                  <>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Sign In
+                  </>
                 )}
               </Button>
 
-              {/* Demo Login Button */}
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full border-blue-300 text-blue-600 hover:bg-blue-50"
-                onClick={handleDemoLogin}
-                disabled={loading}
-                aria-label="Try demo account"
-              >
-                Try Demo Account
-              </Button>
-
               {/* Sign Up Link */}
-              <p className="text-center text-sm text-gray-600 mt-4">
+              <p className="text-center text-sm text-gray-600 pt-2">
                 Don't have an account?{' '}
                 <Link 
                   to="/register" 
                   className="text-blue-600 hover:text-blue-700 font-medium focus:outline-none focus:underline"
                   aria-label="Create a new account"
+                  onClick={() => {
+                    if (window.gtag) {
+                      window.gtag('event', 'click_register_from_login', {
+                        location: 'login_page'
+                      });
+                    }
+                  }}
                 >
                   Sign up for free
                 </Link>
@@ -329,25 +583,25 @@ const Login = () => {
           </CardContent>
         </Card>
 
-        {/* Demo Credentials */}
-        <div className="mt-6 text-center text-sm text-gray-600">
-          <p>Demo credentials for testing:</p>
-          <div className="mt-2 space-y-1">
-            <p className="font-mono text-xs bg-gray-100 p-2 rounded">
-              Email: {DEMO_CREDENTIALS.email}
-            </p>
-            <p className="font-mono text-xs bg-gray-100 p-2 rounded">
-              Password: {DEMO_CREDENTIALS.password}
+        {/* Security & Trust Signals */}
+        <div className="mt-6 space-y-4">
+          <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
+            <div className="flex items-center">
+              <Shield className="h-4 w-4 text-green-600 mr-1" />
+              <span>Enterprise Security</span>
+            </div>
+            <div className="flex items-center">
+              <Key className="h-4 w-4 text-blue-600 mr-1" />
+              <span>End-to-End Encryption</span>
+            </div>
+          </div>
+          
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-xs text-blue-800 text-center">
+              <Lock className="h-3 w-3 inline mr-1" />
+              Your data is protected with military-grade encryption. We never share your information.
             </p>
           </div>
-        </div>
-
-        {/* Security Notice */}
-        <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-xs text-blue-800 text-center">
-            <Lock className="h-3 w-3 inline mr-1" />
-            Your security is important. We use end-to-end encryption and never store passwords in plain text.
-          </p>
         </div>
       </div>
     </div>
