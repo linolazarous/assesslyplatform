@@ -9,7 +9,7 @@ import httpx
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from bson import ObjectId
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Query, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -20,11 +20,15 @@ from pydantic import BaseModel, Field, validator
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from models import (
-    User, UserCreate, UserLogin, Token,
+    User, UserCreate, UserLogin, UserUpdate, Token,
     ContactForm, ContactFormCreate,
     DemoRequest, DemoRequestCreate,
     Subscription, SubscriptionCreate,
-    Organization
+    Organization, OrganizationUpdate,
+    Assessment, AssessmentCreate, AssessmentUpdate,
+    Candidate, CandidateCreate,
+    Question, AssessmentSettings,
+    DashboardStats, SuccessResponse, ErrorResponse, PaginatedResponse
 )
 from auth_utils import (
     verify_password,
@@ -49,58 +53,9 @@ from stripe_service import (
     validate_stripe_config
 )
 
-# ------------------------------
-# Pydantic Models for New Endpoints
-# ------------------------------
-
-class AssessmentCreate(BaseModel):
-    title: str
-    description: Optional[str] = None
-    assessment_type: str = "multiple_choice"  # multiple_choice, coding, text, etc.
-    duration_minutes: Optional[int] = 30
-    questions: List[Dict] = []
-    settings: Dict = {}
-
-class AssessmentUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    assessment_type: Optional[str] = None
-    duration_minutes: Optional[int] = None
-    questions: Optional[List[Dict]] = None
-    settings: Optional[Dict] = None
-    status: Optional[str] = None  # draft, published, archived
-
-class CandidateCreate(BaseModel):
-    email: str
-    name: Optional[str] = None
-    assessment_id: str
-
-class OrganizationUpdate(BaseModel):
-    name: Optional[str] = None
-    website: Optional[str] = None
-    industry: Optional[str] = None
-    size: Optional[str] = None
-
-class UserUpdate(BaseModel):
-    name: Optional[str] = None
-    organization: Optional[str] = None
-    job_title: Optional[str] = None
-    phone: Optional[str] = None
-    notifications_enabled: Optional[bool] = True
-
-class OAuthState(BaseModel):
-    state: str
-    redirect_uri: str
-    plan: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-class OAuthCallback(BaseModel):
-    code: str
-    state: str
-
-# ------------------------------
-# Environment Variables & Validation
-# ------------------------------
+# ===========================================
+# Configuration
+# ===========================================
 
 class Config:
     """Application configuration with validation."""
@@ -195,9 +150,9 @@ class Config:
 
 config = Config()
 
-# ------------------------------
+# ===========================================
 # Database Manager
-# ------------------------------
+# ===========================================
 
 class DatabaseManager:
     def __init__(self):
@@ -265,13 +220,13 @@ class DatabaseManager:
 
 db_manager = DatabaseManager()
 
-# ------------------------------
-# Logging Configuration (PRODUCTION SAFE)
-# ------------------------------
+# ===========================================
+# Logging Configuration
+# ===========================================
 
 log_level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
 
-# Build handlers list dynamically (no None values)
+# Build handlers list dynamically
 handlers = [logging.StreamHandler(sys.stdout)]
 
 if config.is_production:
@@ -298,11 +253,11 @@ logging.basicConfig(
 # Configure our application logger
 logger = logging.getLogger("assessly-api")
 logger.setLevel(log_level)
-logger.propagate = False  # Prevent duplicate logs
+logger.propagate = False
 
-# ------------------------------
+# ===========================================
 # FastAPI App Configuration
-# ------------------------------
+# ===========================================
 
 app = FastAPI(
     title="Assessly Platform API",
@@ -321,19 +276,27 @@ app = FastAPI(
             "description": "Assessment creation and management"
         },
         {
+            "name": "Candidates",
+            "description": "Candidate invitation and management"
+        },
+        {
             "name": "Subscriptions",
             "description": "Subscription and billing management"
         },
         {
             "name": "User Management",
             "description": "User profile and organization management"
+        },
+        {
+            "name": "Public",
+            "description": "Public endpoints"
         }
     ]
 )
 
-# ------------------------------
+# ===========================================
 # Middleware
-# ------------------------------
+# ===========================================
 
 # Security middleware
 if config.is_production:
@@ -391,9 +354,9 @@ async def log_requests(request: Request, call_next):
         logger.error(f"Request {request_id} failed: {request.method} {request.url.path} - Error: {e}")
         raise
 
-# ------------------------------
+# ===========================================
 # Authentication
-# ------------------------------
+# ===========================================
 
 security = HTTPBearer(auto_error=False)
 
@@ -424,9 +387,9 @@ async def get_current_user(
         logger.error(f"Authentication error: {e}")
         raise HTTPException(status_code=401, detail="Authentication failed")
 
-# ------------------------------
+# ===========================================
 # Helper Functions
-# ------------------------------
+# ===========================================
 
 def to_object_id(id_str: str) -> ObjectId:
     """Convert string to ObjectId, handling errors."""
@@ -472,9 +435,9 @@ async def verify_recaptcha(token: str) -> bool:
         logger.error(f"reCAPTCHA verification error: {e}")
         return False
 
-# ------------------------------
+# ===========================================
 # Custom Exception Handlers
-# ------------------------------
+# ===========================================
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
@@ -524,9 +487,9 @@ async def general_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# ------------------------------
+# ===========================================
 # Health Check Endpoint
-# ------------------------------
+# ===========================================
 
 @app.get("/health")
 async def health_check():
@@ -561,9 +524,9 @@ async def health_check():
         }
     }
 
-# ------------------------------
+# ===========================================
 # API Router
-# ------------------------------
+# ===========================================
 
 api_router = APIRouter(prefix="/api")
 
@@ -588,7 +551,13 @@ async def api_root():
             ],
             "assessments": [
                 "/api/assessments",
-                "/api/assessments/{id}"
+                "/api/assessments/{id}",
+                "/api/assessments/{id}/questions",
+                "/api/assessments/{id}/settings"
+            ],
+            "candidates": [
+                "/api/candidates",
+                "/api/candidates/{id}"
             ],
             "subscriptions": [
                 "/api/subscriptions/checkout",
@@ -608,9 +577,9 @@ async def api_root():
         }
     }
 
-# ------------------------------
+# ===========================================
 # Authentication Routes
-# ------------------------------
+# ===========================================
 
 @api_router.post("/auth/register", response_model=Token, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
 async def register(user_create: UserCreate, request: Request):
@@ -635,6 +604,7 @@ async def register(user_create: UserCreate, request: Request):
         # Create user
         user_data = user_create.dict(exclude={"password"})
         user_data["hashed_password"] = get_password_hash(user_create.password)
+        user_data["id"] = str(uuid.uuid4())
         user_data["is_verified"] = False
         user_data["created_at"] = datetime.utcnow()
         user_data["updated_at"] = datetime.utcnow()
@@ -645,6 +615,7 @@ async def register(user_create: UserCreate, request: Request):
         
         # Create organization
         org = Organization(
+            id=str(uuid.uuid4()),
             name=user.organization,
             owner_id=user.id,
             slug=user.organization.lower().replace(" ", "-"),
@@ -667,7 +638,6 @@ async def register(user_create: UserCreate, request: Request):
                 )
         except Exception as e:
             logger.error(f"Failed to create Stripe customer: {e}")
-            # Don't fail registration if Stripe fails
         
         # Set default free plan
         await db_manager.db.users.update_one(
@@ -676,18 +646,19 @@ async def register(user_create: UserCreate, request: Request):
         )
         
         # Create a free subscription record
-        free_subscription = {
-            "user_id": user.id,
-            "plan_id": "free",
-            "stripe_subscription_id": "free_plan",
-            "status": "active",
-            "amount": 0,
-            "currency": "usd",
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }
+        free_subscription = Subscription(
+            id=str(uuid.uuid4()),
+            user_id=user.id,
+            plan_id="free",
+            stripe_subscription_id="free_plan",
+            status="active",
+            amount=0,
+            currency="usd",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
         
-        await db_manager.db.subscriptions.insert_one(free_subscription)
+        await db_manager.db.subscriptions.insert_one(free_subscription.dict())
         
         # Send welcome email
         try:
@@ -770,7 +741,7 @@ async def login(credentials: UserLogin, request: Request):
 
 
 @api_router.post("/auth/refresh", response_model=Token, tags=["Authentication"])
-async def refresh_token_endpoint(refresh_token: str):
+async def refresh_token_endpoint(refresh_token: str = Body(..., embed=True)):
     """Refresh access token using refresh token."""
     try:
         payload = verify_refresh_token(refresh_token)
@@ -820,932 +791,13 @@ async def logout(current_user: User = Depends(get_current_user)):
     logger.info(f"User logged out: {current_user.email}")
     return {"message": "Successfully logged out", "redirect_url": f"{config.FRONTEND_URL}/login"}
 
-# ------------------------------
-# OAuth Routes
-# ------------------------------
-
-@api_router.get("/auth/google", tags=["Authentication"])
-async def google_oauth_initiate(
-    redirect_uri: str = Query(default=config.GOOGLE_REDIRECT_URI),
-    plan: Optional[str] = Query(None),
-    state: Optional[str] = Query(None)
-):
-    """Initiate Google OAuth flow."""
-    try:
-        if not config.GOOGLE_OAUTH_CLIENT_ID:
-            raise HTTPException(status_code=501, detail="Google OAuth not configured")
-        
-        # Generate state token for security
-        state_token = state or secrets.token_urlsafe(32)
-        
-        # Store state in database for validation
-        oauth_state = {
-            "state": state_token,
-            "redirect_uri": redirect_uri,
-            "plan": plan or "free",
-            "created_at": datetime.utcnow()
-        }
-        await db_manager.db.oauth_states.insert_one(oauth_state)
-        
-        # Google OAuth URL parameters
-        params = {
-            "client_id": config.GOOGLE_OAUTH_CLIENT_ID,
-            "redirect_uri": redirect_uri,
-            "response_type": "code",
-            "scope": "openid email profile",
-            "state": state_token,
-            "access_type": "offline",
-            "prompt": "consent"
-        }
-        
-        auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
-        
-        return {"auth_url": auth_url}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Google OAuth initiation error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="OAuth initiation failed"
-        )
-
-
-@api_router.get("/auth/google/callback", tags=["Authentication"])
-async def google_oauth_callback(
-    code: str = Query(...),
-    state: str = Query(...),
-    error: Optional[str] = Query(None)
-):
-    """Handle Google OAuth callback."""
-    try:
-        if error:
-            logger.error(f"Google OAuth error: {error}")
-            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=oauth_failed")
-        
-        if not config.GOOGLE_OAUTH_CLIENT_ID or not config.GOOGLE_OAUTH_CLIENT_SECRET:
-            raise HTTPException(status_code=501, detail="Google OAuth not configured")
-        
-        # Validate state
-        state_record = await db_manager.db.oauth_states.find_one({"state": state})
-        if not state_record:
-            logger.error(f"Invalid state parameter: {state}")
-            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=invalid_state")
-        
-        # Clean up state record
-        await db_manager.db.oauth_states.delete_one({"state": state})
-        
-        redirect_uri = state_record.get("redirect_uri", config.GOOGLE_REDIRECT_URI)
-        plan = state_record.get("plan", "free")
-        
-        # Exchange code for tokens
-        token_url = "https://oauth2.googleapis.com/token"
-        token_data = {
-            "code": code,
-            "client_id": config.GOOGLE_OAUTH_CLIENT_ID,
-            "client_secret": config.GOOGLE_OAUTH_CLIENT_SECRET,
-            "redirect_uri": redirect_uri,
-            "grant_type": "authorization_code"
-        }
-        
-        async with httpx.AsyncClient() as client:
-            token_response = await client.post(token_url, data=token_data)
-            if token_response.status_code != 200:
-                logger.error(f"Google token exchange failed: {token_response.text}")
-                return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=token_exchange_failed")
-            
-            tokens = token_response.json()
-        
-        access_token = tokens.get("access_token")
-        
-        if not access_token:
-            logger.error("No access token returned from Google")
-            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=no_access_token")
-        
-        # Get user info from Google
-        userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo"
-        headers = {"Authorization": f"Bearer {access_token}"}
-        
-        async with httpx.AsyncClient() as client:
-            userinfo_response = await client.get(userinfo_url, headers=headers)
-            if userinfo_response.status_code != 200:
-                logger.error(f"Failed to get user info: {userinfo_response.text}")
-                return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=userinfo_failed")
-            
-            userinfo = userinfo_response.json()
-        
-        # Extract user info
-        google_id = userinfo.get("sub")
-        email = userinfo.get("email")
-        name = userinfo.get("name", "").strip()
-        given_name = userinfo.get("given_name", "")
-        family_name = userinfo.get("family_name", "")
-        picture = userinfo.get("picture")
-        
-        if not email:
-            logger.error("No email returned from Google")
-            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=no_email")
-        
-        if not name:
-            name = f"{given_name} {family_name}".strip()
-            if not name:
-                name = email.split("@")[0]
-        
-        # Check if user exists
-        user_data = await db_manager.db.users.find_one({"email": email})
-        
-        if user_data:
-            # Existing user - login
-            user = User(**user_data)
-            
-            # Update Google ID if not set
-            if not user_data.get("google_id"):
-                await db_manager.db.users.update_one(
-                    {"id": user.id},
-                    {"$set": {"google_id": google_id, "updated_at": datetime.utcnow()}}
-                )
-            
-            # Update last login
-            await db_manager.db.users.update_one(
-                {"id": user.id},
-                {"$set": {"last_login": datetime.utcnow()}}
-            )
-            
-        else:
-            # New user - create account
-            user_id = str(uuid.uuid4())
-            
-            # Create user
-            user_data = {
-                "id": user_id,
-                "email": email,
-                "name": name,
-                "google_id": google_id,
-                "avatar": picture,
-                "organization": "Personal" if not plan or plan == "free" else f"{name}'s Company",
-                "plan": plan,
-                "is_verified": True,  # Google verifies email
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-                "last_login": datetime.utcnow()
-            }
-            
-            user = User(**user_data)
-            await db_manager.db.users.insert_one(user.dict())
-            
-            # Create organization
-            org = Organization(
-                name=user.organization,
-                owner_id=user.id,
-                slug=user.organization.lower().replace(" ", "-"),
-                created_at=datetime.utcnow()
-            )
-            await db_manager.db.organizations.insert_one(org.dict())
-            
-            # Create Stripe customer
-            try:
-                stripe_customer_id = await get_or_create_stripe_customer(
-                    user_id=user.id,
-                    email=user.email,
-                    name=user.name,
-                    organization=user.organization
-                )
-                if stripe_customer_id:
-                    await db_manager.db.users.update_one(
-                        {"id": user.id},
-                        {"$set": {"stripe_customer_id": stripe_customer_id}}
-                    )
-            except Exception as e:
-                logger.error(f"Failed to create Stripe customer: {e}")
-            
-            # Create subscription record
-            subscription = {
-                "user_id": user.id,
-                "plan_id": plan,
-                "stripe_subscription_id": f"{plan}_oauth",
-                "status": "active",
-                "amount": 0,
-                "currency": "usd",
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }
-            await db_manager.db.subscriptions.insert_one(subscription)
-            
-            # Send welcome email
-            try:
-                await send_welcome_email(user.name, user.email, user.organization)
-            except Exception as e:
-                logger.error(f"Failed to send welcome email: {e}")
-        
-        # Generate JWT tokens
-        access_token_jwt = create_access_token({"sub": user.id, "email": user.email})
-        refresh_token_jwt = create_refresh_token({"sub": user.id})
-        
-        # Redirect to frontend with tokens
-        token_params = urlencode({
-            "access_token": access_token_jwt,
-            "refresh_token": refresh_token_jwt,
-            "user_id": user.id
-        })
-        
-        redirect_url = f"{config.FRONTEND_URL}/oauth/callback?{token_params}"
-        return RedirectResponse(url=redirect_url)
-        
-    except httpx.HTTPStatusError as e:
-        logger.error(f"Google OAuth HTTP error: {e}")
-        return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=oauth_http_error")
-    except Exception as e:
-        logger.error(f"Google OAuth callback error: {e}", exc_info=True)
-        return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=oauth_failed")
-
-
-@api_router.get("/auth/github", tags=["Authentication"])
-async def github_oauth_initiate(
-    redirect_uri: str = Query(default=config.GITHUB_REDIRECT_URI),
-    plan: Optional[str] = Query(None),
-    state: Optional[str] = Query(None)
-):
-    """Initiate GitHub OAuth flow."""
-    try:
-        if not config.GITHUB_OAUTH_CLIENT_ID:
-            raise HTTPException(status_code=501, detail="GitHub OAuth not configured")
-        
-        # Generate state token for security
-        state_token = state or secrets.token_urlsafe(32)
-        
-        # Store state in database for validation
-        oauth_state = {
-            "state": state_token,
-            "redirect_uri": redirect_uri,
-            "plan": plan or "free",
-            "created_at": datetime.utcnow()
-        }
-        await db_manager.db.oauth_states.insert_one(oauth_state)
-        
-        # GitHub OAuth URL parameters
-        params = {
-            "client_id": config.GITHUB_OAUTH_CLIENT_ID,
-            "redirect_uri": redirect_uri,
-            "scope": "user:email",
-            "state": state_token
-        }
-        
-        auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
-        
-        return {"auth_url": auth_url}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"GitHub OAuth initiation error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="OAuth initiation failed"
-        )
-
-
-@api_router.get("/auth/github/callback", tags=["Authentication"])
-async def github_oauth_callback(
-    code: str = Query(...),
-    state: str = Query(...),
-    error: Optional[str] = Query(None)
-):
-    """Handle GitHub OAuth callback."""
-    try:
-        if error:
-            logger.error(f"GitHub OAuth error: {error}")
-            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=oauth_failed")
-        
-        if not config.GITHUB_OAUTH_CLIENT_ID or not config.GITHUB_OAUTH_CLIENT_SECRET:
-            raise HTTPException(status_code=501, detail="GitHub OAuth not configured")
-        
-        # Validate state
-        state_record = await db_manager.db.oauth_states.find_one({"state": state})
-        if not state_record:
-            logger.error(f"Invalid state parameter: {state}")
-            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=invalid_state")
-        
-        # Clean up state record
-        await db_manager.db.oauth_states.delete_one({"state": state})
-        
-        redirect_uri = state_record.get("redirect_uri", config.GITHUB_REDIRECT_URI)
-        plan = state_record.get("plan", "free")
-        
-        # Exchange code for access token
-        token_url = "https://github.com/login/oauth/access_token"
-        token_data = {
-            "client_id": config.GITHUB_OAUTH_CLIENT_ID,
-            "client_secret": config.GITHUB_OAUTH_CLIENT_SECRET,
-            "code": code,
-            "redirect_uri": redirect_uri
-        }
-        
-        headers = {"Accept": "application/json"}
-        
-        async with httpx.AsyncClient() as client:
-            token_response = await client.post(token_url, data=token_data, headers=headers)
-            if token_response.status_code != 200:
-                logger.error(f"GitHub token exchange failed: {token_response.text}")
-                return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=token_exchange_failed")
-            
-            tokens = token_response.json()
-        
-        access_token = tokens.get("access_token")
-        
-        if not access_token:
-            logger.error("No access token returned from GitHub")
-            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=no_access_token")
-        
-        # Get user info from GitHub
-        userinfo_url = "https://api.github.com/user"
-        emails_url = "https://api.github.com/user/emails"
-        headers = {
-            "Authorization": f"token {access_token}",
-            "Accept": "application/json"
-        }
-        
-        async with httpx.AsyncClient() as client:
-            # Get user profile
-            userinfo_response = await client.get(userinfo_url, headers=headers)
-            if userinfo_response.status_code != 200:
-                logger.error(f"Failed to get user info: {userinfo_response.text}")
-                return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=userinfo_failed")
-            
-            userinfo = userinfo_response.json()
-            
-            # Get user emails
-            emails_response = await client.get(emails_url, headers=headers)
-            emails = emails_response.json() if emails_response.status_code == 200 else []
-        
-        # Extract primary email
-        primary_email = None
-        for email in emails:
-            if isinstance(email, dict) and email.get("primary") and email.get("verified"):
-                primary_email = email.get("email")
-                break
-        
-        if not primary_email:
-            # Fallback to the first verified email
-            for email in emails:
-                if isinstance(email, dict) and email.get("verified"):
-                    primary_email = email.get("email")
-                    break
-        
-        if not primary_email:
-            # If no verified emails, use the public email
-            primary_email = userinfo.get("email")
-        
-        if not primary_email:
-            logger.error("No verified email found")
-            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=no_email")
-        
-        # Extract user info
-        github_id = str(userinfo.get("id"))
-        name = userinfo.get("name", "").strip()
-        login = userinfo.get("login", "")
-        avatar = userinfo.get("avatar_url")
-        
-        if not name:
-            name = login
-        
-        # Check if user exists
-        user_data = await db_manager.db.users.find_one({"email": primary_email})
-        
-        if user_data:
-            # Existing user - login
-            user = User(**user_data)
-            
-            # Update GitHub ID if not set
-            if not user_data.get("github_id"):
-                await db_manager.db.users.update_one(
-                    {"id": user.id},
-                    {"$set": {"github_id": github_id, "updated_at": datetime.utcnow()}}
-                )
-            
-            # Update last login
-            await db_manager.db.users.update_one(
-                {"id": user.id},
-                {"$set": {"last_login": datetime.utcnow()}}
-            )
-            
-        else:
-            # New user - create account
-            user_id = str(uuid.uuid4())
-            
-            # Create user
-            user_data = {
-                "id": user_id,
-                "email": primary_email,
-                "name": name,
-                "github_id": github_id,
-                "avatar": avatar,
-                "organization": "Personal" if not plan or plan == "free" else f"{name}'s Company",
-                "plan": plan,
-                "is_verified": True,  # GitHub emails are verified
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-                "last_login": datetime.utcnow()
-            }
-            
-            user = User(**user_data)
-            await db_manager.db.users.insert_one(user.dict())
-            
-            # Create organization
-            org = Organization(
-                name=user.organization,
-                owner_id=user.id,
-                slug=user.organization.lower().replace(" ", "-"),
-                created_at=datetime.utcnow()
-            )
-            await db_manager.db.organizations.insert_one(org.dict())
-            
-            # Create Stripe customer
-            try:
-                stripe_customer_id = await get_or_create_stripe_customer(
-                    user_id=user.id,
-                    email=user.email,
-                    name=user.name,
-                    organization=user.organization
-                )
-                if stripe_customer_id:
-                    await db_manager.db.users.update_one(
-                        {"id": user.id},
-                        {"$set": {"stripe_customer_id": stripe_customer_id}}
-                    )
-            except Exception as e:
-                logger.error(f"Failed to create Stripe customer: {e}")
-            
-            # Create subscription record
-            subscription = {
-                "user_id": user.id,
-                "plan_id": plan,
-                "stripe_subscription_id": f"{plan}_oauth",
-                "status": "active",
-                "amount": 0,
-                "currency": "usd",
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }
-            await db_manager.db.subscriptions.insert_one(subscription)
-            
-            # Send welcome email
-            try:
-                await send_welcome_email(user.name, user.email, user.organization)
-            except Exception as e:
-                logger.error(f"Failed to send welcome email: {e}")
-        
-        # Generate JWT tokens
-        access_token_jwt = create_access_token({"sub": user.id, "email": user.email})
-        refresh_token_jwt = create_refresh_token({"sub": user.id})
-        
-        # Redirect to frontend with tokens
-        token_params = urlencode({
-            "access_token": access_token_jwt,
-            "refresh_token": refresh_token_jwt,
-            "user_id": user.id
-        })
-        
-        redirect_url = f"{config.FRONTEND_URL}/oauth/callback?{token_params}"
-        return RedirectResponse(url=redirect_url)
-        
-    except httpx.HTTPStatusError as e:
-        logger.error(f"GitHub OAuth HTTP error: {e}")
-        return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=oauth_http_error")
-    except Exception as e:
-        logger.error(f"GitHub OAuth callback error: {e}", exc_info=True)
-        return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=oauth_failed")
-
-
-@api_router.post("/oauth/exchange", tags=["Authentication"])
-async def oauth_token_exchange(payload: dict):
-    """Exchange OAuth tokens for JWT tokens."""
-    try:
-        access_token = payload.get("access_token")
-        refresh_token = payload.get("refresh_token")
-        
-        if not access_token or not refresh_token:
-            raise HTTPException(status_code=400, detail="Missing tokens")
-        
-        # Verify the tokens
-        try:
-            access_payload = verify_token(access_token)
-            refresh_payload = verify_refresh_token(refresh_token)
-            
-            if not access_payload or not refresh_payload:
-                raise HTTPException(status_code=401, detail="Invalid tokens")
-            
-            # Get user
-            user_id = access_payload.get("sub")
-            user_data = await db_manager.db.users.find_one({"id": user_id})
-            
-            if not user_data:
-                raise HTTPException(status_code=404, detail="User not found")
-            
-            user = User(**user_data)
-            
-            return Token(
-                access_token=access_token,
-                refresh_token=refresh_token,
-                token_type="bearer",
-                user=user,
-                redirect_url=f"{config.FRONTEND_URL}/dashboard"
-            )
-            
-        except Exception as e:
-            logger.error(f"Token exchange error: {e}")
-            raise HTTPException(status_code=401, detail="Invalid or expired tokens")
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"OAuth exchange error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Token exchange failed"
-        )
-
-# ------------------------------
-# Contact & Demo Routes
-# ------------------------------
-
-@api_router.post("/contact", status_code=status.HTTP_201_CREATED, tags=["Public"])
-async def submit_contact(contact: ContactFormCreate):
-    """Submit contact form."""
-    try:
-        record = ContactForm(
-            **contact.dict(),
-            created_at=datetime.utcnow()
-        )
-        
-        await db_manager.db.contact_forms.insert_one(record.dict())
-        
-        # Send notification email
-        await send_contact_notification(
-            contact.name,
-            contact.email,
-            contact.company,
-            contact.message
-        )
-        
-        logger.info(f"Contact form submitted: {contact.email}")
-        
-        return {"success": True, "message": "Contact form submitted successfully"}
-        
-    except Exception as e:
-        logger.error(f"Contact form error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to submit contact form"
-        )
-
-
-@api_router.post("/demo", status_code=status.HTTP_201_CREATED, tags=["Public"])
-async def submit_demo(demo: DemoRequestCreate):
-    """Submit demo request."""
-    try:
-        record = DemoRequest(
-            **demo.dict(),
-            created_at=datetime.utcnow()
-        )
-        
-        await db_manager.db.demo_requests.insert_one(record.dict())
-        
-        # Send notification email
-        await send_demo_request_notification(
-            demo.name,
-            demo.email,
-            demo.company,
-            demo.size,
-            demo.notes
-        )
-        
-        logger.info(f"Demo request submitted: {demo.email}")
-        
-        return {"success": True, "message": "Demo request submitted successfully"}
-        
-    except Exception as e:
-        logger.error(f"Demo request error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to submit demo request"
-        )
-
-# ------------------------------
-# Subscription & Payment Routes
-# ------------------------------
-
-@api_router.post("/subscriptions/checkout", tags=["Subscriptions"])
-async def create_checkout_session_endpoint(
-    payload: dict,
-    current_user: User = Depends(get_current_user)
-):
-    """Create a Stripe Checkout Session."""
-    try:
-        plan_id = payload.get("plan_id")
-        if not plan_id:
-            raise HTTPException(status_code=400, detail="Plan ID is required")
-        
-        # Validate plan
-        valid_plans = ["free", "basic", "professional", "enterprise"]
-        if plan_id not in valid_plans:
-            raise HTTPException(status_code=400, detail="Invalid plan")
-        
-        # For free plan, just update user and return
-        if plan_id == "free":
-            await db_manager.db.users.update_one(
-                {"id": current_user.id},
-                {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
-            )
-            
-            # Update or create free subscription record
-            await db_manager.db.subscriptions.update_one(
-                {"user_id": current_user.id, "plan_id": "free"},
-                {"$set": {
-                    "status": "active",
-                    "updated_at": datetime.utcnow()
-                }},
-                upsert=True
-            )
-            
-            return {
-                "type": "free",
-                "redirect_url": f"{config.FRONTEND_URL}/dashboard?plan=free",
-                "message": "Successfully switched to free plan"
-            }
-        
-        # Get or create Stripe customer
-        customer_id = await get_or_create_stripe_customer(
-            user_id=current_user.id,
-            email=current_user.email,
-            name=current_user.name,
-            organization=current_user.organization
-        )
-        
-        if not customer_id:
-            raise HTTPException(status_code=500, detail="Failed to create customer")
-        
-        # Create checkout session
-        success_url = f"{config.FRONTEND_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
-        cancel_url = f"{config.FRONTEND_URL}/pricing"
-        
-        session = await create_checkout_session(
-            plan_id=plan_id,
-            success_url=success_url,
-            cancel_url=cancel_url,
-            customer_id=customer_id,
-            user_id=current_user.id
-        )
-        
-        if not session:
-            raise HTTPException(status_code=500, detail="Failed to create checkout session")
-        
-        # Handle enterprise plan
-        if session.get("type") == "enterprise":
-            return {
-                "type": "enterprise",
-                "redirect_url": session["url"],
-                "message": "Please contact our sales team for enterprise pricing"
-            }
-        
-        return {
-            "type": "checkout",
-            "session_id": session.get("session_id"),
-            "url": session.get("url"),
-            "message": "Checkout session created successfully"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Checkout error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Checkout failed"
-        )
-
-
-@api_router.get("/subscriptions/me", tags=["Subscriptions"])
-async def get_my_subscription(
-    current_user: User = Depends(get_current_user)
-):
-    """Get current user's subscription."""
-    try:
-        # Get user with subscription info
-        user_data = await db_manager.db.users.find_one({"id": current_user.id})
-        
-        if not user_data:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        subscription_data = await db_manager.db.subscriptions.find_one(
-            {"user_id": current_user.id},
-            sort=[("created_at", -1)]
-        )
-        
-        # If no subscription found, check for free plan
-        if not subscription_data:
-            plan = user_data.get("plan", "free")
-            
-            if plan == "free":
-                return {
-                    "has_subscription": True,
-                    "plan": "free",
-                    "status": "active",
-                    "is_free": True,
-                    "amount": 0,
-                    "currency": "usd",
-                    "current_period_end": None,
-                    "cancel_at_period_end": False
-                }
-            
-            return {"has_subscription": False}
-        
-        return {
-            "has_subscription": True,
-            "plan": subscription_data.get("plan_id", "unknown"),
-            "status": subscription_data.get("status", "active"),
-            "subscription_id": subscription_data.get("stripe_subscription_id"),
-            "amount": subscription_data.get("amount"),
-            "currency": subscription_data.get("currency", "usd"),
-            "current_period_start": subscription_data.get("current_period_start"),
-            "current_period_end": subscription_data.get("current_period_end"),
-            "cancel_at_period_end": subscription_data.get("cancel_at_period_end", False),
-            "created_at": subscription_data.get("created_at")
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Subscription retrieval error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve subscription"
-        )
-
-
-@api_router.post("/subscriptions/cancel", tags=["Subscriptions"])
-async def cancel_my_subscription(
-    payload: dict = None,
-    current_user: User = Depends(get_current_user)
-):
-    """Cancel current user's subscription."""
-    try:
-        at_period_end = True
-        if payload and "immediate" in payload:
-            at_period_end = not payload["immediate"]
-        
-        # Get user's subscription
-        subscription_data = await db_manager.db.subscriptions.find_one(
-            {"user_id": current_user.id, "status": {"$nin": ["canceled", "incomplete_expired"]}},
-            sort=[("created_at", -1)]
-        )
-        
-        if not subscription_data:
-            # If no paid subscription, check if user is on free plan
-            user_data = await db_manager.db.users.find_one({"id": current_user.id})
-            if user_data.get("plan") == "free":
-                return {"success": True, "message": "Already on free plan"}
-            
-            raise HTTPException(status_code=404, detail="No active subscription found")
-        
-        subscription_id = subscription_data["stripe_subscription_id"]
-        
-        # Handle free plan subscription ID
-        if subscription_id == "free_plan":
-            await db_manager.db.users.update_one(
-                {"id": current_user.id},
-                {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
-            )
-            return {"success": True, "message": "Downgraded to free plan"}
-        
-        # Cancel subscription
-        success = await cancel_subscription(subscription_id)
-        
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to cancel subscription")
-        
-        # Update subscription status in database
-        await db_manager.db.subscriptions.update_one(
-            {"_id": subscription_data["_id"]},
-            {"$set": {
-                "status": "canceled",
-                "canceled_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }}
-        )
-        
-        # Downgrade to free
-        await db_manager.db.users.update_one(
-            {"id": current_user.id},
-            {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
-        )
-        
-        return {
-            "success": True, 
-            "message": "Subscription cancelled successfully",
-            "redirect_url": f"{config.FRONTEND_URL}/dashboard"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Cancellation error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to cancel subscription"
-        )
-
-
-@api_router.get("/plans", tags=["Subscriptions"])
-async def get_available_plans():
-    """Get available subscription plans with features."""
-    return {
-        "plans": [
-            {
-                "id": "free",
-                "name": "Free Plan",
-                "price": 0,
-                "currency": "usd",
-                "interval": "month",
-                "features": [
-                    "Up to 50 candidates",
-                    "Basic assessment types",
-                    "Email support",
-                    "Community forum access"
-                ],
-                "limits": {
-                    "candidates": 50,
-                    "assessments": 5,
-                    "questions": 100
-                }
-            },
-            {
-                "id": "basic",
-                "name": "Basic Plan",
-                "price": 2900,  # $29.00 in cents
-                "currency": "usd",
-                "interval": "month",
-                "features": [
-                    "Up to 500 candidates",
-                    "Advanced assessment types",
-                    "Priority support",
-                    "Basic analytics",
-                    "API access"
-                ],
-                "limits": {
-                    "candidates": 500,
-                    "assessments": 50,
-                    "questions": 5000
-                }
-            },
-            {
-                "id": "professional",
-                "name": "Professional Plan",
-                "price": 7900,  # $79.00 in cents
-                "currency": "usd",
-                "interval": "month",
-                "features": [
-                    "Unlimited candidates",
-                    "All assessment types",
-                    "Dedicated support",
-                    "Advanced analytics",
-                    "AI-powered insights",
-                    "Custom branding"
-                ],
-                "limits": {
-                    "candidates": "unlimited",
-                    "assessments": "unlimited",
-                    "questions": "unlimited"
-                }
-            },
-            {
-                "id": "enterprise",
-                "name": "Enterprise Plan",
-                "price": None,  # Custom pricing
-                "currency": "usd",
-                "interval": "month",
-                "features": [
-                    "Everything in Professional",
-                    "Custom solutions",
-                    "SLA guarantee",
-                    "Dedicated account manager",
-                    "On-premise deployment",
-                    "White-label option"
-                ],
-                "limits": {
-                    "custom": "Tailored to your needs"
-                }
-            }
-        ]
-    }
-
-# ------------------------------
+# ===========================================
 # Assessment Endpoints
-# ------------------------------
+# ===========================================
 
-@api_router.post("/assessments", status_code=status.HTTP_201_CREATED, tags=["Assessments"])
+@api_router.post("/assessments", response_model=Assessment, status_code=status.HTTP_201_CREATED, tags=["Assessments"])
 async def create_assessment(
-    assessment: AssessmentCreate,
+    assessment_create: AssessmentCreate,
     current_user: User = Depends(get_current_user)
 ):
     """Create a new assessment."""
@@ -1765,27 +817,34 @@ async def create_assessment(
                 raise HTTPException(status_code=400, detail="Free plan limit reached (5 assessments)")
         
         # Create assessment data
-        assessment_data = assessment.dict()
+        assessment_data = assessment_create.dict()
+        assessment_data["id"] = str(uuid.uuid4())
         assessment_data["user_id"] = current_user.id
         assessment_data["organization_id"] = organization["id"]
         assessment_data["status"] = "draft"
+        assessment_data["candidate_count"] = 0
+        assessment_data["completion_rate"] = 0.0
+        assessment_data["average_time"] = 0.0
+        assessment_data["average_score"] = 0.0
+        
+        # Ensure settings exist
+        if not assessment_data.get("settings"):
+            assessment_data["settings"] = AssessmentSettings().dict()
+        
+        # Ensure questions array exists
+        if "questions" not in assessment_data:
+            assessment_data["questions"] = []
+        
         assessment_data["created_at"] = datetime.utcnow()
         assessment_data["updated_at"] = datetime.utcnow()
         
         # Insert assessment
-        result = await db_manager.db.assessments.insert_one(assessment_data)
+        await db_manager.db.assessments.insert_one(assessment_data)
         
-        # Convert ObjectId to string
-        assessment_id = str(result.inserted_id)
+        logger.info(f"Assessment created: {assessment_data['id']} by user {current_user.id}")
         
-        logger.info(f"Assessment created: {assessment_id} by user {current_user.id}")
-        
-        return {
-            "success": True,
-            "assessment_id": assessment_id,
-            "message": "Assessment created successfully",
-            "redirect_url": f"{config.FRONTEND_URL}/assessments/{assessment_id}"
-        }
+        # Return the created assessment
+        return Assessment(**assessment_data)
         
     except HTTPException:
         raise
@@ -1797,7 +856,7 @@ async def create_assessment(
         )
 
 
-@api_router.get("/assessments", tags=["Assessments"])
+@api_router.get("/assessments", response_model=PaginatedResponse, tags=["Assessments"])
 async def get_assessments(
     status: Optional[str] = Query(None, description="Filter by status"),
     limit: int = Query(100, ge=1, le=1000),
@@ -1813,23 +872,26 @@ async def get_assessments(
         
         # Get assessments with pagination
         cursor = db_manager.db.assessments.find(query).sort("created_at", -1).skip(skip).limit(limit)
-        assessments = await cursor.to_list(length=limit)
+        assessments_data = await cursor.to_list(length=limit)
         
-        # Convert ObjectIds to strings
-        for assessment in assessments:
-            assessment["id"] = str(assessment["_id"])
-            del assessment["_id"]
+        # Convert to Assessment models
+        assessments = []
+        for data in assessments_data:
+            data["id"] = str(data["_id"]) if "_id" in data else data.get("id", str(uuid.uuid4()))
+            if "_id" in data:
+                del data["_id"]
+            assessments.append(Assessment(**data))
         
         # Get total count for pagination
         total = await db_manager.db.assessments.count_documents(query)
         
-        return {
-            "assessments": assessments,
-            "total": total,
-            "limit": limit,
-            "skip": skip,
-            "has_more": (skip + len(assessments)) < total
-        }
+        return PaginatedResponse(
+            items=assessments,
+            total=total,
+            page=(skip // limit) + 1 if limit > 0 else 1,
+            size=limit,
+            pages=(total + limit - 1) // limit if limit > 0 else 1
+        )
         
     except Exception as e:
         logger.error(f"Get assessments error: {e}", exc_info=True)
@@ -1839,26 +901,36 @@ async def get_assessments(
         )
 
 
-@api_router.get("/assessments/{assessment_id}", tags=["Assessments"])
+@api_router.get("/assessments/{assessment_id}", response_model=Assessment, tags=["Assessments"])
 async def get_assessment(
     assessment_id: str,
     current_user: User = Depends(get_current_user)
 ):
     """Get a specific assessment by ID."""
     try:
-        # Convert string ID to ObjectId
-        obj_id = to_object_id(assessment_id)
-        
         # Find assessment
-        assessment = await db_manager.db.assessments.find_one({"_id": obj_id, "user_id": current_user.id})
-        if not assessment:
+        assessment_data = await db_manager.db.assessments.find_one({"id": assessment_id, "user_id": current_user.id})
+        if not assessment_data:
+            # Try with _id for backward compatibility
+            try:
+                obj_id = to_object_id(assessment_id)
+                assessment_data = await db_manager.db.assessments.find_one({"_id": obj_id, "user_id": current_user.id})
+            except:
+                pass
+        
+        if not assessment_data:
             raise HTTPException(status_code=404, detail="Assessment not found")
         
-        # Convert ObjectId to string
-        assessment["id"] = str(assessment["_id"])
-        del assessment["_id"]
+        # Ensure all required fields exist
+        assessment_data["id"] = str(assessment_data["_id"]) if "_id" in assessment_data else assessment_data.get("id", assessment_id)
+        if "_id" in assessment_data:
+            del assessment_data["_id"]
         
-        return assessment
+        assessment_data.setdefault("settings", {})
+        assessment_data.setdefault("questions", [])
+        assessment_data.setdefault("status", "draft")
+        
+        return Assessment(**assessment_data)
         
     except HTTPException:
         raise
@@ -1870,7 +942,7 @@ async def get_assessment(
         )
 
 
-@api_router.put("/assessments/{assessment_id}", tags=["Assessments"])
+@api_router.put("/assessments/{assessment_id}", response_model=Assessment, tags=["Assessments"])
 async def update_assessment(
     assessment_id: str,
     assessment_update: AssessmentUpdate,
@@ -1878,12 +950,17 @@ async def update_assessment(
 ):
     """Update an assessment."""
     try:
-        # Convert string ID to ObjectId
-        obj_id = to_object_id(assessment_id)
-        
         # Check if assessment exists and belongs to user
-        existing = await db_manager.db.assessments.find_one({"_id": obj_id, "user_id": current_user.id})
-        if not existing:
+        assessment_data = await db_manager.db.assessments.find_one({"id": assessment_id, "user_id": current_user.id})
+        if not assessment_data:
+            # Try with _id for backward compatibility
+            try:
+                obj_id = to_object_id(assessment_id)
+                assessment_data = await db_manager.db.assessments.find_one({"_id": obj_id, "user_id": current_user.id})
+            except:
+                pass
+        
+        if not assessment_data:
             raise HTTPException(status_code=404, detail="Assessment not found")
         
         # Prepare update data
@@ -1891,17 +968,42 @@ async def update_assessment(
         update_data["updated_at"] = datetime.utcnow()
         
         # Update assessment
-        await db_manager.db.assessments.update_one(
-            {"_id": obj_id},
+        result = await db_manager.db.assessments.update_one(
+            {"id": assessment_id},
             {"$set": update_data}
         )
         
+        # If not found with id field, try with _id
+        if result.matched_count == 0:
+            try:
+                obj_id = to_object_id(assessment_id)
+                await db_manager.db.assessments.update_one(
+                    {"_id": obj_id},
+                    {"$set": update_data}
+                )
+            except:
+                pass
+        
         logger.info(f"Assessment updated: {assessment_id} by user {current_user.id}")
         
-        return {
-            "success": True,
-            "message": "Assessment updated successfully"
-        }
+        # Get updated assessment
+        updated_assessment = await db_manager.db.assessments.find_one({"id": assessment_id})
+        if not updated_assessment:
+            # Try with _id
+            try:
+                obj_id = to_object_id(assessment_id)
+                updated_assessment = await db_manager.db.assessments.find_one({"_id": obj_id})
+            except:
+                pass
+        
+        if not updated_assessment:
+            raise HTTPException(status_code=404, detail="Assessment not found after update")
+        
+        updated_assessment["id"] = str(updated_assessment["_id"]) if "_id" in updated_assessment else updated_assessment.get("id", assessment_id)
+        if "_id" in updated_assessment:
+            del updated_assessment["_id"]
+        
+        return Assessment(**updated_assessment)
         
     except HTTPException:
         raise
@@ -1920,27 +1022,40 @@ async def delete_assessment(
 ):
     """Delete an assessment."""
     try:
-        # Convert string ID to ObjectId
-        obj_id = to_object_id(assessment_id)
-        
         # Check if assessment exists and belongs to user
-        existing = await db_manager.db.assessments.find_one({"_id": obj_id, "user_id": current_user.id})
-        if not existing:
+        assessment_data = await db_manager.db.assessments.find_one({"id": assessment_id, "user_id": current_user.id})
+        if not assessment_data:
+            # Try with _id for backward compatibility
+            try:
+                obj_id = to_object_id(assessment_id)
+                assessment_data = await db_manager.db.assessments.find_one({"_id": obj_id, "user_id": current_user.id})
+                assessment_id = str(assessment_data["_id"]) if assessment_data else assessment_id
+            except:
+                pass
+        
+        if not assessment_data:
             raise HTTPException(status_code=404, detail="Assessment not found")
         
         # Delete assessment
-        await db_manager.db.assessments.delete_one({"_id": obj_id})
+        result = await db_manager.db.assessments.delete_one({"id": assessment_id})
+        
+        # If not found with id field, try with _id
+        if result.deleted_count == 0:
+            try:
+                obj_id = to_object_id(assessment_id)
+                await db_manager.db.assessments.delete_one({"_id": obj_id})
+            except:
+                pass
         
         # Also delete related candidates
         await db_manager.db.candidates.delete_many({"assessment_id": assessment_id})
         
         logger.info(f"Assessment deleted: {assessment_id} by user {current_user.id}")
         
-        return {
-            "success": True,
-            "message": "Assessment deleted successfully",
-            "redirect_url": f"{config.FRONTEND_URL}/assessments"
-        }
+        return SuccessResponse(
+            message="Assessment deleted successfully",
+            data={"redirect_url": f"{config.FRONTEND_URL}/assessments"}
+        )
         
     except HTTPException:
         raise
@@ -1951,19 +1066,193 @@ async def delete_assessment(
             detail="Failed to delete assessment"
         )
 
-# ------------------------------
-# Candidate Endpoints
-# ------------------------------
+# ===========================================
+# Assessment Questions Endpoints
+# ===========================================
 
-@api_router.post("/candidates", status_code=status.HTTP_201_CREATED, tags=["Assessments"])
+@api_router.get("/assessments/{assessment_id}/questions", tags=["Assessments"])
+async def get_assessment_questions(
+    assessment_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get all questions for an assessment."""
+    try:
+        assessment = await get_assessment(assessment_id, current_user)
+        return assessment.questions
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get assessment questions error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve assessment questions"
+        )
+
+
+@api_router.post("/assessments/{assessment_id}/questions", response_model=Question, tags=["Assessments"])
+async def add_assessment_question(
+    assessment_id: str,
+    question: Question,
+    current_user: User = Depends(get_current_user)
+):
+    """Add a question to an assessment."""
+    try:
+        # Get assessment
+        assessment_data = await db_manager.db.assessments.find_one({"id": assessment_id, "user_id": current_user.id})
+        if not assessment_data:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+        
+        # Generate question ID if not provided
+        if not question.id:
+            question.id = str(uuid.uuid4())
+        
+        question_data = question.dict()
+        question_data["created_at"] = datetime.utcnow()
+        question_data["updated_at"] = datetime.utcnow()
+        
+        # Add question to assessment
+        await db_manager.db.assessments.update_one(
+            {"id": assessment_id},
+            {
+                "$push": {"questions": question_data},
+                "$set": {"updated_at": datetime.utcnow()}
+            }
+        )
+        
+        logger.info(f"Question added to assessment {assessment_id}")
+        
+        return Question(**question_data)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Add assessment question error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to add question to assessment"
+        )
+
+
+@api_router.put("/assessments/{assessment_id}/questions/{question_id}", response_model=Question, tags=["Assessments"])
+async def update_assessment_question(
+    assessment_id: str,
+    question_id: str,
+    question_update: Question,
+    current_user: User = Depends(get_current_user)
+):
+    """Update a question in an assessment."""
+    try:
+        # Get assessment
+        assessment_data = await db_manager.db.assessments.find_one({"id": assessment_id, "user_id": current_user.id})
+        if not assessment_data:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+        
+        # Find and update the question
+        questions = assessment_data.get("questions", [])
+        question_index = next((i for i, q in enumerate(questions) if q.get("id") == question_id), -1)
+        
+        if question_index == -1:
+            raise HTTPException(status_code=404, detail="Question not found")
+        
+        # Update question
+        question_data = question_update.dict()
+        question_data["id"] = question_id
+        question_data["updated_at"] = datetime.utcnow()
+        
+        questions[question_index] = question_data
+        
+        # Update assessment
+        await db_manager.db.assessments.update_one(
+            {"id": assessment_id},
+            {
+                "$set": {
+                    "questions": questions,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        logger.info(f"Question {question_id} updated in assessment {assessment_id}")
+        
+        return Question(**question_data)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update assessment question error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update question in assessment"
+        )
+
+# ===========================================
+# Assessment Settings Endpoints
+# ===========================================
+
+@api_router.get("/assessments/{assessment_id}/settings", tags=["Assessments"])
+async def get_assessment_settings(
+    assessment_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get assessment settings."""
+    try:
+        assessment = await get_assessment(assessment_id, current_user)
+        return assessment.settings
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get assessment settings error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve assessment settings"
+        )
+
+
+@api_router.put("/assessments/{assessment_id}/settings", response_model=AssessmentSettings, tags=["Assessments"])
+async def update_assessment_settings(
+    assessment_id: str,
+    settings_update: AssessmentSettings,
+    current_user: User = Depends(get_current_user)
+):
+    """Update assessment settings."""
+    try:
+        # Update assessment with new settings
+        await db_manager.db.assessments.update_one(
+            {"id": assessment_id, "user_id": current_user.id},
+            {
+                "$set": {
+                    "settings": settings_update.dict(),
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        logger.info(f"Settings updated for assessment {assessment_id}")
+        
+        return settings_update
+        
+    except Exception as e:
+        logger.error(f"Update assessment settings error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update assessment settings"
+        )
+
+# ===========================================
+# Candidate Endpoints
+# ===========================================
+
+@api_router.post("/candidates", response_model=Candidate, status_code=status.HTTP_201_CREATED, tags=["Candidates"])
 async def create_candidate(
-    candidate: CandidateCreate,
+    candidate_create: CandidateCreate,
     current_user: User = Depends(get_current_user)
 ):
     """Invite a candidate to take an assessment."""
     try:
         # Check if assessment exists and belongs to user
-        assessment = await db_manager.db.assessments.find_one({"id": candidate.assessment_id, "user_id": current_user.id})
+        assessment = await db_manager.db.assessments.find_one({"id": candidate_create.assessment_id, "user_id": current_user.id})
         if not assessment:
             raise HTTPException(status_code=404, detail="Assessment not found")
         
@@ -1983,35 +1272,28 @@ async def create_candidate(
         
         # Check if candidate already invited
         existing_candidate = await db_manager.db.candidates.find_one({
-            "assessment_id": candidate.assessment_id,
-            "email": candidate.email
+            "assessment_id": candidate_create.assessment_id,
+            "email": candidate_create.email
         })
         if existing_candidate:
             raise HTTPException(status_code=400, detail="Candidate already invited to this assessment")
         
         # Create candidate data
-        candidate_data = candidate.dict()
+        candidate_data = candidate_create.dict()
+        candidate_data["id"] = str(uuid.uuid4())
         candidate_data["user_id"] = current_user.id
         candidate_data["invitation_token"] = str(uuid.uuid4())
         candidate_data["status"] = "invited"
         candidate_data["invited_at"] = datetime.utcnow()
         candidate_data["created_at"] = datetime.utcnow()
+        candidate_data["updated_at"] = datetime.utcnow()
         
         # Insert candidate
-        result = await db_manager.db.candidates.insert_one(candidate_data)
+        await db_manager.db.candidates.insert_one(candidate_data)
         
-        # Convert ObjectId to string
-        candidate_id = str(result.inserted_id)
+        logger.info(f"Candidate invited: {candidate_create.email} to assessment {candidate_create.assessment_id}")
         
-        logger.info(f"Candidate invited: {candidate.email} to assessment {candidate.assessment_id}")
-        
-        # TODO: Send invitation email
-        
-        return {
-            "success": True,
-            "candidate_id": candidate_id,
-            "message": "Candidate invited successfully"
-        }
+        return Candidate(**candidate_data)
         
     except HTTPException:
         raise
@@ -2023,7 +1305,7 @@ async def create_candidate(
         )
 
 
-@api_router.get("/candidates", tags=["Assessments"])
+@api_router.get("/candidates", response_model=PaginatedResponse, tags=["Candidates"])
 async def get_candidates(
     assessment_id: Optional[str] = Query(None, description="Filter by assessment ID"),
     status: Optional[str] = Query(None, description="Filter by status"),
@@ -2042,23 +1324,26 @@ async def get_candidates(
         
         # Get candidates with pagination
         cursor = db_manager.db.candidates.find(query).sort("created_at", -1).skip(skip).limit(limit)
-        candidates = await cursor.to_list(length=limit)
+        candidates_data = await cursor.to_list(length=limit)
         
-        # Convert ObjectIds to strings
-        for candidate in candidates:
-            candidate["id"] = str(candidate["_id"])
-            del candidate["_id"]
+        # Convert to Candidate models
+        candidates = []
+        for data in candidates_data:
+            data["id"] = str(data["_id"]) if "_id" in data else data.get("id", str(uuid.uuid4()))
+            if "_id" in data:
+                del data["_id"]
+            candidates.append(Candidate(**data))
         
         # Get total count for pagination
         total = await db_manager.db.candidates.count_documents(query)
         
-        return {
-            "candidates": candidates,
-            "total": total,
-            "limit": limit,
-            "skip": skip,
-            "has_more": (skip + len(candidates)) < total
-        }
+        return PaginatedResponse(
+            items=candidates,
+            total=total,
+            page=(skip // limit) + 1 if limit > 0 else 1,
+            size=limit,
+            pages=(total + limit - 1) // limit if limit > 0 else 1
+        )
         
     except Exception as e:
         logger.error(f"Get candidates error: {e}", exc_info=True)
@@ -2067,25 +1352,25 @@ async def get_candidates(
             detail="Failed to retrieve candidates"
         )
 
-# ------------------------------
+# ===========================================
 # Organization Endpoints
-# ------------------------------
+# ===========================================
 
-@api_router.get("/organizations/me", tags=["User Management"])
+@api_router.get("/organizations/me", response_model=Organization, tags=["User Management"])
 async def get_my_organization(
     current_user: User = Depends(get_current_user)
 ):
     """Get current user's organization."""
     try:
-        organization = await db_manager.db.organizations.find_one({"owner_id": current_user.id})
-        if not organization:
+        organization_data = await db_manager.db.organizations.find_one({"owner_id": current_user.id})
+        if not organization_data:
             raise HTTPException(status_code=404, detail="Organization not found")
         
-        # Convert ObjectId to string
-        organization["id"] = str(organization["_id"])
-        del organization["_id"]
+        organization_data["id"] = str(organization_data["_id"]) if "_id" in organization_data else organization_data.get("id", str(uuid.uuid4()))
+        if "_id" in organization_data:
+            del organization_data["_id"]
         
-        return organization
+        return Organization(**organization_data)
         
     except HTTPException:
         raise
@@ -2097,15 +1382,15 @@ async def get_my_organization(
         )
 
 
-@api_router.put("/organizations/me", tags=["User Management"])
+@api_router.put("/organizations/me", response_model=Organization, tags=["User Management"])
 async def update_my_organization(
     org_update: OrganizationUpdate,
     current_user: User = Depends(get_current_user)
 ):
     """Update current user's organization."""
     try:
-        organization = await db_manager.db.organizations.find_one({"owner_id": current_user.id})
-        if not organization:
+        organization_data = await db_manager.db.organizations.find_one({"owner_id": current_user.id})
+        if not organization_data:
             raise HTTPException(status_code=404, detail="Organization not found")
         
         # Prepare update data
@@ -2131,10 +1416,13 @@ async def update_my_organization(
         
         logger.info(f"Organization updated for user {current_user.id}")
         
-        return {
-            "success": True,
-            "message": "Organization updated successfully"
-        }
+        # Get updated organization
+        updated_org = await db_manager.db.organizations.find_one({"owner_id": current_user.id})
+        updated_org["id"] = str(updated_org["_id"]) if "_id" in updated_org else updated_org.get("id", str(uuid.uuid4()))
+        if "_id" in updated_org:
+            del updated_org["_id"]
+        
+        return Organization(**updated_org)
         
     except HTTPException:
         raise
@@ -2145,11 +1433,11 @@ async def update_my_organization(
             detail="Failed to update organization"
         )
 
-# ------------------------------
+# ===========================================
 # User Settings Endpoints
-# ------------------------------
+# ===========================================
 
-@api_router.put("/users/me", tags=["User Management"])
+@api_router.put("/users/me", response_model=User, tags=["User Management"])
 async def update_my_profile(
     user_update: UserUpdate,
     current_user: User = Depends(get_current_user)
@@ -2180,14 +1468,8 @@ async def update_my_profile(
         logger.info(f"User profile updated: {current_user.id}")
         
         # Get updated user data
-        updated_user = await db_manager.db.users.find_one({"id": current_user.id})
-        updated_user = User(**updated_user)
-        
-        return {
-            "success": True,
-            "message": "Profile updated successfully",
-            "user": updated_user
-        }
+        updated_user_data = await db_manager.db.users.find_one({"id": current_user.id})
+        return User(**updated_user_data)
         
     except Exception as e:
         logger.error(f"Update user error: {e}", exc_info=True)
@@ -2230,10 +1512,7 @@ async def update_my_password(
         
         logger.info(f"User password updated: {current_user.id}")
         
-        return {
-            "success": True,
-            "message": "Password updated successfully"
-        }
+        return SuccessResponse(message="Password updated successfully")
         
     except HTTPException:
         raise
@@ -2244,11 +1523,11 @@ async def update_my_password(
             detail="Failed to update password"
         )
 
-# ------------------------------
+# ===========================================
 # Dashboard Statistics Endpoint
-# ------------------------------
+# ===========================================
 
-@api_router.get("/dashboard/stats", tags=["User Management"])
+@api_router.get("/dashboard/stats", response_model=DashboardStats, tags=["User Management"])
 async def get_dashboard_stats(
     current_user: User = Depends(get_current_user)
 ):
@@ -2276,44 +1555,53 @@ async def get_dashboard_stats(
             "status": "completed"
         })
         
+        # Calculate completion rate
+        completion_rate = 0.0
+        if total_candidates > 0:
+            completion_rate = (completed_candidates / total_candidates) * 100
+        
         # Get recent assessments
         recent_assessments_cursor = db_manager.db.assessments.find(
             {"user_id": current_user.id}
         ).sort("created_at", -1).limit(5)
-        recent_assessments = await recent_assessments_cursor.to_list(length=5)
+        recent_assessments_data = await recent_assessments_cursor.to_list(length=5)
         
-        for assessment in recent_assessments:
-            assessment["id"] = str(assessment["_id"])
-            del assessment["_id"]
+        recent_assessments = []
+        for data in recent_assessments_data:
+            data["id"] = str(data["_id"]) if "_id" in data else data.get("id", str(uuid.uuid4()))
+            if "_id" in data:
+                del data["_id"]
+            recent_assessments.append(data)
         
         # Get recent candidates
         recent_candidates_cursor = db_manager.db.candidates.find(
             {"user_id": current_user.id}
         ).sort("created_at", -1).limit(5)
-        recent_candidates = await recent_candidates_cursor.to_list(length=5)
+        recent_candidates_data = await recent_candidates_cursor.to_list(length=5)
         
-        for candidate in recent_candidates:
-            candidate["id"] = str(candidate["_id"])
-            del candidate["_id"]
+        recent_candidates = []
+        for data in recent_candidates_data:
+            data["id"] = str(data["_id"]) if "_id" in data else data.get("id", str(uuid.uuid4()))
+            if "_id" in data:
+                del data["_id"]
+            recent_candidates.append(data)
         
-        return {
-            "stats": {
-                "assessments": {
-                    "total": total_assessments,
-                    "published": published_assessments,
-                    "draft": draft_assessments
-                },
-                "candidates": {
-                    "total": total_candidates,
-                    "invited": invited_candidates,
-                    "completed": completed_candidates
-                }
+        return DashboardStats(
+            assessments={
+                "total": total_assessments,
+                "published": published_assessments,
+                "draft": draft_assessments
             },
-            "recent": {
-                "assessments": recent_assessments,
-                "candidates": recent_candidates
-            }
-        }
+            candidates={
+                "total": total_candidates,
+                "invited": invited_candidates,
+                "completed": completed_candidates
+            },
+            completion_rate=completion_rate,
+            average_score=0.0,  # TODO: Calculate actual average score
+            recent_assessments=recent_assessments,
+            recent_candidates=recent_candidates
+        )
         
     except Exception as e:
         logger.error(f"Get dashboard stats error: {e}", exc_info=True)
@@ -2322,149 +1610,153 @@ async def get_dashboard_stats(
             detail="Failed to retrieve dashboard statistics"
         )
 
-# ------------------------------
-# Webhook Endpoint
-# ------------------------------
+# ===========================================
+# Public Endpoints
+# ===========================================
 
-@api_router.post("/webhooks/stripe", tags=["Subscriptions"])
-async def stripe_webhook(request: Request):
-    """Handle Stripe webhooks."""
+@api_router.post("/contact", status_code=status.HTTP_201_CREATED, tags=["Public"])
+async def submit_contact(contact: ContactFormCreate):
+    """Submit contact form."""
     try:
-        payload = await request.body()
-        sig_header = request.headers.get("stripe-signature")
+        record = ContactForm(
+            **contact.dict(),
+            created_at=datetime.utcnow()
+        )
         
-        event = await handle_webhook_event(payload, sig_header)
+        await db_manager.db.contact_forms.insert_one(record.dict())
         
-        if not event:
-            raise HTTPException(status_code=400, detail="Invalid webhook event")
+        # Send notification email
+        await send_contact_notification(
+            contact.name,
+            contact.email,
+            contact.company,
+            contact.message
+        )
         
-        event_type = event.get("type")
+        logger.info(f"Contact form submitted: {contact.email}")
         
-        logger.info(f"Processing Stripe webhook: {event_type}")
-        
-        # Process webhook events
-        if event_type == "checkout.session.completed":
-            await handle_checkout_completed(event)
-        elif event_type == "customer.subscription.updated":
-            await handle_subscription_updated(event)
-        elif event_type == "customer.subscription.deleted":
-            await handle_subscription_deleted(event)
-        elif event_type == "invoice.payment_succeeded":
-            await handle_invoice_payment_succeeded(event)
-        elif event_type == "invoice.payment_failed":
-            await handle_invoice_payment_failed(event)
-        
-        return {"status": "success", "event": event_type}
+        return SuccessResponse(message="Contact form submitted successfully")
         
     except Exception as e:
-        logger.error(f"Webhook error: {e}", exc_info=True)
+        logger.error(f"Contact form error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Webhook processing failed"
+            detail="Failed to submit contact form"
         )
 
 
-async def handle_checkout_completed(event: Dict):
-    """Handle checkout.session.completed event."""
+@api_router.post("/demo", status_code=status.HTTP_201_CREATED, tags=["Public"])
+async def submit_demo(demo: DemoRequestCreate):
+    """Submit demo request."""
     try:
-        session_id = event.get("id")
-        subscription_id = event.get("data", {}).get("object", {}).get("subscription")
-        customer_id = event.get("data", {}).get("object", {}).get("customer")
-        
-        logger.info(f"Checkout completed: {session_id}")
-        
-        # Update user plan based on subscription
-        subscription = await db_manager.db.subscriptions.find_one({"stripe_subscription_id": subscription_id})
-        if subscription:
-            plan_id = subscription.get("plan_id", "basic")
-            await db_manager.db.users.update_one(
-                {"stripe_customer_id": customer_id},
-                {"$set": {"plan": plan_id, "updated_at": datetime.utcnow()}}
-            )
-            
-    except Exception as e:
-        logger.error(f"Error processing checkout completed: {e}")
-
-
-async def handle_subscription_updated(event: Dict):
-    """Handle customer.subscription.updated event."""
-    try:
-        subscription = event.get("data", {}).get("object", {})
-        subscription_id = subscription.get("id")
-        status = subscription.get("status")
-        
-        logger.info(f"Subscription updated: {subscription_id} - {status}")
-        
-        # Update subscription in database
-        await db_manager.db.subscriptions.update_one(
-            {"stripe_subscription_id": subscription_id},
-            {"$set": {
-                "status": status,
-                "updated_at": datetime.utcnow()
-            }}
+        record = DemoRequest(
+            **demo.dict(),
+            created_at=datetime.utcnow()
         )
         
-    except Exception as e:
-        logger.error(f"Error processing subscription updated: {e}")
-
-
-async def handle_subscription_deleted(event: Dict):
-    """Handle customer.subscription.deleted event."""
-    try:
-        subscription = event.get("data", {}).get("object", {})
-        subscription_id = subscription.get("id")
-        customer_id = subscription.get("customer")
+        await db_manager.db.demo_requests.insert_one(record.dict())
         
-        logger.info(f"Subscription deleted: {subscription_id}")
-        
-        # Mark as canceled in database
-        await db_manager.db.subscriptions.update_one(
-            {"stripe_subscription_id": subscription_id},
-            {"$set": {
-                "status": "canceled",
-                "updated_at": datetime.utcnow()
-            }}
+        # Send notification email
+        await send_demo_request_notification(
+            demo.name,
+            demo.email,
+            demo.company,
+            demo.size,
+            demo.notes
         )
         
-        # Downgrade user to free
-        await db_manager.db.users.update_one(
-            {"stripe_customer_id": customer_id},
-            {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
+        logger.info(f"Demo request submitted: {demo.email}")
+        
+        return SuccessResponse(message="Demo request submitted successfully")
+        
+    except Exception as e:
+        logger.error(f"Demo request error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to submit demo request"
         )
-        
-    except Exception as e:
-        logger.error(f"Error processing subscription deleted: {e}")
 
+# ===========================================
+# Subscription Endpoints
+# ===========================================
 
-async def handle_invoice_payment_succeeded(event: Dict):
-    """Handle invoice.payment_succeeded event."""
-    try:
-        invoice = event.get("data", {}).get("object", {})
-        invoice_id = invoice.get("id")
-        amount_paid = invoice.get("amount_paid") / 100  # Convert from cents
-        
-        logger.info(f"Payment succeeded: {invoice_id} - ${amount_paid}")
-        
-    except Exception as e:
-        logger.error(f"Error processing payment succeeded: {e}")
+@api_router.get("/plans", tags=["Subscriptions"])
+async def get_available_plans():
+    """Get available subscription plans with features."""
+    return {
+        "plans": [
+            {
+                "id": "free",
+                "name": "Free Plan",
+                "price": 0,
+                "currency": "usd",
+                "interval": "month",
+                "features": [
+                    "Up to 50 candidates",
+                    "5 assessments",
+                    "Basic assessment types",
+                    "Email support",
+                    "Community forum access"
+                ],
+                "limits": {
+                    "candidates": 50,
+                    "assessments": 5,
+                    "questions": 100
+                }
+            },
+            {
+                "id": "basic",
+                "name": "Basic Plan",
+                "price": 2900,
+                "currency": "usd",
+                "interval": "month",
+                "features": [
+                    "Up to 500 candidates",
+                    "50 assessments",
+                    "Advanced assessment types",
+                    "Priority support",
+                    "Basic analytics",
+                    "API access"
+                ],
+                "limits": {
+                    "candidates": 500,
+                    "assessments": 50,
+                    "questions": 5000
+                }
+            },
+            {
+                "id": "professional",
+                "name": "Professional Plan",
+                "price": 7900,
+                "currency": "usd",
+                "interval": "month",
+                "features": [
+                    "Unlimited candidates",
+                    "Unlimited assessments",
+                    "All assessment types",
+                    "Dedicated support",
+                    "Advanced analytics",
+                    "AI-powered insights",
+                    "Custom branding"
+                ],
+                "limits": {
+                    "candidates": "unlimited",
+                    "assessments": "unlimited",
+                    "questions": "unlimited"
+                }
+            }
+        ]
+    }
 
-
-async def handle_invoice_payment_failed(event: Dict):
-    """Handle invoice.payment_failed event."""
-    try:
-        invoice = event.get("data", {}).get("object", {})
-        invoice_id = invoice.get("id")
-        
-        logger.warning(f"Payment failed: {invoice_id}")
-        
-    except Exception as e:
-        logger.error(f"Error processing payment failed: {e}")
-
-# ------------------------------
-# Include Router & Startup/Shutdown
-# ------------------------------
+# ===========================================
+# Include Router
+# ===========================================
 
 app.include_router(api_router)
+
+# ===========================================
+# Startup/Shutdown Events
+# ===========================================
 
 @app.on_event("startup")
 async def startup_event():
@@ -2496,12 +1788,11 @@ async def shutdown_event():
 # Export for Deployment Platforms
 # ===========================================
 
-# For platforms expecting "backend" attribute (e.g., Render default)
 backend = app
 
-# ------------------------------
+# ===========================================
 # Entry Point
-# ------------------------------
+# ===========================================
 
 if __name__ == "__main__":
     import uvicorn
