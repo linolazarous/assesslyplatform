@@ -1,7 +1,8 @@
 // frontend/src/pages/legal/TermsOfService.jsx
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Scale, FileText, AlertTriangle, BookOpen, Shield, Mail, ExternalLink } from 'lucide-react';
+import { Scale, FileText, AlertTriangle, BookOpen, Shield, Mail, ExternalLink, ArrowLeft } from 'lucide-react';
+import Navigation from '../components/Navigation'; // Add navigation
 
 const TermsOfService = () => {
   const effectiveDate = 'January 1, 2025';
@@ -9,7 +10,21 @@ const TermsOfService = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      {/* Add Navigation */}
+      <Navigation />
+      
+      {/* Add Back to Home Button */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-4">
+        <Link 
+          to="/" 
+          className="inline-flex items-center text-blue-600 hover:text-blue-700 mb-6"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Home
+        </Link>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
         {/* Header */}
         <div className="text-center mb-12">
           <div className="inline-flex items-center justify-center p-4 bg-gradient-to-r from-blue-50 to-teal-50 rounded-full mb-6">
@@ -249,6 +264,12 @@ const TermsOfService = () => {
               className="px-4 py-2 bg-gradient-to-r from-purple-100 to-purple-200 hover:from-purple-200 hover:to-purple-300 text-purple-700 rounded-lg transition-all duration-200 font-medium"
             >
               GDPR Compliance
+            </Link>
+            <Link 
+              to="/soc-2" 
+              className="px-4 py-2 bg-gradient-to-r from-teal-100 to-teal-200 hover:from-teal-200 hover:to-teal-300 text-teal-700 rounded-lg transition-all duration-200 font-medium"
+            >
+              SOC-2 Information
             </Link>
           </div>
           
