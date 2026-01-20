@@ -1680,10 +1680,276 @@ async def submit_demo(demo: DemoRequestCreate):
 # Subscription Endpoints
 # ===========================================
 
+@api_router.post("/subscriptions/checkout", tags=["Subscriptions"])
+async def create_checkout_session_endpoint(
+    payload: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a Stripe Checkout Session."""
+    try:
+        plan_id = payload.get("plan_id")
+        if not plan_id:
+            raise HTTPException(status_code=400, detail="Plan ID is required")
+        
+        # Validate plan
+        valid_plans = ["free", "basic", "professional", "enterprise"]
+        if plan_id not in valid_plans:
+            raise HTTPException(status_code=400, detail="Invalid plan")
+        
+        # For free plan, just update user and return
+        if plan_id == "free":
+            await db_manager.db.users.update_one(
+                {"id": current_user.id},
+                {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
+            )
+            
+            # Update or create free subscription record
+            await db_manager.db.subscriptions.update_one(
+                {"user_id": current_user.id, "plan_id": "free"},
+                {"$set": {
+                    "status": "active",
+                    "updated_at": datetime.utcnow()
+                }},
+                upsert=True
+            )
+            
+            return {
+                "success": True,
+                "type": "free",
+                "redirect_url": f"{config.FRONTEND_URL}/dashboard?plan=free",
+                "message": "Successfully switched to free plan"
+            }
+        
+        # Handle enterprise plan (contact sales)
+        if plan_id == "enterprise":
+            return {
+                "success": True,
+                "type": "enterprise",
+                "redirect_url": f"{config.FRONTEND_URL}/contact?plan=enterprise",
+                "message": "Please contact our sales team for enterprise pricing"
+            }
+        
+        # Get or create Stripe customer
+        customer_id = await get_or_create_stripe_customer(
+            user_id=current_user.id,
+            email=current_user.email,
+            name=current_user.name,
+            organization=current_user.organization
+        )
+        
+        if not customer_id:
+            # Try to get existing customer
+            user_data = await db_manager.db.users.find_one({"id": current_user.id})
+            customer_id = user_data.get("stripe_customer_id")
+            
+            if not customer_id:
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Failed to create customer account. Please try again."
+                )
+        
+        # Create checkout session
+        success_url = f"{config.FRONTEND_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
+        cancel_url = f"{config.FRONTEND_URL}/pricing"
+        
+        session_result = await create_checkout_session(
+            plan_id=plan_id,
+            success_url=success_url,
+            cancel_url=cancel_url,
+            customer_id=customer_id,
+            email=current_user.email,
+            user_id=current_user.id,
+            trial_days=7  # 7-day trial
+        )
+        
+        if not session_result:
+            raise HTTPException(
+                status_code=500, 
+                detail="Failed to create payment session"
+            )
+        
+        # Check for errors
+        if session_result.get("type") == "error":
+            raise HTTPException(
+                status_code=500,
+                detail=session_result.get("message", "Payment error")
+            )
+        
+        # Handle enterprise plan response
+        if session_result.get("type") == "enterprise":
+            return {
+                "success": True,
+                "type": "enterprise",
+                "redirect_url": session_result.get("url"),
+                "message": "Please contact our sales team for enterprise pricing"
+            }
+        
+        # Return checkout session URL
+        return {
+            "success": True,
+            "type": "checkout",
+            "session_id": session_result.get("session_id"),
+            "url": session_result.get("url"),
+            "message": "Checkout session created successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Checkout error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Checkout failed: {str(e)}"
+        )
+
+
+@api_router.get("/subscriptions/me", tags=["Subscriptions"])
+async def get_my_subscription(
+    current_user: User = Depends(get_current_user)
+):
+    """Get current user's subscription."""
+    try:
+        # Get user with subscription info
+        user_data = await db_manager.db.users.find_one({"id": current_user.id})
+        
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get latest subscription
+        subscription_data = await db_manager.db.subscriptions.find_one(
+            {"user_id": current_user.id},
+            sort=[("created_at", -1)]
+        )
+        
+        # If no subscription found, check for free plan
+        if not subscription_data:
+            plan = user_data.get("plan", "free")
+            
+            if plan == "free":
+                return {
+                    "success": True,
+                    "has_subscription": True,
+                    "plan": "free",
+                    "status": "active",
+                    "is_free": True,
+                    "amount": 0,
+                    "currency": "usd",
+                    "current_period_end": None,
+                    "cancel_at_period_end": False
+                }
+            
+            return {
+                "success": True,
+                "has_subscription": False,
+                "plan": "free",
+                "message": "No active subscription found"
+            }
+        
+        # Return subscription data
+        return {
+            "success": True,
+            "has_subscription": True,
+            "plan": subscription_data.get("plan_id", "unknown"),
+            "status": subscription_data.get("status", "active"),
+            "subscription_id": subscription_data.get("stripe_subscription_id"),
+            "amount": subscription_data.get("amount"),
+            "currency": subscription_data.get("currency", "usd"),
+            "current_period_start": subscription_data.get("current_period_start"),
+            "current_period_end": subscription_data.get("current_period_end"),
+            "cancel_at_period_end": subscription_data.get("cancel_at_period_end", False),
+            "created_at": subscription_data.get("created_at")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Subscription retrieval error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve subscription"
+        )
+
+
+@api_router.post("/subscriptions/cancel", tags=["Subscriptions"])
+async def cancel_my_subscription(
+    current_user: User = Depends(get_current_user)
+):
+    """Cancel current user's subscription."""
+    try:
+        # Get user's subscription
+        subscription_data = await db_manager.db.subscriptions.find_one(
+            {"user_id": current_user.id, "status": {"$nin": ["canceled", "incomplete_expired"]}},
+            sort=[("created_at", -1)]
+        )
+        
+        if not subscription_data:
+            # If no paid subscription, check if user is on free plan
+            user_data = await db_manager.db.users.find_one({"id": current_user.id})
+            if user_data.get("plan") == "free":
+                return {
+                    "success": True,
+                    "message": "Already on free plan"
+                }
+            
+            raise HTTPException(status_code=404, detail="No active subscription found")
+        
+        subscription_id = subscription_data["stripe_subscription_id"]
+        
+        # Handle free plan subscription ID
+        if subscription_id == "free_plan":
+            await db_manager.db.users.update_one(
+                {"id": current_user.id},
+                {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
+            )
+            return {
+                "success": True,
+                "message": "Downgraded to free plan",
+                "redirect_url": f"{config.FRONTEND_URL}/dashboard"
+            }
+        
+        # Cancel subscription
+        success = await cancel_subscription(subscription_id)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to cancel subscription")
+        
+        # Update subscription status in database
+        await db_manager.db.subscriptions.update_one(
+            {"_id": subscription_data["_id"]},
+            {"$set": {
+                "status": "canceled",
+                "canceled_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+        
+        # Downgrade to free
+        await db_manager.db.users.update_one(
+            {"id": current_user.id},
+            {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
+        )
+        
+        return {
+            "success": True, 
+            "message": "Subscription cancelled successfully",
+            "redirect_url": f"{config.FRONTEND_URL}/dashboard"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Cancellation error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to cancel subscription"
+        )
+
+
 @api_router.get("/plans", tags=["Subscriptions"])
 async def get_available_plans():
     """Get available subscription plans with features."""
     return {
+        "success": True,
         "plans": [
             {
                 "id": "free",
@@ -1747,6 +2013,141 @@ async def get_available_plans():
             }
         ]
     }
+
+
+@api_router.post("/webhooks/stripe", tags=["Subscriptions"])
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhooks."""
+    try:
+        payload = await request.body()
+        sig_header = request.headers.get("stripe-signature")
+        
+        event = await handle_webhook_event(payload, sig_header)
+        
+        if not event:
+            raise HTTPException(status_code=400, detail="Invalid webhook event")
+        
+        event_type = event.get("type")
+        
+        logger.info(f"Processing Stripe webhook: {event_type}")
+        
+        # Process webhook events
+        if event_type == "checkout.session.completed":
+            await handle_checkout_completed(event)
+        elif event_type == "customer.subscription.updated":
+            await handle_subscription_updated(event)
+        elif event_type == "customer.subscription.deleted":
+            await handle_subscription_deleted(event)
+        elif event_type == "invoice.payment_succeeded":
+            await handle_invoice_payment_succeeded(event)
+        elif event_type == "invoice.payment_failed":
+            await handle_invoice_payment_failed(event)
+        
+        return {"status": "success", "event": event_type}
+        
+    except Exception as e:
+        logger.error(f"Webhook error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Webhook processing failed"
+        )
+
+
+async def handle_checkout_completed(event: Dict):
+    """Handle checkout.session.completed event."""
+    try:
+        session_id = event.get("id")
+        subscription_id = event.get("data", {}).get("object", {}).get("subscription")
+        customer_id = event.get("data", {}).get("object", {}).get("customer")
+        
+        logger.info(f"Checkout completed: {session_id}")
+        
+        # Update user plan based on subscription
+        subscription = await db_manager.db.subscriptions.find_one({"stripe_subscription_id": subscription_id})
+        if subscription:
+            plan_id = subscription.get("plan_id", "basic")
+            await db_manager.db.users.update_one(
+                {"stripe_customer_id": customer_id},
+                {"$set": {"plan": plan_id, "updated_at": datetime.utcnow()}}
+            )
+            
+    except Exception as e:
+        logger.error(f"Error processing checkout completed: {e}")
+
+
+async def handle_subscription_updated(event: Dict):
+    """Handle customer.subscription.updated event."""
+    try:
+        subscription = event.get("data", {}).get("object", {})
+        subscription_id = subscription.get("id")
+        status = subscription.get("status")
+        
+        logger.info(f"Subscription updated: {subscription_id} - {status}")
+        
+        # Update subscription in database
+        await db_manager.db.subscriptions.update_one(
+            {"stripe_subscription_id": subscription_id},
+            {"$set": {
+                "status": status,
+                "updated_at": datetime.utcnow()
+            }}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing subscription updated: {e}")
+
+
+async def handle_subscription_deleted(event: Dict):
+    """Handle customer.subscription.deleted event."""
+    try:
+        subscription = event.get("data", {}).get("object", {})
+        subscription_id = subscription.get("id")
+        customer_id = subscription.get("customer")
+        
+        logger.info(f"Subscription deleted: {subscription_id}")
+        
+        # Mark as canceled in database
+        await db_manager.db.subscriptions.update_one(
+            {"stripe_subscription_id": subscription_id},
+            {"$set": {
+                "status": "canceled",
+                "updated_at": datetime.utcnow()
+            }}
+        )
+        
+        # Downgrade user to free
+        await db_manager.db.users.update_one(
+            {"stripe_customer_id": customer_id},
+            {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing subscription deleted: {e}")
+
+
+async def handle_invoice_payment_succeeded(event: Dict):
+    """Handle invoice.payment_succeeded event."""
+    try:
+        invoice = event.get("data", {}).get("object", {})
+        invoice_id = invoice.get("id")
+        amount_paid = invoice.get("amount_paid") / 100  # Convert from cents
+        
+        logger.info(f"Payment succeeded: {invoice_id} - ${amount_paid}")
+        
+    except Exception as e:
+        logger.error(f"Error processing payment succeeded: {e}")
+
+
+async def handle_invoice_payment_failed(event: Dict):
+    """Handle invoice.payment_failed event."""
+    try:
+        invoice = event.get("data", {}).get("object", {})
+        invoice_id = invoice.get("id")
+        
+        logger.warning(f"Payment failed: {invoice_id}")
+        
+    except Exception as e:
+        logger.error(f"Error processing payment failed: {e}")
 
 # ===========================================
 # Include Router
