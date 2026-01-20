@@ -1,18 +1,19 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Menu, X, LogOut, User, LayoutDashboard } from 'lucide-react';
+import { Menu, X, LogOut, User, LayoutDashboard, CreditCard, Settings } from 'lucide-react';
 import { Button } from './ui/button';
+import { isAuthenticated, logout, getCurrentUser } from '../utils/auth';
 
 const Navigation = () => {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const isAuthenticated = localStorage.getItem('assessly_token');
+  const user = getCurrentUser();
 
   const toggleMenu = () => setIsOpen(!isOpen);
 
   const handleGetStarted = () => {
-    if (isAuthenticated) {
+    if (isAuthenticated()) {
       navigate('/dashboard');
     } else {
       navigate('/register');
@@ -21,8 +22,7 @@ const Navigation = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('assessly_token');
-    localStorage.removeItem('assessly_user');
+    logout();
     navigate('/');
     window.location.reload();
     toggleMenu();
@@ -32,10 +32,8 @@ const Navigation = () => {
   const handleSectionClick = (sectionId, e) => {
     e.preventDefault();
     
-    // If we're not on home page, navigate to home first
     if (location.pathname !== '/') {
       navigate('/');
-      // Small delay to ensure page loads before scrolling
       setTimeout(() => {
         scrollToSection(sectionId);
       }, 100);
@@ -49,7 +47,7 @@ const Navigation = () => {
   const scrollToSection = (sectionId) => {
     const element = document.getElementById(sectionId);
     if (element) {
-      const headerOffset = 80; // Adjust based on your header height
+      const headerOffset = 80;
       const elementPosition = element.getBoundingClientRect().top;
       const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
 
@@ -62,7 +60,6 @@ const Navigation = () => {
 
   // Handle external links with tracking
   const handleExternalLink = (url, label) => {
-    // Track external link clicks
     if (window.gtag) {
       window.gtag('event', 'click_external_link', {
         link_label: label,
@@ -72,7 +69,7 @@ const Navigation = () => {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  // Navigation items with proper handlers
+  // Navigation items
   const navItems = [
     { id: 'platform', label: 'Platform' },
     { id: 'solutions', label: 'Solutions' },
@@ -136,8 +133,26 @@ const Navigation = () => {
 
           {/* CTA Button */}
           <div className="hidden md:block">
-            {isAuthenticated ? (
+            {isAuthenticated() ? (
               <div className="flex items-center space-x-4">
+                {/* User plan badge */}
+                {user?.plan && user.plan !== 'free' && (
+                  <span className="px-3 py-1 text-xs font-semibold rounded-full bg-gradient-to-r from-green-500 to-emerald-600 text-white">
+                    {user.plan.charAt(0).toUpperCase() + user.plan.slice(1)}
+                  </span>
+                )}
+                
+                {/* Settings button */}
+                <Button 
+                  onClick={() => navigate('/settings')}
+                  variant="ghost"
+                  className="flex items-center"
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Button>
+                
+                {/* Dashboard button */}
                 <Button 
                   onClick={() => navigate('/dashboard')}
                   variant="outline"
@@ -146,6 +161,8 @@ const Navigation = () => {
                   <LayoutDashboard className="mr-2 h-4 w-4" />
                   Dashboard
                 </Button>
+                
+                {/* Logout button */}
                 <Button 
                   onClick={handleLogout}
                   variant="ghost"
@@ -214,8 +231,21 @@ const Navigation = () => {
             ))}
             
             <div className="pt-4 mt-4 border-t border-gray-200 space-y-2">
-              {isAuthenticated ? (
+              {isAuthenticated() ? (
                 <>
+                  {/* User info */}
+                  {user && (
+                    <div className="px-4 py-2 bg-gray-50 rounded-lg">
+                      <p className="font-medium text-gray-900">{user.name}</p>
+                      <p className="text-sm text-gray-600">{user.email}</p>
+                      {user.plan && user.plan !== 'free' && (
+                        <span className="inline-block mt-1 px-2 py-1 text-xs font-semibold rounded-full bg-gradient-to-r from-green-500 to-emerald-600 text-white">
+                          {user.plan.charAt(0).toUpperCase() + user.plan.slice(1)} Plan
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  
                   <Button 
                     onClick={() => { 
                       navigate('/dashboard'); 
@@ -226,10 +256,23 @@ const Navigation = () => {
                     <LayoutDashboard className="mr-2 h-4 w-4" />
                     Dashboard
                   </Button>
+                  
+                  <Button 
+                    onClick={() => { 
+                      navigate('/settings'); 
+                      toggleMenu(); 
+                    }}
+                    variant="outline"
+                    className="w-full flex items-center justify-center"
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </Button>
+                  
                   <Button 
                     onClick={handleLogout}
                     variant="outline"
-                    className="w-full flex items-center justify-center"
+                    className="w-full flex items-center justify-center text-red-600 border-red-200 hover:bg-red-50"
                   >
                     <LogOut className="mr-2 h-4 w-4" />
                     Logout
