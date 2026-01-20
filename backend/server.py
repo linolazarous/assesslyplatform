@@ -2,6 +2,18 @@ import os
 import sys
 import logging
 import uuid
+import secrets
+from urllib.parse import urlencode
+import httpx
+
+
+
+
+
+
+
+
+
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from bson import ObjectId
@@ -84,6 +96,16 @@ class UserUpdate(BaseModel):
     job_title: Optional[str] = None
     phone: Optional[str] = None
     notifications_enabled: Optional[bool] = True
+
+class OAuthState(BaseModel):
+    state: str
+    redirect_uri: str
+    plan: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class OAuthCallback(BaseModel):
+    code: str
+    state: str
 
 # ------------------------------
 # Environment Variables & Validation
@@ -248,6 +270,33 @@ logger.setLevel(log_level)
 
 # Prevent duplicate logs by not propagating to root logger
 logger.propagate = False
+
+class OAuthConfig:
+    """OAuth configuration for different providers."""
+    
+    def __init__(self):
+        # Google OAuth
+        self.GOOGLE_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
+        self.GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
+        self.GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_OAUTH_REDIRECT_URI", f"{config.FRONTEND_URL}/oauth/google/callback")
+        
+        # GitHub OAuth
+        self.GITHUB_CLIENT_ID = os.getenv("GITHUB_OAUTH_CLIENT_ID", "")
+        self.GITHUB_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET", "")
+        self.GITHUB_REDIRECT_URI = os.getenv("GITHUB_OAUTH_REDIRECT_URI", f"{config.FRONTEND_URL}/oauth/github/callback")
+        
+        # Validate OAuth configuration
+        self.validate_config()
+    
+    def validate_config(self):
+        """Validate OAuth configuration."""
+        if config.is_production:
+            if not self.GOOGLE_CLIENT_ID or not self.GOOGLE_CLIENT_SECRET:
+                logger.warning("Google OAuth not configured. Social login will not work.")
+            if not self.GITHUB_CLIENT_ID or not self.GITHUB_CLIENT_SECRET:
+                logger.warning("GitHub OAuth not configured. Social login will not work.")
+
+oauth_config = OAuthConfig()
 
 # ------------------------------
 # FastAPI App Configuration
