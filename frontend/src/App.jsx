@@ -21,11 +21,13 @@ import SOC2Info from "./pages/legal/SOC2Info";
 import Navigation from "./components/Navigation";
 import Footer from "./components/Footer";
 
+// Auth Components
+import ProtectedRoute from "./components/ProtectedRoute";
+
 function App() {
   return (
     <div className="App">
       <BrowserRouter>
-        {/* Navigation is included in most pages except auth pages */}
         <Routes>
           {/* Public Pages with Navigation & Footer */}
           <Route path="/" element={
@@ -80,8 +82,56 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           
-          {/* Protected Dashboard Page */}
-          <Route path="/dashboard" element={<Dashboard />} />
+          {/* Protected Dashboard Pages */}
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+          
+          {/* Example of protected routes with additional requirements */}
+          <Route 
+            path="/dashboard/billing" 
+            element={
+              <ProtectedRoute requireVerifiedEmail={true}>
+                <div className="min-h-screen bg-gray-50">
+                  <Navigation />
+                  <div className="pt-16">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                      <h1 className="text-3xl font-bold text-gray-900 mb-6">Billing & Subscription</h1>
+                      <div className="bg-white rounded-lg shadow p-6">
+                        <p>Billing page - requires verified email</p>
+                      </div>
+                    </div>
+                  </div>
+                  <Footer />
+                </div>
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="/dashboard/advanced-analytics" 
+            element={
+              <ProtectedRoute requirePlan="professional">
+                <div className="min-h-screen bg-gray-50">
+                  <Navigation />
+                  <div className="pt-16">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                      <h1 className="text-3xl font-bold text-gray-900 mb-6">Advanced Analytics</h1>
+                      <div className="bg-white rounded-lg shadow p-6">
+                        <p>Advanced analytics - requires professional plan</p>
+                      </div>
+                    </div>
+                  </div>
+                  <Footer />
+                </div>
+              </ProtectedRoute>
+            } 
+          />
           
           {/* 404 Fallback */}
           <Route path="*" element={
