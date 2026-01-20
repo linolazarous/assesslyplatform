@@ -3,20 +3,20 @@ import sys
 import logging
 import uuid
 import secrets
+import json
 from urllib.parse import urlencode
 import httpx
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson import ObjectId
-
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from models import (
@@ -122,7 +122,14 @@ class Config:
         "EMAIL_PASSWORD": (None, "SMTP password"),
         "CORS_ORIGINS": ("*", "CORS allowed origins"),
         "LOG_LEVEL": ("INFO", "Logging level"),
-        "PORT": (10000, "Server port")
+        "PORT": (10000, "Server port"),
+        "GOOGLE_OAUTH_CLIENT_ID": ("", "Google OAuth Client ID"),
+        "GOOGLE_OAUTH_CLIENT_SECRET": ("", "Google OAuth Client Secret"),
+        "GITHUB_OAUTH_CLIENT_ID": ("", "GitHub OAuth Client ID"),
+        "GITHUB_OAUTH_CLIENT_SECRET": ("", "GitHub OAuth Client Secret"),
+        "RECAPTCHA_SECRET_KEY": ("", "Google reCAPTCHA secret key"),
+        "SESSION_SECRET": ("", "Session secret for cookies"),
+        "API_RATE_LIMIT": ("100/minute", "API rate limit")
     }
     
     def __init__(self):
@@ -155,9 +162,23 @@ class Config:
         self.EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
         self.EMAIL_USER = os.getenv("EMAIL_USER")
         self.EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-        self.CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+        
+        # CORS origins handling
+        cors_origins = os.getenv("CORS_ORIGINS", "*")
+        self.CORS_ORIGINS = cors_origins.split(",") if cors_origins != "*" else ["*"]
+        
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
         self.PORT = int(os.getenv("PORT", 10000))
+        
+        # OAuth configuration
+        self.GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
+        self.GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
+        self.GITHUB_OAUTH_CLIENT_ID = os.getenv("GITHUB_OAUTH_CLIENT_ID", "")
+        self.GITHUB_OAUTH_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET", "")
+        
+        # Security
+        self.RECAPTCHA_SECRET_KEY = os.getenv("RECAPTCHA_SECRET_KEY", "")
+        self.SESSION_SECRET = os.getenv("SESSION_SECRET", secrets.token_urlsafe(32))
         
         # Validate database name (no spaces allowed)
         if " " in self.DB_NAME:
@@ -166,6 +187,11 @@ class Config:
         # Set production flags
         self.is_production = self.ENVIRONMENT == "production"
         self.is_development = self.ENVIRONMENT == "development"
+        self.is_testing = self.ENVIRONMENT == "testing"
+        
+        # Set default OAuth redirect URIs
+        self.GOOGLE_REDIRECT_URI = f"{self.FRONTEND_URL}/oauth/google/callback"
+        self.GITHUB_REDIRECT_URI = f"{self.FRONTEND_URL}/oauth/github/callback"
 
 config = Config()
 
@@ -181,7 +207,7 @@ class DatabaseManager:
     async def connect(self):
         """Connect to MongoDB."""
         try:
-            self.client = AsyncIOMotorClient(config.MONGO_URL)
+            self.client = AsyncIOMotorClient(config.MONGO_URL, maxPoolSize=100, minPoolSize=10)
             await self.client.admin.command('ping')
             self.db = self.client[config.DB_NAME]
             logger.info(f"Connected to MongoDB database: {config.DB_NAME}")
@@ -196,25 +222,35 @@ class DatabaseManager:
     async def create_indexes(self):
         """Create database indexes for better performance."""
         try:
+            # Users collection indexes
+            await self.db.users.create_index([("email", 1)], unique=True)
+            await self.db.users.create_index([("google_id", 1)], sparse=True)
+            await self.db.users.create_index([("github_id", 1)], sparse=True)
+            
             # Assessments collection indexes
             await self.db.assessments.create_index([("user_id", 1)])
             await self.db.assessments.create_index([("organization_id", 1)])
             await self.db.assessments.create_index([("status", 1)])
+            await self.db.assessments.create_index([("created_at", -1)])
             
             # Candidates collection indexes
             await self.db.candidates.create_index([("assessment_id", 1)])
             await self.db.candidates.create_index([("email", 1)])
             await self.db.candidates.create_index([("status", 1)])
+            await self.db.candidates.create_index([("user_id", 1)])
             
             # Organizations collection indexes
             await self.db.organizations.create_index([("owner_id", 1)])
+            await self.db.organizations.create_index([("slug", 1)], unique=True, sparse=True)
             
             # Subscriptions collection indexes
             await self.db.subscriptions.create_index([("user_id", 1)])
             await self.db.subscriptions.create_index([("status", 1)])
+            await self.db.subscriptions.create_index([("stripe_subscription_id", 1)])
             
-            # Users collection indexes
-            await self.db.users.create_index([("email", 1)], unique=True)
+            # OAuth states collection indexes
+            await self.db.oauth_states.create_index([("state", 1)], unique=True)
+            await self.db.oauth_states.create_index([("created_at", 1)], expireAfterSeconds=300)  # 5 minutes TTL
             
             logger.info("Database indexes created successfully")
             
@@ -242,6 +278,10 @@ if config.is_production:
     try:
         os.makedirs("/var/log/assessly", exist_ok=True)
         file_handler = logging.FileHandler("/var/log/assessly/app.log", encoding="utf-8")
+        file_handler.setFormatter(logging.Formatter(
+            "%(asctime)s | %(levelname)s | %(name)s | %(module)s:%(lineno)d | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        ))
         handlers.append(file_handler)
     except Exception as e:
         # Log to console if file logging fails
@@ -252,42 +292,13 @@ logging.basicConfig(
     level=log_level,
     format="%(asctime)s | %(levelname)s | %(name)s | %(module)s:%(lineno)d | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=handlers  # No None values here
+    handlers=handlers
 )
 
 # Configure our application logger
 logger = logging.getLogger("assessly-api")
 logger.setLevel(log_level)
-
-# Prevent duplicate logs by not propagating to root logger
-logger.propagate = False
-
-class OAuthConfig:
-    """OAuth configuration for different providers."""
-    
-    def __init__(self):
-        # Google OAuth
-        self.GOOGLE_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
-        self.GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
-        self.GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_OAUTH_REDIRECT_URI", f"{config.FRONTEND_URL}/oauth/google/callback")
-        
-        # GitHub OAuth
-        self.GITHUB_CLIENT_ID = os.getenv("GITHUB_OAUTH_CLIENT_ID", "")
-        self.GITHUB_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET", "")
-        self.GITHUB_REDIRECT_URI = os.getenv("GITHUB_OAUTH_REDIRECT_URI", f"{config.FRONTEND_URL}/oauth/github/callback")
-        
-        # Validate OAuth configuration
-        self.validate_config()
-    
-    def validate_config(self):
-        """Validate OAuth configuration."""
-        if config.is_production:
-            if not self.GOOGLE_CLIENT_ID or not self.GOOGLE_CLIENT_SECRET:
-                logger.warning("Google OAuth not configured. Social login will not work.")
-            if not self.GITHUB_CLIENT_ID or not self.GITHUB_CLIENT_SECRET:
-                logger.warning("GitHub OAuth not configured. Social login will not work.")
-
-oauth_config = OAuthConfig()
+logger.propagate = False  # Prevent duplicate logs
 
 # ------------------------------
 # FastAPI App Configuration
@@ -299,7 +310,25 @@ app = FastAPI(
     description="Enterprise-grade assessment platform API",
     docs_url="/api/docs" if config.is_development else None,
     redoc_url="/api/redoc" if config.is_development else None,
-    openapi_url="/api/openapi.json" if config.is_development else None
+    openapi_url="/api/openapi.json" if config.is_development else None,
+    openapi_tags=[
+        {
+            "name": "Authentication",
+            "description": "User authentication and OAuth endpoints"
+        },
+        {
+            "name": "Assessments",
+            "description": "Assessment creation and management"
+        },
+        {
+            "name": "Subscriptions",
+            "description": "Subscription and billing management"
+        },
+        {
+            "name": "User Management",
+            "description": "User profile and organization management"
+        }
+    ]
 )
 
 # ------------------------------
@@ -310,7 +339,13 @@ app = FastAPI(
 if config.is_production:
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["assesslyplatform.com", "api.assesslyplatform.com", "localhost"]
+        allowed_hosts=[
+            "assesslyplatform.com",
+            "api.assesslyplatform.com",
+            "localhost",
+            "127.0.0.1",
+            config.FRONTEND_URL.replace("https://", "").replace("http://", "").split(":")[0]
+        ]
     )
 
 # CORS middleware
@@ -319,9 +354,9 @@ app.add_middleware(
     allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
-    expose_headers=["X-Total-Count", "X-Error-Code"],
-    max_age=3600
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+    expose_headers=["X-Total-Count", "X-Error-Code", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
+    max_age=600
 )
 
 # Compression middleware
@@ -332,22 +367,28 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 async def log_requests(request: Request, call_next):
     start_time = datetime.utcnow()
     
-    # Skip logging for health checks
-    if request.url.path == "/health":
+    # Skip logging for health checks and static files
+    if request.url.path in ["/health", "/favicon.ico"]:
         response = await call_next(request)
         return response
     
-    request_id = request.headers.get("X-Request-ID", "")
+    request_id = request.headers.get("X-Request-ID", secrets.token_urlsafe(8))
     
-    logger.info(f"Request: {request.method} {request.url.path} - ID: {request_id}")
+    # Log request
+    logger.info(f"Request {request_id}: {request.method} {request.url.path}")
     
     try:
         response = await call_next(request)
         process_time = (datetime.utcnow() - start_time).total_seconds() * 1000
-        logger.info(f"Response: {request.method} {request.url.path} - Status: {response.status_code} - {process_time:.2f}ms")
+        
+        # Add request ID to response headers
+        response.headers["X-Request-ID"] = request_id
+        
+        # Log response
+        logger.info(f"Response {request_id}: {request.method} {request.url.path} - Status: {response.status_code} - {process_time:.2f}ms")
         return response
     except Exception as e:
-        logger.error(f"Request failed: {request.method} {request.url.path} - Error: {e}")
+        logger.error(f"Request {request_id} failed: {request.method} {request.url.path} - Error: {e}")
         raise
 
 # ------------------------------
@@ -411,6 +452,26 @@ def convert_object_ids_to_str(data: dict) -> dict:
             result[key] = value
     return result
 
+async def verify_recaptcha(token: str) -> bool:
+    """Verify Google reCAPTCHA token."""
+    if not config.RECAPTCHA_SECRET_KEY:
+        return True  # Skip verification if not configured
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://www.google.com/recaptcha/api/siteverify",
+                data={
+                    "secret": config.RECAPTCHA_SECRET_KEY,
+                    "response": token
+                }
+            )
+            result = response.json()
+            return result.get("success", False) and result.get("score", 0) > 0.5
+    except Exception as e:
+        logger.error(f"reCAPTCHA verification error: {e}")
+        return False
+
 # ------------------------------
 # Custom Exception Handlers
 # ------------------------------
@@ -426,7 +487,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             "status_code": exc.status_code,
             "path": request.url.path,
             "timestamp": datetime.utcnow().isoformat()
-        }
+        },
+        headers=exc.headers if exc.headers else {}
     )
 
 @app.exception_handler(RequestValidationError)
@@ -447,6 +509,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def general_exception_handler(request: Request, exc: Exception):
     """Handle all other exceptions."""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    
     if config.is_production:
         error_detail = "Internal server error"
     else:
@@ -504,7 +567,7 @@ async def health_check():
 
 api_router = APIRouter(prefix="/api")
 
-@api_router.get("/")
+@api_router.get("/", tags=["API"])
 async def api_root():
     """API root endpoint."""
     return {
@@ -512,29 +575,55 @@ async def api_root():
         "version": "1.0.0",
         "environment": config.ENVIRONMENT,
         "timestamp": datetime.utcnow().isoformat(),
-        "endpoints": [
-            "/api/auth/register",
-            "/api/auth/login",
-            "/api/auth/me",
-            "/api/contact",
-            "/api/demo",
-            "/api/subscriptions/checkout",
-            "/api/subscriptions/me",
-            "/api/plans",
-            "/api/assessments",
-            "/api/organizations/me",
-            "/api/users/me"
-        ]
+        "documentation": "/api/docs" if config.is_development else None,
+        "endpoints": {
+            "authentication": [
+                "/api/auth/register",
+                "/api/auth/login",
+                "/api/auth/me",
+                "/api/auth/logout",
+                "/api/auth/refresh",
+                "/api/auth/google",
+                "/api/auth/github"
+            ],
+            "assessments": [
+                "/api/assessments",
+                "/api/assessments/{id}"
+            ],
+            "subscriptions": [
+                "/api/subscriptions/checkout",
+                "/api/subscriptions/me",
+                "/api/subscriptions/cancel",
+                "/api/plans"
+            ],
+            "user_management": [
+                "/api/users/me",
+                "/api/organizations/me",
+                "/api/dashboard/stats"
+            ],
+            "public": [
+                "/api/contact",
+                "/api/demo"
+            ]
+        }
     }
 
 # ------------------------------
 # Authentication Routes
 # ------------------------------
 
-@api_router.post("/auth/register", response_model=Token, status_code=status.HTTP_201_CREATED)
-async def register(user_create: UserCreate):
+@api_router.post("/auth/register", response_model=Token, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
+async def register(user_create: UserCreate, request: Request):
     """Register a new user."""
     try:
+        # Check reCAPTCHA if enabled
+        recaptcha_token = user_create.recaptcha_token if hasattr(user_create, 'recaptcha_token') else None
+        if recaptcha_token and not await verify_recaptcha(recaptcha_token):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="reCAPTCHA verification failed"
+            )
+        
         # Check if user already exists
         existing_user = await db_manager.db.users.find_one({"email": user_create.email})
         if existing_user:
@@ -549,6 +638,7 @@ async def register(user_create: UserCreate):
         user_data["is_verified"] = False
         user_data["created_at"] = datetime.utcnow()
         user_data["updated_at"] = datetime.utcnow()
+        user_data["last_login"] = datetime.utcnow()
         
         user = User(**user_data)
         await db_manager.db.users.insert_one(user.dict())
@@ -593,7 +683,8 @@ async def register(user_create: UserCreate):
             "status": "active",
             "amount": 0,
             "currency": "usd",
-            "created_at": datetime.utcnow()
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
         }
         
         await db_manager.db.subscriptions.insert_one(free_subscription)
@@ -615,7 +706,8 @@ async def register(user_create: UserCreate):
             access_token=access_token,
             refresh_token=refresh_token,
             token_type="bearer",
-            user=user
+            user=user,
+            redirect_url=f"{config.FRONTEND_URL}/dashboard"
         )
         
     except HTTPException:
@@ -628,8 +720,8 @@ async def register(user_create: UserCreate):
         )
 
 
-@api_router.post("/auth/login", response_model=Token)
-async def login(credentials: UserLogin):
+@api_router.post("/auth/login", response_model=Token, tags=["Authentication"])
+async def login(credentials: UserLogin, request: Request):
     """Authenticate user and return tokens."""
     try:
         user_data = await db_manager.db.users.find_one({"email": credentials.email})
@@ -663,7 +755,8 @@ async def login(credentials: UserLogin):
             access_token=access_token,
             refresh_token=refresh_token,
             token_type="bearer",
-            user=user
+            user=user,
+            redirect_url=f"{config.FRONTEND_URL}/dashboard"
         )
         
     except HTTPException:
@@ -676,7 +769,7 @@ async def login(credentials: UserLogin):
         )
 
 
-@api_router.post("/auth/refresh", response_model=Token)
+@api_router.post("/auth/refresh", response_model=Token, tags=["Authentication"])
 async def refresh_token_endpoint(refresh_token: str):
     """Refresh access token using refresh token."""
     try:
@@ -715,23 +808,568 @@ async def refresh_token_endpoint(refresh_token: str):
         )
 
 
-@api_router.get("/auth/me", response_model=User)
+@api_router.get("/auth/me", response_model=User, tags=["Authentication"])
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """Get current user information."""
     return current_user
 
 
-@api_router.post("/auth/logout")
+@api_router.post("/auth/logout", tags=["Authentication"])
 async def logout(current_user: User = Depends(get_current_user)):
     """Logout user (client-side token invalidation)."""
     logger.info(f"User logged out: {current_user.email}")
-    return {"message": "Successfully logged out"}
+    return {"message": "Successfully logged out", "redirect_url": f"{config.FRONTEND_URL}/login"}
+
+# ------------------------------
+# OAuth Routes
+# ------------------------------
+
+@api_router.get("/auth/google", tags=["Authentication"])
+async def google_oauth_initiate(
+    redirect_uri: str = Query(default=config.GOOGLE_REDIRECT_URI),
+    plan: Optional[str] = Query(None),
+    state: Optional[str] = Query(None)
+):
+    """Initiate Google OAuth flow."""
+    try:
+        if not config.GOOGLE_OAUTH_CLIENT_ID:
+            raise HTTPException(status_code=501, detail="Google OAuth not configured")
+        
+        # Generate state token for security
+        state_token = state or secrets.token_urlsafe(32)
+        
+        # Store state in database for validation
+        oauth_state = {
+            "state": state_token,
+            "redirect_uri": redirect_uri,
+            "plan": plan or "free",
+            "created_at": datetime.utcnow()
+        }
+        await db_manager.db.oauth_states.insert_one(oauth_state)
+        
+        # Google OAuth URL parameters
+        params = {
+            "client_id": config.GOOGLE_OAUTH_CLIENT_ID,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": "openid email profile",
+            "state": state_token,
+            "access_type": "offline",
+            "prompt": "consent"
+        }
+        
+        auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+        
+        return {"auth_url": auth_url}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Google OAuth initiation error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OAuth initiation failed"
+        )
+
+
+@api_router.get("/auth/google/callback", tags=["Authentication"])
+async def google_oauth_callback(
+    code: str = Query(...),
+    state: str = Query(...),
+    error: Optional[str] = Query(None)
+):
+    """Handle Google OAuth callback."""
+    try:
+        if error:
+            logger.error(f"Google OAuth error: {error}")
+            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=oauth_failed")
+        
+        if not config.GOOGLE_OAUTH_CLIENT_ID or not config.GOOGLE_OAUTH_CLIENT_SECRET:
+            raise HTTPException(status_code=501, detail="Google OAuth not configured")
+        
+        # Validate state
+        state_record = await db_manager.db.oauth_states.find_one({"state": state})
+        if not state_record:
+            logger.error(f"Invalid state parameter: {state}")
+            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=invalid_state")
+        
+        # Clean up state record
+        await db_manager.db.oauth_states.delete_one({"state": state})
+        
+        redirect_uri = state_record.get("redirect_uri", config.GOOGLE_REDIRECT_URI)
+        plan = state_record.get("plan", "free")
+        
+        # Exchange code for tokens
+        token_url = "https://oauth2.googleapis.com/token"
+        token_data = {
+            "code": code,
+            "client_id": config.GOOGLE_OAUTH_CLIENT_ID,
+            "client_secret": config.GOOGLE_OAUTH_CLIENT_SECRET,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code"
+        }
+        
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(token_url, data=token_data)
+            if token_response.status_code != 200:
+                logger.error(f"Google token exchange failed: {token_response.text}")
+                return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=token_exchange_failed")
+            
+            tokens = token_response.json()
+        
+        access_token = tokens.get("access_token")
+        
+        if not access_token:
+            logger.error("No access token returned from Google")
+            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=no_access_token")
+        
+        # Get user info from Google
+        userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        async with httpx.AsyncClient() as client:
+            userinfo_response = await client.get(userinfo_url, headers=headers)
+            if userinfo_response.status_code != 200:
+                logger.error(f"Failed to get user info: {userinfo_response.text}")
+                return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=userinfo_failed")
+            
+            userinfo = userinfo_response.json()
+        
+        # Extract user info
+        google_id = userinfo.get("sub")
+        email = userinfo.get("email")
+        name = userinfo.get("name", "").strip()
+        given_name = userinfo.get("given_name", "")
+        family_name = userinfo.get("family_name", "")
+        picture = userinfo.get("picture")
+        
+        if not email:
+            logger.error("No email returned from Google")
+            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=no_email")
+        
+        if not name:
+            name = f"{given_name} {family_name}".strip()
+            if not name:
+                name = email.split("@")[0]
+        
+        # Check if user exists
+        user_data = await db_manager.db.users.find_one({"email": email})
+        
+        if user_data:
+            # Existing user - login
+            user = User(**user_data)
+            
+            # Update Google ID if not set
+            if not user_data.get("google_id"):
+                await db_manager.db.users.update_one(
+                    {"id": user.id},
+                    {"$set": {"google_id": google_id, "updated_at": datetime.utcnow()}}
+                )
+            
+            # Update last login
+            await db_manager.db.users.update_one(
+                {"id": user.id},
+                {"$set": {"last_login": datetime.utcnow()}}
+            )
+            
+        else:
+            # New user - create account
+            user_id = str(uuid.uuid4())
+            
+            # Create user
+            user_data = {
+                "id": user_id,
+                "email": email,
+                "name": name,
+                "google_id": google_id,
+                "avatar": picture,
+                "organization": "Personal" if not plan or plan == "free" else f"{name}'s Company",
+                "plan": plan,
+                "is_verified": True,  # Google verifies email
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "last_login": datetime.utcnow()
+            }
+            
+            user = User(**user_data)
+            await db_manager.db.users.insert_one(user.dict())
+            
+            # Create organization
+            org = Organization(
+                name=user.organization,
+                owner_id=user.id,
+                slug=user.organization.lower().replace(" ", "-"),
+                created_at=datetime.utcnow()
+            )
+            await db_manager.db.organizations.insert_one(org.dict())
+            
+            # Create Stripe customer
+            try:
+                stripe_customer_id = await get_or_create_stripe_customer(
+                    user_id=user.id,
+                    email=user.email,
+                    name=user.name,
+                    organization=user.organization
+                )
+                if stripe_customer_id:
+                    await db_manager.db.users.update_one(
+                        {"id": user.id},
+                        {"$set": {"stripe_customer_id": stripe_customer_id}}
+                    )
+            except Exception as e:
+                logger.error(f"Failed to create Stripe customer: {e}")
+            
+            # Create subscription record
+            subscription = {
+                "user_id": user.id,
+                "plan_id": plan,
+                "stripe_subscription_id": f"{plan}_oauth",
+                "status": "active",
+                "amount": 0,
+                "currency": "usd",
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+            await db_manager.db.subscriptions.insert_one(subscription)
+            
+            # Send welcome email
+            try:
+                await send_welcome_email(user.name, user.email, user.organization)
+            except Exception as e:
+                logger.error(f"Failed to send welcome email: {e}")
+        
+        # Generate JWT tokens
+        access_token_jwt = create_access_token({"sub": user.id, "email": user.email})
+        refresh_token_jwt = create_refresh_token({"sub": user.id})
+        
+        # Redirect to frontend with tokens
+        token_params = urlencode({
+            "access_token": access_token_jwt,
+            "refresh_token": refresh_token_jwt,
+            "user_id": user.id
+        })
+        
+        redirect_url = f"{config.FRONTEND_URL}/oauth/callback?{token_params}"
+        return RedirectResponse(url=redirect_url)
+        
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Google OAuth HTTP error: {e}")
+        return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=oauth_http_error")
+    except Exception as e:
+        logger.error(f"Google OAuth callback error: {e}", exc_info=True)
+        return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=oauth_failed")
+
+
+@api_router.get("/auth/github", tags=["Authentication"])
+async def github_oauth_initiate(
+    redirect_uri: str = Query(default=config.GITHUB_REDIRECT_URI),
+    plan: Optional[str] = Query(None),
+    state: Optional[str] = Query(None)
+):
+    """Initiate GitHub OAuth flow."""
+    try:
+        if not config.GITHUB_OAUTH_CLIENT_ID:
+            raise HTTPException(status_code=501, detail="GitHub OAuth not configured")
+        
+        # Generate state token for security
+        state_token = state or secrets.token_urlsafe(32)
+        
+        # Store state in database for validation
+        oauth_state = {
+            "state": state_token,
+            "redirect_uri": redirect_uri,
+            "plan": plan or "free",
+            "created_at": datetime.utcnow()
+        }
+        await db_manager.db.oauth_states.insert_one(oauth_state)
+        
+        # GitHub OAuth URL parameters
+        params = {
+            "client_id": config.GITHUB_OAUTH_CLIENT_ID,
+            "redirect_uri": redirect_uri,
+            "scope": "user:email",
+            "state": state_token
+        }
+        
+        auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
+        
+        return {"auth_url": auth_url}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"GitHub OAuth initiation error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OAuth initiation failed"
+        )
+
+
+@api_router.get("/auth/github/callback", tags=["Authentication"])
+async def github_oauth_callback(
+    code: str = Query(...),
+    state: str = Query(...),
+    error: Optional[str] = Query(None)
+):
+    """Handle GitHub OAuth callback."""
+    try:
+        if error:
+            logger.error(f"GitHub OAuth error: {error}")
+            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=oauth_failed")
+        
+        if not config.GITHUB_OAUTH_CLIENT_ID or not config.GITHUB_OAUTH_CLIENT_SECRET:
+            raise HTTPException(status_code=501, detail="GitHub OAuth not configured")
+        
+        # Validate state
+        state_record = await db_manager.db.oauth_states.find_one({"state": state})
+        if not state_record:
+            logger.error(f"Invalid state parameter: {state}")
+            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=invalid_state")
+        
+        # Clean up state record
+        await db_manager.db.oauth_states.delete_one({"state": state})
+        
+        redirect_uri = state_record.get("redirect_uri", config.GITHUB_REDIRECT_URI)
+        plan = state_record.get("plan", "free")
+        
+        # Exchange code for access token
+        token_url = "https://github.com/login/oauth/access_token"
+        token_data = {
+            "client_id": config.GITHUB_OAUTH_CLIENT_ID,
+            "client_secret": config.GITHUB_OAUTH_CLIENT_SECRET,
+            "code": code,
+            "redirect_uri": redirect_uri
+        }
+        
+        headers = {"Accept": "application/json"}
+        
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(token_url, data=token_data, headers=headers)
+            if token_response.status_code != 200:
+                logger.error(f"GitHub token exchange failed: {token_response.text}")
+                return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=token_exchange_failed")
+            
+            tokens = token_response.json()
+        
+        access_token = tokens.get("access_token")
+        
+        if not access_token:
+            logger.error("No access token returned from GitHub")
+            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=no_access_token")
+        
+        # Get user info from GitHub
+        userinfo_url = "https://api.github.com/user"
+        emails_url = "https://api.github.com/user/emails"
+        headers = {
+            "Authorization": f"token {access_token}",
+            "Accept": "application/json"
+        }
+        
+        async with httpx.AsyncClient() as client:
+            # Get user profile
+            userinfo_response = await client.get(userinfo_url, headers=headers)
+            if userinfo_response.status_code != 200:
+                logger.error(f"Failed to get user info: {userinfo_response.text}")
+                return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=userinfo_failed")
+            
+            userinfo = userinfo_response.json()
+            
+            # Get user emails
+            emails_response = await client.get(emails_url, headers=headers)
+            emails = emails_response.json() if emails_response.status_code == 200 else []
+        
+        # Extract primary email
+        primary_email = None
+        for email in emails:
+            if isinstance(email, dict) and email.get("primary") and email.get("verified"):
+                primary_email = email.get("email")
+                break
+        
+        if not primary_email:
+            # Fallback to the first verified email
+            for email in emails:
+                if isinstance(email, dict) and email.get("verified"):
+                    primary_email = email.get("email")
+                    break
+        
+        if not primary_email:
+            # If no verified emails, use the public email
+            primary_email = userinfo.get("email")
+        
+        if not primary_email:
+            logger.error("No verified email found")
+            return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=no_email")
+        
+        # Extract user info
+        github_id = str(userinfo.get("id"))
+        name = userinfo.get("name", "").strip()
+        login = userinfo.get("login", "")
+        avatar = userinfo.get("avatar_url")
+        
+        if not name:
+            name = login
+        
+        # Check if user exists
+        user_data = await db_manager.db.users.find_one({"email": primary_email})
+        
+        if user_data:
+            # Existing user - login
+            user = User(**user_data)
+            
+            # Update GitHub ID if not set
+            if not user_data.get("github_id"):
+                await db_manager.db.users.update_one(
+                    {"id": user.id},
+                    {"$set": {"github_id": github_id, "updated_at": datetime.utcnow()}}
+                )
+            
+            # Update last login
+            await db_manager.db.users.update_one(
+                {"id": user.id},
+                {"$set": {"last_login": datetime.utcnow()}}
+            )
+            
+        else:
+            # New user - create account
+            user_id = str(uuid.uuid4())
+            
+            # Create user
+            user_data = {
+                "id": user_id,
+                "email": primary_email,
+                "name": name,
+                "github_id": github_id,
+                "avatar": avatar,
+                "organization": "Personal" if not plan or plan == "free" else f"{name}'s Company",
+                "plan": plan,
+                "is_verified": True,  # GitHub emails are verified
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "last_login": datetime.utcnow()
+            }
+            
+            user = User(**user_data)
+            await db_manager.db.users.insert_one(user.dict())
+            
+            # Create organization
+            org = Organization(
+                name=user.organization,
+                owner_id=user.id,
+                slug=user.organization.lower().replace(" ", "-"),
+                created_at=datetime.utcnow()
+            )
+            await db_manager.db.organizations.insert_one(org.dict())
+            
+            # Create Stripe customer
+            try:
+                stripe_customer_id = await get_or_create_stripe_customer(
+                    user_id=user.id,
+                    email=user.email,
+                    name=user.name,
+                    organization=user.organization
+                )
+                if stripe_customer_id:
+                    await db_manager.db.users.update_one(
+                        {"id": user.id},
+                        {"$set": {"stripe_customer_id": stripe_customer_id}}
+                    )
+            except Exception as e:
+                logger.error(f"Failed to create Stripe customer: {e}")
+            
+            # Create subscription record
+            subscription = {
+                "user_id": user.id,
+                "plan_id": plan,
+                "stripe_subscription_id": f"{plan}_oauth",
+                "status": "active",
+                "amount": 0,
+                "currency": "usd",
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+            await db_manager.db.subscriptions.insert_one(subscription)
+            
+            # Send welcome email
+            try:
+                await send_welcome_email(user.name, user.email, user.organization)
+            except Exception as e:
+                logger.error(f"Failed to send welcome email: {e}")
+        
+        # Generate JWT tokens
+        access_token_jwt = create_access_token({"sub": user.id, "email": user.email})
+        refresh_token_jwt = create_refresh_token({"sub": user.id})
+        
+        # Redirect to frontend with tokens
+        token_params = urlencode({
+            "access_token": access_token_jwt,
+            "refresh_token": refresh_token_jwt,
+            "user_id": user.id
+        })
+        
+        redirect_url = f"{config.FRONTEND_URL}/oauth/callback?{token_params}"
+        return RedirectResponse(url=redirect_url)
+        
+    except httpx.HTTPStatusError as e:
+        logger.error(f"GitHub OAuth HTTP error: {e}")
+        return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=oauth_http_error")
+    except Exception as e:
+        logger.error(f"GitHub OAuth callback error: {e}", exc_info=True)
+        return RedirectResponse(url=f"{config.FRONTEND_URL}/login?error=oauth_failed")
+
+
+@api_router.post("/oauth/exchange", tags=["Authentication"])
+async def oauth_token_exchange(payload: dict):
+    """Exchange OAuth tokens for JWT tokens."""
+    try:
+        access_token = payload.get("access_token")
+        refresh_token = payload.get("refresh_token")
+        
+        if not access_token or not refresh_token:
+            raise HTTPException(status_code=400, detail="Missing tokens")
+        
+        # Verify the tokens
+        try:
+            access_payload = verify_token(access_token)
+            refresh_payload = verify_refresh_token(refresh_token)
+            
+            if not access_payload or not refresh_payload:
+                raise HTTPException(status_code=401, detail="Invalid tokens")
+            
+            # Get user
+            user_id = access_payload.get("sub")
+            user_data = await db_manager.db.users.find_one({"id": user_id})
+            
+            if not user_data:
+                raise HTTPException(status_code=404, detail="User not found")
+            
+            user = User(**user_data)
+            
+            return Token(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_type="bearer",
+                user=user,
+                redirect_url=f"{config.FRONTEND_URL}/dashboard"
+            )
+            
+        except Exception as e:
+            logger.error(f"Token exchange error: {e}")
+            raise HTTPException(status_code=401, detail="Invalid or expired tokens")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OAuth exchange error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Token exchange failed"
+        )
 
 # ------------------------------
 # Contact & Demo Routes
 # ------------------------------
 
-@api_router.post("/contact", status_code=status.HTTP_201_CREATED)
+@api_router.post("/contact", status_code=status.HTTP_201_CREATED, tags=["Public"])
 async def submit_contact(contact: ContactFormCreate):
     """Submit contact form."""
     try:
@@ -762,7 +1400,7 @@ async def submit_contact(contact: ContactFormCreate):
         )
 
 
-@api_router.post("/demo", status_code=status.HTTP_201_CREATED)
+@api_router.post("/demo", status_code=status.HTTP_201_CREATED, tags=["Public"])
 async def submit_demo(demo: DemoRequestCreate):
     """Submit demo request."""
     try:
@@ -797,7 +1435,7 @@ async def submit_demo(demo: DemoRequestCreate):
 # Subscription & Payment Routes
 # ------------------------------
 
-@api_router.post("/subscriptions/checkout")
+@api_router.post("/subscriptions/checkout", tags=["Subscriptions"])
 async def create_checkout_session_endpoint(
     payload: dict,
     current_user: User = Depends(get_current_user)
@@ -887,7 +1525,7 @@ async def create_checkout_session_endpoint(
         )
 
 
-@api_router.get("/subscriptions/me")
+@api_router.get("/subscriptions/me", tags=["Subscriptions"])
 async def get_my_subscription(
     current_user: User = Depends(get_current_user)
 ):
@@ -945,7 +1583,7 @@ async def get_my_subscription(
         )
 
 
-@api_router.post("/subscriptions/cancel")
+@api_router.post("/subscriptions/cancel", tags=["Subscriptions"])
 async def cancel_my_subscription(
     payload: dict = None,
     current_user: User = Depends(get_current_user)
@@ -1004,7 +1642,8 @@ async def cancel_my_subscription(
         
         return {
             "success": True, 
-            "message": "Subscription cancelled successfully"
+            "message": "Subscription cancelled successfully",
+            "redirect_url": f"{config.FRONTEND_URL}/dashboard"
         }
         
     except HTTPException:
@@ -1017,7 +1656,7 @@ async def cancel_my_subscription(
         )
 
 
-@api_router.get("/plans")
+@api_router.get("/plans", tags=["Subscriptions"])
 async def get_available_plans():
     """Get available subscription plans with features."""
     return {
@@ -1101,10 +1740,10 @@ async def get_available_plans():
     }
 
 # ------------------------------
-# NEW: Assessment Endpoints
+# Assessment Endpoints
 # ------------------------------
 
-@api_router.post("/assessments", status_code=status.HTTP_201_CREATED)
+@api_router.post("/assessments", status_code=status.HTTP_201_CREATED, tags=["Assessments"])
 async def create_assessment(
     assessment: AssessmentCreate,
     current_user: User = Depends(get_current_user)
@@ -1115,6 +1754,15 @@ async def create_assessment(
         organization = await db_manager.db.organizations.find_one({"owner_id": current_user.id})
         if not organization:
             raise HTTPException(status_code=404, detail="Organization not found")
+        
+        # Check assessment limit based on user's plan
+        user_data = await db_manager.db.users.find_one({"id": current_user.id})
+        plan = user_data.get("plan", "free")
+        
+        if plan == "free":
+            assessment_count = await db_manager.db.assessments.count_documents({"user_id": current_user.id})
+            if assessment_count >= 5:
+                raise HTTPException(status_code=400, detail="Free plan limit reached (5 assessments)")
         
         # Create assessment data
         assessment_data = assessment.dict()
@@ -1135,7 +1783,8 @@ async def create_assessment(
         return {
             "success": True,
             "assessment_id": assessment_id,
-            "message": "Assessment created successfully"
+            "message": "Assessment created successfully",
+            "redirect_url": f"{config.FRONTEND_URL}/assessments/{assessment_id}"
         }
         
     except HTTPException:
@@ -1148,7 +1797,7 @@ async def create_assessment(
         )
 
 
-@api_router.get("/assessments")
+@api_router.get("/assessments", tags=["Assessments"])
 async def get_assessments(
     status: Optional[str] = Query(None, description="Filter by status"),
     limit: int = Query(100, ge=1, le=1000),
@@ -1190,7 +1839,7 @@ async def get_assessments(
         )
 
 
-@api_router.get("/assessments/{assessment_id}")
+@api_router.get("/assessments/{assessment_id}", tags=["Assessments"])
 async def get_assessment(
     assessment_id: str,
     current_user: User = Depends(get_current_user)
@@ -1221,7 +1870,7 @@ async def get_assessment(
         )
 
 
-@api_router.put("/assessments/{assessment_id}")
+@api_router.put("/assessments/{assessment_id}", tags=["Assessments"])
 async def update_assessment(
     assessment_id: str,
     assessment_update: AssessmentUpdate,
@@ -1264,7 +1913,7 @@ async def update_assessment(
         )
 
 
-@api_router.delete("/assessments/{assessment_id}")
+@api_router.delete("/assessments/{assessment_id}", tags=["Assessments"])
 async def delete_assessment(
     assessment_id: str,
     current_user: User = Depends(get_current_user)
@@ -1289,7 +1938,8 @@ async def delete_assessment(
         
         return {
             "success": True,
-            "message": "Assessment deleted successfully"
+            "message": "Assessment deleted successfully",
+            "redirect_url": f"{config.FRONTEND_URL}/assessments"
         }
         
     except HTTPException:
@@ -1302,10 +1952,10 @@ async def delete_assessment(
         )
 
 # ------------------------------
-# NEW: Candidate Endpoints
+# Candidate Endpoints
 # ------------------------------
 
-@api_router.post("/candidates", status_code=status.HTTP_201_CREATED)
+@api_router.post("/candidates", status_code=status.HTTP_201_CREATED, tags=["Assessments"])
 async def create_candidate(
     candidate: CandidateCreate,
     current_user: User = Depends(get_current_user)
@@ -1373,7 +2023,7 @@ async def create_candidate(
         )
 
 
-@api_router.get("/candidates")
+@api_router.get("/candidates", tags=["Assessments"])
 async def get_candidates(
     assessment_id: Optional[str] = Query(None, description="Filter by assessment ID"),
     status: Optional[str] = Query(None, description="Filter by status"),
@@ -1418,10 +2068,10 @@ async def get_candidates(
         )
 
 # ------------------------------
-# NEW: Organization Endpoints
+# Organization Endpoints
 # ------------------------------
 
-@api_router.get("/organizations/me")
+@api_router.get("/organizations/me", tags=["User Management"])
 async def get_my_organization(
     current_user: User = Depends(get_current_user)
 ):
@@ -1447,7 +2097,7 @@ async def get_my_organization(
         )
 
 
-@api_router.put("/organizations/me")
+@api_router.put("/organizations/me", tags=["User Management"])
 async def update_my_organization(
     org_update: OrganizationUpdate,
     current_user: User = Depends(get_current_user)
@@ -1496,10 +2146,10 @@ async def update_my_organization(
         )
 
 # ------------------------------
-# NEW: User Settings Endpoints
+# User Settings Endpoints
 # ------------------------------
 
-@api_router.put("/users/me")
+@api_router.put("/users/me", tags=["User Management"])
 async def update_my_profile(
     user_update: UserUpdate,
     current_user: User = Depends(get_current_user)
@@ -1547,7 +2197,7 @@ async def update_my_profile(
         )
 
 
-@api_router.put("/users/me/password")
+@api_router.put("/users/me/password", tags=["User Management"])
 async def update_my_password(
     payload: dict,
     current_user: User = Depends(get_current_user)
@@ -1559,6 +2209,9 @@ async def update_my_password(
         
         if not current_password or not new_password:
             raise HTTPException(status_code=400, detail="Current and new passwords are required")
+        
+        if len(new_password) < 8:
+            raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
         
         # Verify current password
         user_data = await db_manager.db.users.find_one({"id": current_user.id})
@@ -1595,7 +2248,7 @@ async def update_my_password(
 # Dashboard Statistics Endpoint
 # ------------------------------
 
-@api_router.get("/dashboard/stats")
+@api_router.get("/dashboard/stats", tags=["User Management"])
 async def get_dashboard_stats(
     current_user: User = Depends(get_current_user)
 ):
@@ -1673,7 +2326,7 @@ async def get_dashboard_stats(
 # Webhook Endpoint
 # ------------------------------
 
-@api_router.post("/webhooks/stripe")
+@api_router.post("/webhooks/stripe", tags=["Subscriptions"])
 async def stripe_webhook(request: Request):
     """Handle Stripe webhooks."""
     try:
@@ -1685,7 +2338,9 @@ async def stripe_webhook(request: Request):
         if not event:
             raise HTTPException(status_code=400, detail="Invalid webhook event")
         
-        event_type = event.get("event")
+        event_type = event.get("type")
+        
+        logger.info(f"Processing Stripe webhook: {event_type}")
         
         # Process webhook events
         if event_type == "checkout.session.completed":
@@ -1698,8 +2353,6 @@ async def stripe_webhook(request: Request):
             await handle_invoice_payment_succeeded(event)
         elif event_type == "invoice.payment_failed":
             await handle_invoice_payment_failed(event)
-        
-        logger.info(f"Processed Stripe webhook: {event_type}")
         
         return {"status": "success", "event": event_type}
         
@@ -1714,16 +2367,21 @@ async def stripe_webhook(request: Request):
 async def handle_checkout_completed(event: Dict):
     """Handle checkout.session.completed event."""
     try:
-        session_id = event.get("session_id")
-        subscription_id = event.get("subscription_id")
-        customer_id = event.get("customer_id")
+        session_id = event.get("id")
+        subscription_id = event.get("data", {}).get("object", {}).get("subscription")
+        customer_id = event.get("data", {}).get("object", {}).get("customer")
         
         logger.info(f"Checkout completed: {session_id}")
         
-        # In production, you would fetch session details from Stripe
-        # For now, we'll log it
-        logger.info(f"Session {session_id} completed with subscription {subscription_id}")
-        
+        # Update user plan based on subscription
+        subscription = await db_manager.db.subscriptions.find_one({"stripe_subscription_id": subscription_id})
+        if subscription:
+            plan_id = subscription.get("plan_id", "basic")
+            await db_manager.db.users.update_one(
+                {"stripe_customer_id": customer_id},
+                {"$set": {"plan": plan_id, "updated_at": datetime.utcnow()}}
+            )
+            
     except Exception as e:
         logger.error(f"Error processing checkout completed: {e}")
 
@@ -1731,9 +2389,9 @@ async def handle_checkout_completed(event: Dict):
 async def handle_subscription_updated(event: Dict):
     """Handle customer.subscription.updated event."""
     try:
-        subscription_id = event.get("id")
-        status = event.get("status")
-        plan_id = event.get("plan")
+        subscription = event.get("data", {}).get("object", {})
+        subscription_id = subscription.get("id")
+        status = subscription.get("status")
         
         logger.info(f"Subscription updated: {subscription_id} - {status}")
         
@@ -1742,7 +2400,6 @@ async def handle_subscription_updated(event: Dict):
             {"stripe_subscription_id": subscription_id},
             {"$set": {
                 "status": status,
-                "plan_id": plan_id,
                 "updated_at": datetime.utcnow()
             }}
         )
@@ -1754,7 +2411,9 @@ async def handle_subscription_updated(event: Dict):
 async def handle_subscription_deleted(event: Dict):
     """Handle customer.subscription.deleted event."""
     try:
-        subscription_id = event.get("id")
+        subscription = event.get("data", {}).get("object", {})
+        subscription_id = subscription.get("id")
+        customer_id = subscription.get("customer")
         
         logger.info(f"Subscription deleted: {subscription_id}")
         
@@ -1767,6 +2426,12 @@ async def handle_subscription_deleted(event: Dict):
             }}
         )
         
+        # Downgrade user to free
+        await db_manager.db.users.update_one(
+            {"stripe_customer_id": customer_id},
+            {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
+        )
+        
     except Exception as e:
         logger.error(f"Error processing subscription deleted: {e}")
 
@@ -1774,13 +2439,11 @@ async def handle_subscription_deleted(event: Dict):
 async def handle_invoice_payment_succeeded(event: Dict):
     """Handle invoice.payment_succeeded event."""
     try:
-        invoice_id = event.get("invoice_id")
-        amount_paid = event.get("amount_paid")
+        invoice = event.get("data", {}).get("object", {})
+        invoice_id = invoice.get("id")
+        amount_paid = invoice.get("amount_paid") / 100  # Convert from cents
         
-        logger.info(f"Payment succeeded: {invoice_id}")
-        
-        # Log payment
-        logger.info(f"Payment of {amount_paid} succeeded for invoice {invoice_id}")
+        logger.info(f"Payment succeeded: {invoice_id} - ${amount_paid}")
         
     except Exception as e:
         logger.error(f"Error processing payment succeeded: {e}")
@@ -1789,10 +2452,10 @@ async def handle_invoice_payment_succeeded(event: Dict):
 async def handle_invoice_payment_failed(event: Dict):
     """Handle invoice.payment_failed event."""
     try:
-        invoice_id = event.get("invoice_id")
-        attempts = event.get("attempts")
+        invoice = event.get("data", {}).get("object", {})
+        invoice_id = invoice.get("id")
         
-        logger.warning(f"Payment failed: {invoice_id} (attempt {attempts})")
+        logger.warning(f"Payment failed: {invoice_id}")
         
     except Exception as e:
         logger.error(f"Error processing payment failed: {e}")
@@ -1815,6 +2478,8 @@ async def startup_event():
         validate_stripe_config()
         logger.info("Stripe configuration validated")
         
+        logger.info(f"Frontend URL: {config.FRONTEND_URL}")
+        logger.info(f"CORS Origins: {config.CORS_ORIGINS}")
         logger.info("Application startup complete")
     except Exception as e:
         logger.error(f"Failed to start application: {e}")
