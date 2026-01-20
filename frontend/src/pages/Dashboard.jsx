@@ -14,7 +14,10 @@ import {
   ChevronRight,
   Zap,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Shield,
+  DollarSign,
+  User
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -23,7 +26,8 @@ import { Skeleton } from '../components/ui/skeleton';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import Navigation from '../components/Navigation';
 import Footer from '../components/Footer';
-import api, { assessmentAPI } from '../services/api';
+import api from '../services/api';
+import { toast } from 'sonner';
 
 // Constants
 const LOCAL_STORAGE_KEYS = {
@@ -47,6 +51,7 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [recentAssessments, setRecentAssessments] = useState([]);
   const [dashboardData, setDashboardData] = useState(null);
+  const [subscription, setSubscription] = useState(null);
 
   // Fetch dashboard data
   const fetchDashboardData = useCallback(async () => {
@@ -60,56 +65,27 @@ const Dashboard = () => {
         return;
       }
 
+      // Fetch user data
+      const userResponse = await api.get('/auth/me');
+      setUser(userResponse.data);
+
+      // Fetch dashboard stats
+      const statsResponse = await api.get('/dashboard/stats');
+      const dashboardStats = statsResponse.data;
+      setDashboardData(dashboardStats);
+
       // Fetch assessments
-      const assessmentsResponse = await assessmentAPI.getAll();
-      const assessments = assessmentsResponse.assessments || [];
-      
-      // Fetch dashboard stats if endpoint exists, otherwise calculate from assessments
-      let dashboardStats = null;
+      const assessmentsResponse = await api.get('/assessments?limit=4');
+      const assessments = assessmentsResponse.data.assessments || [];
+      setRecentAssessments(assessments);
+
+      // Fetch subscription
       try {
-        // Try to fetch from dashboard/stats endpoint
-        const statsResponse = await api.get('/dashboard/stats');
-        dashboardStats = statsResponse.data;
-      } catch (statsError) {
-        console.log('Dashboard stats endpoint not available, calculating locally');
-        // Calculate stats locally
-        const totalAssessments = assessments.length;
-        const publishedAssessments = assessments.filter(a => a.status === 'published').length;
-        const draftAssessments = assessments.filter(a => a.status === 'draft').length;
-        
-        // Get user plan for candidate limits
-        const userData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.USER) || '{}');
-        const plan = userData.plan || 'free';
-        
-        // Calculate candidate stats (mock for now - in production you'd fetch candidates)
-        const candidateLimits = {
-          free: 50,
-          basic: 500,
-          professional: 100000, // Large number for "unlimited"
-          enterprise: 1000000
-        };
-        
-        const totalCandidatesLimit = candidateLimits[plan] || 50;
-        const mockCandidatesCount = Math.floor(totalAssessments * 20); // Mock calculation
-        
-        dashboardStats = {
-          stats: {
-            assessments: {
-              total: totalAssessments,
-              published: publishedAssessments,
-              draft: draftAssessments
-            },
-            candidates: {
-              total: Math.min(mockCandidatesCount, totalCandidatesLimit),
-              invited: Math.floor(mockCandidatesCount * 0.7),
-              completed: Math.floor(mockCandidatesCount * 0.6)
-            }
-          },
-          recent: {
-            assessments: assessments.slice(0, 5),
-            candidates: [] // Would be populated from candidates endpoint
-          }
-        };
+        const subscriptionResponse = await api.get('/subscriptions/me');
+        setSubscription(subscriptionResponse.data);
+      } catch (subError) {
+        console.log('Subscription endpoint not available');
+        setSubscription({ has_subscription: true, plan: userResponse.data.plan || 'free' });
       }
 
       // Calculate stats for display
@@ -118,7 +94,7 @@ const Dashboard = () => {
           id: 'total-assessments',
           label: 'Total Assessments',
           value: dashboardStats?.stats?.assessments?.total || 0,
-          change: '+12%', // Mock for now
+          change: dashboardStats?.stats?.assessments?.total > 0 ? '+12%' : '0%',
           icon: FileText,
           color: 'blue'
         },
@@ -126,7 +102,7 @@ const Dashboard = () => {
           id: 'active-candidates',
           label: 'Active Candidates',
           value: dashboardStats?.stats?.candidates?.invited || 0,
-          change: '+8%',
+          change: dashboardStats?.stats?.candidates?.invited > 0 ? '+8%' : '0%',
           icon: Users,
           color: 'teal'
         },
@@ -136,34 +112,49 @@ const Dashboard = () => {
           value: dashboardStats?.stats?.candidates?.total > 0 
             ? `${Math.round((dashboardStats.stats.candidates.completed / dashboardStats.stats.candidates.total) * 100)}%`
             : '0%',
-          change: '+2.1%',
+          change: dashboardStats?.stats?.candidates?.completed > 0 ? '+2.1%' : '0%',
           icon: Target,
           color: 'green'
         },
         {
           id: 'avg-assessment-time',
           label: 'Avg. Assessment Time',
-          value: '12m', // Mock for now
+          value: '12m', // This would come from analytics endpoint
           change: '-5%',
           icon: Clock,
           color: 'purple'
         }
       ];
 
-      setDashboardData(dashboardStats);
       setStats(calculatedStats);
-      setRecentAssessments(assessments.slice(0, 4)); // Show 4 most recent
 
     } catch (err) {
       console.error('Dashboard data fetch error:', err);
-      setError(err.response?.data?.detail || err.message || 'Failed to load dashboard data');
+      
+      let errorMessage = 'Failed to load dashboard data';
+      if (err.response?.data?.detail) {
+        errorMessage = err.response.data.detail;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
       
       // Handle authentication errors
       if (err.response?.status === 401) {
         localStorage.removeItem(LOCAL_STORAGE_KEYS.TOKEN);
         localStorage.removeItem(LOCAL_STORAGE_KEYS.USER);
-        navigate('/login');
+        navigate('/login', { 
+          state: { message: 'Your session has expired. Please log in again.' }
+        });
+        return;
       }
+      
+      // Handle network errors
+      if (!err.response) {
+        toast.error('Network error. Please check your connection.');
+      }
+      
     } finally {
       setIsRefreshing(false);
       setIsLoading(false);
@@ -185,7 +176,9 @@ const Dashboard = () => {
 
         const userData = localStorage.getItem(LOCAL_STORAGE_KEYS.USER);
         if (!userData) {
-          throw new Error('User data not found');
+          // Try to fetch user from API
+          await fetchDashboardData();
+          return;
         }
 
         const parsedUser = JSON.parse(userData);
@@ -198,7 +191,7 @@ const Dashboard = () => {
         setError(err.message || 'Failed to load dashboard data');
         
         // Only redirect on auth errors
-        if (err.message.includes('User data not found')) {
+        if (err.message.includes('User data not found') || err.response?.status === 401) {
           localStorage.removeItem(LOCAL_STORAGE_KEYS.TOKEN);
           localStorage.removeItem(LOCAL_STORAGE_KEYS.USER);
           navigate('/login');
@@ -210,8 +203,29 @@ const Dashboard = () => {
   }, [navigate, fetchDashboardData]);
 
   // Navigation handlers
-  const handleCreateAssessment = useCallback(() => {
-    navigate('/assessments/create');
+  const handleCreateAssessment = useCallback(async () => {
+    try {
+      const response = await api.post('/assessments', {
+        title: 'New Assessment',
+        description: 'Create your assessment questions here',
+        assessment_type: 'multiple_choice',
+        duration_minutes: 30,
+        questions: [],
+        settings: {}
+      });
+      
+      if (response.data.success) {
+        toast.success('Assessment created successfully!');
+        navigate(`/assessments/${response.data.assessment_id}`);
+      }
+    } catch (error) {
+      if (error.response?.status === 400 && error.response?.data?.detail?.includes('limit reached')) {
+        toast.error(error.response.data.detail);
+        handleUpgradePlan();
+      } else {
+        toast.error('Failed to create assessment. Please try again.');
+      }
+    }
   }, [navigate]);
 
   const handleViewAllAssessments = useCallback(() => {
@@ -230,24 +244,54 @@ const Dashboard = () => {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
-  const handleQuickAction = useCallback((action) => {
-    switch (action) {
-      case 'new-assessment':
-        navigate('/assessments/create');
-        break;
-      case 'invite-candidates':
-        navigate('/candidates/invite');
-        break;
-      case 'view-analytics':
-        navigate('/analytics');
-        break;
-      case 'export-reports':
-        navigate('/reports/export');
-        break;
-      default:
-        break;
-    }
+  const handleSettings = useCallback(() => {
+    navigate('/settings');
   }, [navigate]);
+
+  const handleBilling = useCallback(() => {
+    navigate('/dashboard/billing');
+  }, [navigate]);
+
+  const handleUserProfile = useCallback(() => {
+    navigate('/dashboard/profile');
+  }, [navigate]);
+
+  const handleOrganization = useCallback(() => {
+    navigate('/dashboard/organization');
+  }, [navigate]);
+
+  const handleInviteCandidates = useCallback(() => {
+    if (recentAssessments.length === 0) {
+      toast.info('Please create an assessment first.');
+      return;
+    }
+    // If there are assessments, navigate to the first one's candidate invitation
+    const firstAssessment = recentAssessments[0];
+    navigate(`/assessments/${firstAssessment.id}/candidates/invite`);
+  }, [recentAssessments, navigate]);
+
+  const handleViewAnalytics = useCallback(() => {
+    navigate('/dashboard/analytics');
+  }, [navigate]);
+
+  const handleExportReports = useCallback(() => {
+    if (recentAssessments.length === 0) {
+      toast.info('No assessments to export.');
+      return;
+    }
+    toast.info('Export functionality coming soon!');
+  }, [recentAssessments]);
+
+  // Calculate plan limits
+  const getPlanLimits = useCallback((plan) => {
+    const limits = {
+      free: { assessments: 5, candidates: 50 },
+      basic: { assessments: 50, candidates: 500 },
+      professional: { assessments: 1000, candidates: 100000 },
+      enterprise: { assessments: 10000, candidates: 1000000 }
+    };
+    return limits[plan] || limits.free;
+  }, []);
 
   // Loading skeleton
   if (isLoading) {
@@ -300,12 +344,25 @@ const Dashboard = () => {
                 {error}. Please try refreshing the page or contact support if the issue persists.
               </AlertDescription>
             </Alert>
+            <div className="mt-4 flex space-x-3">
+              <Button onClick={handleRefresh} variant="outline">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+              </Button>
+              <Button onClick={() => navigate('/login')}>
+                Return to Login
+              </Button>
+            </div>
           </div>
         </div>
         <Footer />
       </div>
     );
   }
+
+  const planLimits = getPlanLimits(user?.plan || 'free');
+  const assessmentUsage = dashboardData?.stats?.assessments?.total || 0;
+  const candidateUsage = dashboardData?.stats?.candidates?.total || 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -321,14 +378,19 @@ const Dashboard = () => {
                   Welcome back, {user?.name || 'User'}!
                 </h1>
                 <p className="text-gray-600 mt-1">{user?.organization || 'Your Organization'}</p>
-                <div className="flex items-center mt-2">
-                  <Badge className="bg-blue-100 text-blue-800">
+                <div className="flex items-center mt-2 space-x-2">
+                  <Badge className={`${
+                    user?.plan === 'free' ? 'bg-blue-100 text-blue-800' :
+                    user?.plan === 'basic' ? 'bg-teal-100 text-teal-800' :
+                    user?.plan === 'professional' ? 'bg-purple-100 text-purple-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
                     {user?.plan || 'free'} plan
                   </Badge>
                   {user?.plan === 'free' && (
-                    <span className="text-sm text-gray-500 ml-2">
-                      ({dashboardData?.stats?.candidates?.total || 0}/50 candidates used)
-                    </span>
+                    <Badge variant="outline" className="text-xs">
+                      {candidateUsage}/{planLimits.candidates} candidates
+                    </Badge>
                   )}
                 </div>
               </div>
@@ -338,14 +400,16 @@ const Dashboard = () => {
                   onClick={handleRefresh}
                   disabled={isRefreshing}
                   aria-label="Refresh dashboard"
+                  size="sm"
                 >
                   <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                   {isRefreshing ? 'Refreshing...' : 'Refresh'}
                 </Button>
                 <Button 
                   variant="outline" 
-                  onClick={() => navigate('/settings')}
+                  onClick={handleSettings}
                   aria-label="Settings"
+                  size="sm"
                 >
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
@@ -353,11 +417,15 @@ const Dashboard = () => {
                 <Button 
                   className="bg-gradient-to-r from-blue-600 to-teal-600 hover:from-blue-700 hover:to-teal-700 transition-all"
                   onClick={handleCreateAssessment}
-                  disabled={isRefreshing}
+                  disabled={isRefreshing || (user?.plan === 'free' && assessmentUsage >= planLimits.assessments)}
                   aria-label="Create new assessment"
+                  size="sm"
                 >
                   <Plus className="mr-2 h-4 w-4" />
                   Create Assessment
+                  {user?.plan === 'free' && assessmentUsage >= planLimits.assessments && (
+                    <Badge className="ml-2 bg-yellow-100 text-yellow-800">Limit Reached</Badge>
+                  )}
                 </Button>
               </div>
             </div>
@@ -438,15 +506,17 @@ const Dashboard = () => {
                       <CardDescription>Your latest assessment activities</CardDescription>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={handleViewAllAssessments}
-                        aria-label="View all assessments"
-                      >
-                        View All
-                        <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
-                      </Button>
+                      {recentAssessments.length > 0 && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={handleViewAllAssessments}
+                          aria-label="View all assessments"
+                        >
+                          View All
+                          <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
@@ -456,21 +526,29 @@ const Dashboard = () => {
                       <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                       <h3 className="text-lg font-medium text-gray-900 mb-2">No assessments yet</h3>
                       <p className="text-gray-600 mb-4">Create your first assessment to get started</p>
-                      <Button onClick={handleCreateAssessment}>
+                      <Button 
+                        onClick={handleCreateAssessment}
+                        disabled={user?.plan === 'free' && assessmentUsage >= planLimits.assessments}
+                      >
                         <Plus className="mr-2 h-4 w-4" />
                         Create Assessment
+                        {user?.plan === 'free' && assessmentUsage >= planLimits.assessments && (
+                          <Badge className="ml-2 bg-yellow-100 text-yellow-800">Limit Reached</Badge>
+                        )}
                       </Button>
                     </div>
                   ) : (
                     <div className="space-y-4">
                       {recentAssessments.map((assessment) => {
-                        // Calculate completion percentage (mock for now)
-                        const completion = Math.min(Math.floor(Math.random() * 30) + 70, 100);
+                        // Get candidate count for this assessment
+                        const candidateCount = dashboardData?.recent?.candidates?.filter(
+                          c => c.assessment_id === assessment.id
+                        ).length || 0;
                         
                         return (
                           <button
-                            key={assessment.id || assessment._id}
-                            onClick={() => handleAssessmentClick(assessment.id || assessment._id)}
+                            key={assessment.id}
+                            onClick={() => handleAssessmentClick(assessment.id)}
                             className="w-full text-left flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                             aria-label={`View ${assessment.title} assessment`}
                           >
@@ -483,7 +561,9 @@ const Dashboard = () => {
                                   className={`ml-3 shrink-0 ${
                                     assessment.status === 'published'
                                       ? 'bg-green-100 text-green-700'
-                                      : 'bg-yellow-100 text-yellow-700'
+                                      : assessment.status === 'draft'
+                                      ? 'bg-yellow-100 text-yellow-700'
+                                      : 'bg-gray-100 text-gray-700'
                                   }`}
                                 >
                                   {assessment.status || 'draft'}
@@ -492,11 +572,11 @@ const Dashboard = () => {
                               <div className="flex items-center mt-2 text-sm text-gray-600">
                                 <Users className="h-4 w-4 mr-1 shrink-0" aria-hidden="true" />
                                 <span>
-                                  {assessment.candidates_count || Math.floor(Math.random() * 50)} candidates
+                                  {candidateCount} candidates
                                 </span>
                                 <span className="mx-2" aria-hidden="true">•</span>
-                                <Target className="h-4 w-4 mr-1 shrink-0" aria-hidden="true" />
-                                <span>{completion}% completion</span>
+                                <Clock className="h-4 w-4 mr-1 shrink-0" aria-hidden="true" />
+                                <span>{assessment.duration_minutes || 30} min</span>
                               </div>
                               {assessment.description && (
                                 <p className="text-sm text-gray-500 mt-2 truncate">
@@ -527,13 +607,13 @@ const Dashboard = () => {
                                     strokeWidth="4"
                                     fill="none"
                                     strokeDasharray={`${2 * Math.PI * 28}`}
-                                    strokeDashoffset={`${2 * Math.PI * 28 * (1 - completion / 100)}`}
+                                    strokeDashoffset={`${2 * Math.PI * 28 * 0.25}`} // 25% completion (mock)
                                     strokeLinecap="round"
                                   />
                                 </svg>
                                 <div className="absolute inset-0 flex items-center justify-center">
                                   <span className="text-xs font-bold text-gray-700">
-                                    {completion}%
+                                    {candidateCount > 0 ? '25%' : '0%'}
                                   </span>
                                 </div>
                               </div>
@@ -560,27 +640,34 @@ const Dashboard = () => {
                   <Button 
                     className="w-full justify-start" 
                     variant="outline"
-                    onClick={() => handleQuickAction('new-assessment')}
+                    onClick={handleCreateAssessment}
+                    disabled={user?.plan === 'free' && assessmentUsage >= planLimits.assessments}
                   >
                     <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
                     New Assessment
+                    {user?.plan === 'free' && assessmentUsage >= planLimits.assessments && (
+                      <Badge className="ml-2 bg-yellow-100 text-yellow-800">Limit Reached</Badge>
+                    )}
                   </Button>
                   <Button 
                     className="w-full justify-start" 
                     variant="outline"
-                    onClick={() => handleQuickAction('invite-candidates')}
-                    disabled={recentAssessments.length === 0}
+                    onClick={handleInviteCandidates}
+                    disabled={recentAssessments.length === 0 || (user?.plan === 'free' && candidateUsage >= planLimits.candidates)}
                   >
                     <Users className="mr-2 h-4 w-4" aria-hidden="true" />
                     Invite Candidates
                     {recentAssessments.length === 0 && (
                       <Badge className="ml-2 bg-gray-100 text-gray-700">Create assessment first</Badge>
                     )}
+                    {user?.plan === 'free' && candidateUsage >= planLimits.candidates && (
+                      <Badge className="ml-2 bg-yellow-100 text-yellow-800">Limit Reached</Badge>
+                    )}
                   </Button>
                   <Button 
                     className="w-full justify-start" 
                     variant="outline"
-                    onClick={() => handleQuickAction('view-analytics')}
+                    onClick={handleViewAnalytics}
                   >
                     <BarChart3 className="mr-2 h-4 w-4" aria-hidden="true" />
                     View Analytics
@@ -588,7 +675,7 @@ const Dashboard = () => {
                   <Button 
                     className="w-full justify-start" 
                     variant="outline"
-                    onClick={() => handleQuickAction('export-reports')}
+                    onClick={handleExportReports}
                     disabled={recentAssessments.length === 0}
                   >
                     <FileText className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -609,22 +696,22 @@ const Dashboard = () => {
                     <div className="flex justify-between text-sm mb-2">
                       <span className="text-gray-700">Assessments Created</span>
                       <span className="font-semibold text-gray-900">
-                        {dashboardData?.stats?.assessments?.total || 0} 
-                        {user?.plan === 'free' ? ' / 10' : ''}
+                        {assessmentUsage}
+                        {user?.plan === 'free' ? ` / ${planLimits.assessments}` : ''}
                       </span>
                     </div>
                     {user?.plan === 'free' && (
                       <div 
                         className="w-full bg-gray-200 rounded-full h-2"
                         role="progressbar"
-                        aria-valuenow={Math.min((dashboardData?.stats?.assessments?.total || 0) / 10 * 100, 100)}
+                        aria-valuenow={Math.min((assessmentUsage / planLimits.assessments) * 100, 100)}
                         aria-valuemin={0}
                         aria-valuemax={100}
                       >
                         <div 
                           className="bg-gradient-to-r from-blue-500 to-teal-500 h-2 rounded-full transition-all duration-300"
                           style={{ 
-                            width: `${Math.min((dashboardData?.stats?.assessments?.total || 0) / 10 * 100, 100)}%` 
+                            width: `${Math.min((assessmentUsage / planLimits.assessments) * 100, 100)}%` 
                           }} 
                         />
                       </div>
@@ -634,27 +721,29 @@ const Dashboard = () => {
                     <div className="flex justify-between text-sm mb-2">
                       <span className="text-gray-700">Candidates Assessed</span>
                       <span className="font-semibold text-gray-900">
-                        {dashboardData?.stats?.candidates?.total || 0}
-                        {user?.plan === 'free' ? ' / 50' : user?.plan === 'basic' ? ' / 500' : ''}
+                        {candidateUsage}
+                        {user?.plan === 'free' ? ` / ${planLimits.candidates}` : 
+                         user?.plan === 'basic' ? ' / 500' : ''}
                       </span>
                     </div>
                     {user?.plan === 'free' && (
                       <div 
                         className="w-full bg-gray-200 rounded-full h-2"
                         role="progressbar"
-                        aria-valuenow={Math.min((dashboardData?.stats?.candidates?.total || 0) / 50 * 100, 100)}
+                        aria-valuenow={Math.min((candidateUsage / planLimits.candidates) * 100, 100)}
                         aria-valuemin={0}
                         aria-valuemax={100}
                       >
                         <div 
                           className="bg-gradient-to-r from-teal-500 to-green-500 h-2 rounded-full transition-all duration-300"
                           style={{ 
-                            width: `${Math.min((dashboardData?.stats?.candidates?.total || 0) / 50 * 100, 100)}%` 
+                            width: `${Math.min((candidateUsage / planLimits.candidates) * 100, 100)}%` 
                           }} 
                         />
                       </div>
                     )}
                   </div>
+                  
                   <div className="pt-4 border-t border-gray-300">
                     {user?.plan === 'free' ? (
                       <>
@@ -674,14 +763,35 @@ const Dashboard = () => {
                         <p className="text-sm text-gray-700 mb-2">
                           🎉 Great job! You're on the {user?.plan} plan with premium features.
                         </p>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          className="w-full"
-                          onClick={() => navigate('/billing')}
-                        >
-                          Manage Billing
-                        </Button>
+                        <div className="space-y-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            className="w-full justify-start"
+                            onClick={handleBilling}
+                          >
+                            <DollarSign className="mr-2 h-4 w-4" />
+                            Manage Billing
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            className="w-full justify-start"
+                            onClick={handleUserProfile}
+                          >
+                            <User className="mr-2 h-4 w-4" />
+                            Edit Profile
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            className="w-full justify-start"
+                            onClick={handleOrganization}
+                          >
+                            <Shield className="mr-2 h-4 w-4" />
+                            Organization Settings
+                          </Button>
+                        </div>
                       </>
                     )}
                   </div>
