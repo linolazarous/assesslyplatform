@@ -6,20 +6,20 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Checkbox } from '../components/ui/checkbox';
-import { Skeleton } from '../components/ui/skeleton';
 import { Badge } from '../components/ui/badge';
-import { authAPI } from '../services/api';
+import { register } from '../utils/auth'; // Import from auth utils
 import { toast } from 'sonner';
 import {
   Building2, Mail, Lock, User, ArrowLeft,
   AlertCircle, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
-  Shield, Key, Globe, ExternalLink
+  Shield, Key, ExternalLink
 } from 'lucide-react';
 
-// Constants
+// Constants - UPDATED to match backend
 const LOCAL_STORAGE_KEYS = {
-  TOKEN: 'assessly_token',
-  USER: 'assessly_user'
+  ACCESS_TOKEN: 'access_token',
+  REFRESH_TOKEN: 'refresh_token',
+  USER: 'user'
 };
 
 const PASSWORD_REQUIREMENTS = {
@@ -31,7 +31,7 @@ const PASSWORD_REQUIREMENTS = {
 };
 
 // Environment variables
-const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "https://assesslyplatform-pfm1.onrender.com";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "https://assesslyplatform-pfm1.onrender.com/api";
 
 const Register = () => {
   const navigate = useNavigate();
@@ -43,16 +43,13 @@ const Register = () => {
   const [formErrors, setFormErrors] = useState({});
   const [passwordScore, setPasswordScore] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [recaptchaToken, setRecaptchaToken] = useState('');
-  const [formSubmitTimeout, setFormSubmitTimeout] = useState(null);
 
   // Get referral code from URL
   const referralCode = new URLSearchParams(window.location.search).get('ref');
 
   // Redirect if already logged in
   useEffect(() => {
-    const token = localStorage.getItem(LOCAL_STORAGE_KEYS.TOKEN);
+    const token = localStorage.getItem(LOCAL_STORAGE_KEYS.ACCESS_TOKEN);
     if (token) {
       navigate('/dashboard', { replace: true });
     }
@@ -65,15 +62,6 @@ const Register = () => {
         plan: selectedPlan,
         timestamp: new Date().toISOString(),
         referral_code: referralCode || null
-      });
-    }
-    
-    // Facebook Pixel
-    if (window.fbq) {
-      window.fbq('track', 'InitiateCheckout', {
-        content_name: 'Registration',
-        content_category: 'Signup',
-        value: selectedPlan === 'free' ? 0 : selectedPlan === 'basic' ? 29 : 79
       });
     }
   }, [selectedPlan, referralCode]);
@@ -114,8 +102,6 @@ const Register = () => {
       errors.email = 'Work email is required';
     } else if (!emailRegex.test(formData.email)) {
       errors.email = 'Please enter a valid email address';
-    } else if (!formData.email.includes('@')) {
-      errors.email = 'Please include "@" in the email address';
     }
     
     // Organization validation
@@ -152,23 +138,13 @@ const Register = () => {
       }
     }
     
-    // Honeypot validation (if bot fills it)
-    if (formData.website?.trim()) {
-      errors.website = 'Bot detected';
-    }
-    
-    // Recaptcha validation
-    if (!recaptchaToken && process.env.NODE_ENV === 'production') {
-      errors.recaptcha = 'Please complete the security check';
-    }
-    
     // Terms validation
     if (!acceptedTerms) {
       errors.terms = 'You must accept the Terms of Service and Privacy Policy';
     }
     
     return errors;
-  }, [acceptedTerms, recaptchaToken]);
+  }, [acceptedTerms]);
 
   // Handle input changes
   const handleInputChange = useCallback((field, value) => {
@@ -180,16 +156,9 @@ const Register = () => {
     }
   }, [calculatePasswordStrength]);
 
-  // Handle reCAPTCHA verification
-  const handleRecaptchaVerify = useCallback((token) => {
-    setRecaptchaToken(token);
-    setFormErrors(prev => ({ ...prev, recaptcha: undefined }));
-  }, []);
-
-  // Handle form submission
+  // Handle form submission - UPDATED to use auth utility
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitted(true);
 
     const formData = new FormData(e.target);
     const data = {
@@ -197,31 +166,16 @@ const Register = () => {
       email: formData.get('email')?.toString() || '',
       organization: formData.get('organization')?.toString() || '',
       password: formData.get('password')?.toString() || '',
+      // Optional fields your backend might accept
       role: 'admin',
       plan: selectedPlan,
-      agreed_to_terms: acceptedTerms,
-      agreed_at: new Date().toISOString(),
-      recaptcha_token: recaptchaToken,
+      recaptcha_token: null, // If you have reCAPTCHA
       referral_code: referralCode,
-      website: formData.get('website')?.toString() || '', // Honeypot field
-      source: 'web_registration',
-      utm_source: new URLSearchParams(window.location.search).get('utm_source'),
-      utm_medium: new URLSearchParams(window.location.search).get('utm_medium'),
-      utm_campaign: new URLSearchParams(window.location.search).get('utm_campaign')
     };
 
     const errors = validateForm(data);
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
-      
-      // Track validation errors
-      if (window.gtag) {
-        window.gtag('event', 'form_validation_error', {
-          error_fields: Object.keys(errors),
-          form_type: 'registration'
-        });
-      }
-      
       toast.error('Please fix the errors in the form');
       return;
     }
@@ -229,36 +183,9 @@ const Register = () => {
     setLoading(true);
     setFormErrors({});
 
-    // Set timeout for form submission
-    const timeout = setTimeout(() => {
-      if (loading) {
-        setLoading(false);
-        toast.error('Registration timed out. Please try again.');
-        
-        // Track timeout
-        if (window.gtag) {
-          window.gtag('event', 'registration_timeout', {
-            plan: selectedPlan
-          });
-        }
-      }
-    }, 30000); // 30 second timeout
-    
-    setFormSubmitTimeout(timeout);
-
     try {
-      const result = await authAPI.register(data);
-      
-      if (!result?.access_token) {
-        throw new Error('Invalid response from server');
-      }
-
-      // Clear timeout
-      clearTimeout(timeout);
-
-      // Store authentication data
-      localStorage.setItem(LOCAL_STORAGE_KEYS.TOKEN, result.access_token);
-      localStorage.setItem(LOCAL_STORAGE_KEYS.USER, JSON.stringify(result.user));
+      // Use the auth utility for registration
+      const result = await register(data);
       
       // Track successful registration
       if (window.gtag) {
@@ -266,32 +193,17 @@ const Register = () => {
           plan: selectedPlan,
           method: 'email',
           referral_code: referralCode || null,
-          user_id: result.user.id?.substring(0, 8) // Anonymized user ID
+          user_id: result.user?.id?.substring(0, 8)
         });
         
         window.gtag('event', 'sign_up', {
           method: 'email'
         });
       }
-      
-      // Facebook Pixel conversion
-      if (window.fbq) {
-        window.fbq('track', 'CompleteRegistration', {
-          content_name: 'Registration Complete',
-          status: 'success'
-        });
-      }
 
       // Handle email verification flow
-      if (result?.requires_email_verification || result.user?.is_verified === false) {
+      if (result.user?.is_verified === false) {
         toast.success('Account created! Please check your email to verify your account.');
-        
-        // Track email verification required
-        if (window.gtag) {
-          window.gtag('event', 'email_verification_required', {
-            email_provider: data.email.split('@')[1]
-          });
-        }
         
         navigate('/verify-email', { 
           state: { 
@@ -303,20 +215,8 @@ const Register = () => {
       } else {
         toast.success('Account created successfully! Redirecting to dashboard...');
         
-        // Show referral success if applicable
-        if (referralCode && result?.referral_bonus) {
-          toast.info(`Thanks for using a referral! You've earned ${result.referral_bonus}.`);
-        }
-        
         // Show welcome message
-        toast.info(`Welcome to Assessly, ${result.user.name}! Start by creating your first assessment.`);
-        
-        // Track dashboard redirection
-        if (window.gtag) {
-          window.gtag('event', 'registration_to_dashboard', {
-            time_to_redirect: '1500ms'
-          });
-        }
+        toast.info(`Welcome to Assessly, ${result.user?.name || 'User'}! Start by creating your first assessment.`);
         
         // Redirect to dashboard after short delay
         setTimeout(() => {
@@ -326,9 +226,6 @@ const Register = () => {
       
     } catch (error) {
       console.error('Registration error:', error);
-      
-      // Clear timeout on error
-      clearTimeout(timeout);
       
       let errorMessage = 'Registration failed. Please try again.';
       const fieldErrors = {};
@@ -340,26 +237,12 @@ const Register = () => {
         if (error.response.status === 429) {
           errorMessage = 'Too many registration attempts. Please try again in a few minutes.';
           toast.error(errorMessage);
-          
-          // Track rate limiting
-          if (window.gtag) {
-            window.gtag('event', 'rate_limit_exceeded', {
-              endpoint: 'registration',
-              status_code: 429
-            });
-          }
-          
-          // Disable form for 2 minutes
-          setTimeout(() => {
-            setLoading(false);
-          }, 120000);
           return;
         }
         
         // Handle field-specific validation errors from backend
-        if (errorData?.detail && typeof errorData.detail === 'object') {
-          // Backend returns field-specific errors
-          Object.entries(errorData.detail).forEach(([field, messages]) => {
+        if (errorData?.errors) {
+          Object.entries(errorData.errors).forEach(([field, messages]) => {
             if (Array.isArray(messages)) {
               fieldErrors[field] = messages[0];
             }
@@ -367,16 +250,11 @@ const Register = () => {
           setFormErrors(fieldErrors);
           errorMessage = 'Please fix the errors in the form.';
         } 
-        else if (errorData?.detail?.includes('already exists') || errorData?.email) {
+        else if (errorData?.detail?.includes('already registered') || 
+                 errorData?.detail?.includes('already exists') ||
+                 error.response.status === 400) {
           errorMessage = 'An account with this email already exists. Please sign in instead.';
           setFormErrors({ email: errorMessage });
-          
-          // Track duplicate email attempt
-          if (window.gtag) {
-            window.gtag('event', 'duplicate_email_attempt', {
-              email_hash: data.email.substring(0, 5) + '...' // Partial for privacy
-            });
-          }
         } 
         else if (errorData?.detail) {
           errorMessage = errorData.detail;
@@ -386,20 +264,11 @@ const Register = () => {
         }
       } else if (error.request) {
         errorMessage = 'Network error. Please check your connection and try again.';
-        
-        // Track network errors
-        if (window.gtag) {
-          window.gtag('event', 'network_error', {
-            endpoint: 'registration'
-          });
-        }
+      } else if (error.message) {
+        errorMessage = error.message;
       }
       
       toast.error(errorMessage);
-      
-      // Clear sensitive data on failure
-      localStorage.removeItem(LOCAL_STORAGE_KEYS.TOKEN);
-      localStorage.removeItem(LOCAL_STORAGE_KEYS.USER);
       
     } finally {
       setLoading(false);
@@ -421,7 +290,7 @@ const Register = () => {
     return 'Strong';
   };
 
-  // Handle social login
+  // Handle social login - UPDATED URL
   const handleSocialLogin = (provider) => {
     // Track social login attempt
     if (window.gtag) {
@@ -432,20 +301,8 @@ const Register = () => {
     }
     
     // Redirect to backend OAuth endpoint
-    window.location.href = `${API_BASE_URL}/api/auth/${provider}?plan=${selectedPlan}&redirect_uri=${encodeURIComponent(window.location.origin + '/dashboard')}`;
+    window.location.href = `${API_BASE_URL}/auth/${provider}?plan=${selectedPlan}&redirect_uri=${encodeURIComponent(window.location.origin + '/dashboard')}`;
   };
-
-  // Loading state
-  if (loading && !isSubmitted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-green-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md space-y-4">
-          <Skeleton className="h-12 w-48 mx-auto" />
-          <Skeleton className="h-96 w-full rounded-xl" />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-green-50 flex items-center justify-center p-4">
@@ -462,25 +319,16 @@ const Register = () => {
           </Link>
 
           <div className="mb-4">
-            <img
-              src="/images/logo.png"
-              alt="Assessly Platform"
-              className="h-12 w-auto mx-auto"
-              loading="lazy"
-              width="48"
-              height="48"
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.parentElement.innerHTML = '<div class="h-12 w-12 bg-gradient-to-r from-blue-600 to-teal-600 rounded-lg mx-auto"></div>';
-              }}
-            />
+            <div className="h-12 w-12 bg-gradient-to-r from-blue-600 to-teal-600 rounded-lg mx-auto flex items-center justify-center">
+              <User className="h-6 w-6 text-white" />
+            </div>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
             Create Your Account
           </h1>
           <p className="text-gray-600 text-sm sm:text-base">
-            Start your 14-day free trial. No credit card required.
+            Start your free trial. No credit card required.
             {referralCode && (
               <Badge className="ml-2 bg-purple-100 text-purple-800 text-xs">
                 Referral: {referralCode}
@@ -526,22 +374,10 @@ const Register = () => {
                   className="hover:bg-gray-50"
                 >
                   <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24">
-                    <path
-                      fill="#4285F4"
-                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    />
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                   </svg>
                   Google
                 </Button>
@@ -561,26 +397,6 @@ const Register = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-              {/* Honeypot field (invisible to humans) */}
-              <div className="absolute opacity-0 h-0 overflow-hidden" aria-hidden="true">
-                <Label htmlFor="website">Website</Label>
-                <Input 
-                  id="website" 
-                  name="website" 
-                  type="text" 
-                  tabIndex="-1" 
-                  autoComplete="off" 
-                  placeholder="Leave this blank"
-                  onChange={(e) => handleInputChange('website', e.target.value)}
-                />
-                {formErrors.website && (
-                  <Alert variant="destructive" className="mt-2 py-2 text-sm">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>{formErrors.website}</AlertDescription>
-                  </Alert>
-                )}
-              </div>
-
               {/* Full Name */}
               <div>
                 <Label htmlFor="name" className="flex items-center">
@@ -778,19 +594,6 @@ const Register = () => {
                 )}
               </div>
 
-              {/* reCAPTCHA */}
-              {process.env.NODE_ENV === 'production' && (
-                <div className="pt-2">
-                  <div className="g-recaptcha" data-sitekey="YOUR_RECAPTCHA_SITE_KEY"></div>
-                  {formErrors.recaptcha && (
-                    <Alert variant="destructive" className="mt-2 py-2 text-sm">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>{formErrors.recaptcha}</AlertDescription>
-                    </Alert>
-                  )}
-                </div>
-              )}
-
               {/* Terms Agreement */}
               <div className="pt-2">
                 <div className="flex items-start space-x-2">
@@ -804,11 +607,9 @@ const Register = () => {
                   />
                   <Label htmlFor="terms" className="text-sm leading-tight">
                     I agree to the{' '}
-                    <Link 
-                      to="/terms" 
+                    <button
+                      type="button"
                       className="text-blue-600 hover:text-blue-700 font-medium focus:outline-none focus:underline inline-flex items-center"
-                      target="_blank"
-                      rel="noopener noreferrer"
                       onClick={(e) => {
                         e.preventDefault();
                         window.open('/terms', '_blank');
@@ -821,13 +622,11 @@ const Register = () => {
                     >
                       Terms of Service
                       <ExternalLink className="h-3 w-3 ml-1" />
-                    </Link>
+                    </button>
                     {' '}and{' '}
-                    <Link 
-                      to="/privacy" 
+                    <button
+                      type="button"
                       className="text-blue-600 hover:text-blue-700 font-medium focus:outline-none focus:underline inline-flex items-center"
-                      target="_blank"
-                      rel="noopener noreferrer"
                       onClick={(e) => {
                         e.preventDefault();
                         window.open('/privacy', '_blank');
@@ -840,7 +639,7 @@ const Register = () => {
                     >
                       Privacy Policy
                       <ExternalLink className="h-3 w-3 ml-1" />
-                    </Link>
+                    </button>
                   </Label>
                 </div>
                 {formErrors.terms && (
@@ -855,7 +654,7 @@ const Register = () => {
               <Button
                 type="submit"
                 className="w-full bg-gradient-to-r from-blue-600 via-teal-500 to-green-500 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={loading || (process.env.NODE_ENV === 'production' && !recaptchaToken)}
+                disabled={loading}
                 aria-label="Create your account"
               >
                 {loading ? (
