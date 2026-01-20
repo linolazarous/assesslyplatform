@@ -7,20 +7,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Checkbox } from '../components/ui/checkbox';
 import { Skeleton } from '../components/ui/skeleton';
-import { Badge } from '../components/ui/badge'; // Added Badge import
+import { Badge } from '../components/ui/badge';
 import { authAPI } from '../services/api';
 import { toast } from 'sonner';
 import {
   Building2, Mail, Lock, User, ArrowLeft,
   AlertCircle, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
-  Shield, Key
+  Shield, Key, Globe, ExternalLink
 } from 'lucide-react';
 
-// Constants - REMOVED "as const" since this is a JavaScript file
+// Constants
 const LOCAL_STORAGE_KEYS = {
   TOKEN: 'assessly_token',
   USER: 'assessly_user'
-}; // Removed: as const
+};
 
 const PASSWORD_REQUIREMENTS = {
   minLength: 8,
@@ -28,7 +28,10 @@ const PASSWORD_REQUIREMENTS = {
   requireLowercase: true,
   requireNumbers: true,
   requireSpecialChars: true
-}; // Removed: as const
+};
+
+// Environment variables
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "https://assesslyplatform-pfm1.onrender.com";
 
 const Register = () => {
   const navigate = useNavigate();
@@ -41,6 +44,11 @@ const Register = () => {
   const [passwordScore, setPasswordScore] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [recaptchaToken, setRecaptchaToken] = useState('');
+  const [formSubmitTimeout, setFormSubmitTimeout] = useState(null);
+
+  // Get referral code from URL
+  const referralCode = new URLSearchParams(window.location.search).get('ref');
 
   // Redirect if already logged in
   useEffect(() => {
@@ -49,6 +57,26 @@ const Register = () => {
       navigate('/dashboard', { replace: true });
     }
   }, [navigate]);
+
+  // Track registration attempts
+  useEffect(() => {
+    if (window.gtag) {
+      window.gtag('event', 'begin_registration', {
+        plan: selectedPlan,
+        timestamp: new Date().toISOString(),
+        referral_code: referralCode || null
+      });
+    }
+    
+    // Facebook Pixel
+    if (window.fbq) {
+      window.fbq('track', 'InitiateCheckout', {
+        content_name: 'Registration',
+        content_category: 'Signup',
+        value: selectedPlan === 'free' ? 0 : selectedPlan === 'basic' ? 29 : 79
+      });
+    }
+  }, [selectedPlan, referralCode]);
 
   // Password strength calculator
   const calculatePasswordStrength = useCallback((password) => {
@@ -124,13 +152,23 @@ const Register = () => {
       }
     }
     
+    // Honeypot validation (if bot fills it)
+    if (formData.website?.trim()) {
+      errors.website = 'Bot detected';
+    }
+    
+    // Recaptcha validation
+    if (!recaptchaToken && process.env.NODE_ENV === 'production') {
+      errors.recaptcha = 'Please complete the security check';
+    }
+    
     // Terms validation
     if (!acceptedTerms) {
       errors.terms = 'You must accept the Terms of Service and Privacy Policy';
     }
     
     return errors;
-  }, [acceptedTerms]);
+  }, [acceptedTerms, recaptchaToken]);
 
   // Handle input changes
   const handleInputChange = useCallback((field, value) => {
@@ -141,6 +179,12 @@ const Register = () => {
       setPasswordScore(score);
     }
   }, [calculatePasswordStrength]);
+
+  // Handle reCAPTCHA verification
+  const handleRecaptchaVerify = useCallback((token) => {
+    setRecaptchaToken(token);
+    setFormErrors(prev => ({ ...prev, recaptcha: undefined }));
+  }, []);
 
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -156,18 +200,51 @@ const Register = () => {
       role: 'admin',
       plan: selectedPlan,
       agreed_to_terms: acceptedTerms,
-      agreed_at: new Date().toISOString()
+      agreed_at: new Date().toISOString(),
+      recaptcha_token: recaptchaToken,
+      referral_code: referralCode,
+      website: formData.get('website')?.toString() || '', // Honeypot field
+      source: 'web_registration',
+      utm_source: new URLSearchParams(window.location.search).get('utm_source'),
+      utm_medium: new URLSearchParams(window.location.search).get('utm_medium'),
+      utm_campaign: new URLSearchParams(window.location.search).get('utm_campaign')
     };
 
     const errors = validateForm(data);
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
+      
+      // Track validation errors
+      if (window.gtag) {
+        window.gtag('event', 'form_validation_error', {
+          error_fields: Object.keys(errors),
+          form_type: 'registration'
+        });
+      }
+      
       toast.error('Please fix the errors in the form');
       return;
     }
 
     setLoading(true);
     setFormErrors({});
+
+    // Set timeout for form submission
+    const timeout = setTimeout(() => {
+      if (loading) {
+        setLoading(false);
+        toast.error('Registration timed out. Please try again.');
+        
+        // Track timeout
+        if (window.gtag) {
+          window.gtag('event', 'registration_timeout', {
+            plan: selectedPlan
+          });
+        }
+      }
+    }, 30000); // 30 second timeout
+    
+    setFormSubmitTimeout(timeout);
 
     try {
       const result = await authAPI.register(data);
@@ -176,45 +253,146 @@ const Register = () => {
         throw new Error('Invalid response from server');
       }
 
+      // Clear timeout
+      clearTimeout(timeout);
+
       // Store authentication data
       localStorage.setItem(LOCAL_STORAGE_KEYS.TOKEN, result.access_token);
       localStorage.setItem(LOCAL_STORAGE_KEYS.USER, JSON.stringify(result.user));
       
-      // Track registration
+      // Track successful registration
       if (window.gtag) {
-        window.gtag('event', 'sign_up', {
+        window.gtag('event', 'registration_complete', {
+          plan: selectedPlan,
           method: 'email',
-          plan: selectedPlan
+          referral_code: referralCode || null,
+          user_id: result.user.id?.substring(0, 8) // Anonymized user ID
+        });
+        
+        window.gtag('event', 'sign_up', {
+          method: 'email'
+        });
+      }
+      
+      // Facebook Pixel conversion
+      if (window.fbq) {
+        window.fbq('track', 'CompleteRegistration', {
+          content_name: 'Registration Complete',
+          status: 'success'
         });
       }
 
-      toast.success('Account created successfully! Redirecting to dashboard...');
-      
-      // Show welcome message
-      toast.info(`Welcome to Assessly, ${result.user.name}! Start by creating your first assessment.`);
-      
-      // Redirect to dashboard after short delay
-      setTimeout(() => {
-        navigate('/dashboard', { replace: true });
-      }, 1500);
+      // Handle email verification flow
+      if (result?.requires_email_verification || result.user?.is_verified === false) {
+        toast.success('Account created! Please check your email to verify your account.');
+        
+        // Track email verification required
+        if (window.gtag) {
+          window.gtag('event', 'email_verification_required', {
+            email_provider: data.email.split('@')[1]
+          });
+        }
+        
+        navigate('/verify-email', { 
+          state: { 
+            email: data.email,
+            name: data.name,
+            user_id: result.user.id
+          }
+        });
+      } else {
+        toast.success('Account created successfully! Redirecting to dashboard...');
+        
+        // Show referral success if applicable
+        if (referralCode && result?.referral_bonus) {
+          toast.info(`Thanks for using a referral! You've earned ${result.referral_bonus}.`);
+        }
+        
+        // Show welcome message
+        toast.info(`Welcome to Assessly, ${result.user.name}! Start by creating your first assessment.`);
+        
+        // Track dashboard redirection
+        if (window.gtag) {
+          window.gtag('event', 'registration_to_dashboard', {
+            time_to_redirect: '1500ms'
+          });
+        }
+        
+        // Redirect to dashboard after short delay
+        setTimeout(() => {
+          navigate('/dashboard', { replace: true });
+        }, 1500);
+      }
       
     } catch (error) {
       console.error('Registration error:', error);
       
+      // Clear timeout on error
+      clearTimeout(timeout);
+      
       let errorMessage = 'Registration failed. Please try again.';
+      const fieldErrors = {};
       
       if (error.response) {
         const errorData = error.response.data;
         
-        if (errorData?.detail?.includes('already exists') || errorData?.email) {
+        // Handle rate limiting
+        if (error.response.status === 429) {
+          errorMessage = 'Too many registration attempts. Please try again in a few minutes.';
+          toast.error(errorMessage);
+          
+          // Track rate limiting
+          if (window.gtag) {
+            window.gtag('event', 'rate_limit_exceeded', {
+              endpoint: 'registration',
+              status_code: 429
+            });
+          }
+          
+          // Disable form for 2 minutes
+          setTimeout(() => {
+            setLoading(false);
+          }, 120000);
+          return;
+        }
+        
+        // Handle field-specific validation errors from backend
+        if (errorData?.detail && typeof errorData.detail === 'object') {
+          // Backend returns field-specific errors
+          Object.entries(errorData.detail).forEach(([field, messages]) => {
+            if (Array.isArray(messages)) {
+              fieldErrors[field] = messages[0];
+            }
+          });
+          setFormErrors(fieldErrors);
+          errorMessage = 'Please fix the errors in the form.';
+        } 
+        else if (errorData?.detail?.includes('already exists') || errorData?.email) {
           errorMessage = 'An account with this email already exists. Please sign in instead.';
-        } else if (errorData?.detail) {
+          setFormErrors({ email: errorMessage });
+          
+          // Track duplicate email attempt
+          if (window.gtag) {
+            window.gtag('event', 'duplicate_email_attempt', {
+              email_hash: data.email.substring(0, 5) + '...' // Partial for privacy
+            });
+          }
+        } 
+        else if (errorData?.detail) {
           errorMessage = errorData.detail;
-        } else if (error.response.status === 422) {
+        } 
+        else if (error.response.status === 422) {
           errorMessage = 'Please check your information and try again.';
         }
       } else if (error.request) {
         errorMessage = 'Network error. Please check your connection and try again.';
+        
+        // Track network errors
+        if (window.gtag) {
+          window.gtag('event', 'network_error', {
+            endpoint: 'registration'
+          });
+        }
       }
       
       toast.error(errorMessage);
@@ -241,6 +419,20 @@ const Register = () => {
     if (score < 70) return 'Fair';
     if (score < 90) return 'Good';
     return 'Strong';
+  };
+
+  // Handle social login
+  const handleSocialLogin = (provider) => {
+    // Track social login attempt
+    if (window.gtag) {
+      window.gtag('event', 'social_login_attempt', {
+        provider: provider,
+        plan: selectedPlan
+      });
+    }
+    
+    // Redirect to backend OAuth endpoint
+    window.location.href = `${API_BASE_URL}/api/auth/${provider}?plan=${selectedPlan}&redirect_uri=${encodeURIComponent(window.location.origin + '/dashboard')}`;
   };
 
   // Loading state
@@ -277,6 +469,10 @@ const Register = () => {
               loading="lazy"
               width="48"
               height="48"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.parentElement.innerHTML = '<div class="h-12 w-12 bg-gradient-to-r from-blue-600 to-teal-600 rounded-lg mx-auto"></div>';
+              }}
             />
           </div>
 
@@ -285,6 +481,11 @@ const Register = () => {
           </h1>
           <p className="text-gray-600 text-sm sm:text-base">
             Start your 14-day free trial. No credit card required.
+            {referralCode && (
+              <Badge className="ml-2 bg-purple-100 text-purple-800 text-xs">
+                Referral: {referralCode}
+              </Badge>
+            )}
           </p>
         </header>
 
@@ -305,7 +506,81 @@ const Register = () => {
           </CardHeader>
           
           <CardContent>
+            {/* Social Login Options */}
+            <div className="mb-6">
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">Or continue with</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleSocialLogin('google')}
+                  disabled={loading}
+                  className="hover:bg-gray-50"
+                >
+                  <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                    />
+                  </svg>
+                  Google
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleSocialLogin('github')}
+                  disabled={loading}
+                  className="hover:bg-gray-50"
+                >
+                  <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                  </svg>
+                  GitHub
+                </Button>
+              </div>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+              {/* Honeypot field (invisible to humans) */}
+              <div className="absolute opacity-0 h-0 overflow-hidden" aria-hidden="true">
+                <Label htmlFor="website">Website</Label>
+                <Input 
+                  id="website" 
+                  name="website" 
+                  type="text" 
+                  tabIndex="-1" 
+                  autoComplete="off" 
+                  placeholder="Leave this blank"
+                  onChange={(e) => handleInputChange('website', e.target.value)}
+                />
+                {formErrors.website && (
+                  <Alert variant="destructive" className="mt-2 py-2 text-sm">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{formErrors.website}</AlertDescription>
+                  </Alert>
+                )}
+              </div>
+
               {/* Full Name */}
               <div>
                 <Label htmlFor="name" className="flex items-center">
@@ -324,6 +599,7 @@ const Register = () => {
                   onChange={(e) => handleInputChange('name', e.target.value)}
                   disabled={loading}
                   autoComplete="name"
+                  maxLength={50}
                 />
                 {formErrors.name && (
                   <Alert variant="destructive" className="mt-2 py-2 text-sm">
@@ -351,6 +627,7 @@ const Register = () => {
                   onChange={(e) => handleInputChange('email', e.target.value)}
                   disabled={loading}
                   autoComplete="email"
+                  inputMode="email"
                 />
                 {formErrors.email && (
                   <Alert variant="destructive" className="mt-2 py-2 text-sm">
@@ -378,6 +655,7 @@ const Register = () => {
                   onChange={(e) => handleInputChange('organization', e.target.value)}
                   disabled={loading}
                   autoComplete="organization"
+                  maxLength={100}
                 />
                 {formErrors.organization && (
                   <Alert variant="destructive" className="mt-2 py-2 text-sm">
@@ -500,6 +778,19 @@ const Register = () => {
                 )}
               </div>
 
+              {/* reCAPTCHA */}
+              {process.env.NODE_ENV === 'production' && (
+                <div className="pt-2">
+                  <div className="g-recaptcha" data-sitekey="YOUR_RECAPTCHA_SITE_KEY"></div>
+                  {formErrors.recaptcha && (
+                    <Alert variant="destructive" className="mt-2 py-2 text-sm">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{formErrors.recaptcha}</AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              )}
+
               {/* Terms Agreement */}
               <div className="pt-2">
                 <div className="flex items-start space-x-2">
@@ -515,20 +806,40 @@ const Register = () => {
                     I agree to the{' '}
                     <Link 
                       to="/terms" 
-                      className="text-blue-600 hover:text-blue-700 font-medium focus:outline-none focus:underline"
+                      className="text-blue-600 hover:text-blue-700 font-medium focus:outline-none focus:underline inline-flex items-center"
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.open('/terms', '_blank');
+                        if (window.gtag) {
+                          window.gtag('event', 'view_terms', {
+                            location: 'registration_form'
+                          });
+                        }
+                      }}
                     >
                       Terms of Service
+                      <ExternalLink className="h-3 w-3 ml-1" />
                     </Link>
                     {' '}and{' '}
                     <Link 
                       to="/privacy" 
-                      className="text-blue-600 hover:text-blue-700 font-medium focus:outline-none focus:underline"
+                      className="text-blue-600 hover:text-blue-700 font-medium focus:outline-none focus:underline inline-flex items-center"
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.open('/privacy', '_blank');
+                        if (window.gtag) {
+                          window.gtag('event', 'view_privacy', {
+                            location: 'registration_form'
+                          });
+                        }
+                      }}
                     >
                       Privacy Policy
+                      <ExternalLink className="h-3 w-3 ml-1" />
                     </Link>
                   </Label>
                 </div>
@@ -543,8 +854,8 @@ const Register = () => {
               {/* Submit Button */}
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-blue-600 via-teal-500 to-green-500 hover:opacity-90 transition-opacity disabled:opacity-50"
-                disabled={loading}
+                className="w-full bg-gradient-to-r from-blue-600 via-teal-500 to-green-500 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading || (process.env.NODE_ENV === 'production' && !recaptchaToken)}
                 aria-label="Create your account"
               >
                 {loading ? (
@@ -553,7 +864,10 @@ const Register = () => {
                     Creating Account...
                   </>
                 ) : (
-                  'Create Account'
+                  <>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Create Account
+                  </>
                 )}
               </Button>
 
@@ -564,6 +878,13 @@ const Register = () => {
                   to="/login" 
                   className="text-blue-600 hover:text-blue-700 font-medium focus:outline-none focus:underline"
                   aria-label="Sign in to your existing account"
+                  onClick={() => {
+                    if (window.gtag) {
+                      window.gtag('event', 'click_login_from_register', {
+                        location: 'registration_page'
+                      });
+                    }
+                  }}
                 >
                   Sign in
                 </Link>
