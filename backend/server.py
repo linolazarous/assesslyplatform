@@ -5,15 +5,6 @@ import uuid
 import secrets
 from urllib.parse import urlencode
 import httpx
-
-
-
-
-
-
-
-
-
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from bson import ObjectId
