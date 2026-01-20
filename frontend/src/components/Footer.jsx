@@ -1,6 +1,7 @@
+// frontend/src/components/Footer.jsx
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, Lock, FileCheck, Mail } from 'lucide-react';
+import { Shield, Lock, FileCheck, Mail, ExternalLink } from 'lucide-react';
 
 const Footer = () => {
   return (
@@ -20,6 +21,13 @@ const Footer = () => {
             <p className="text-sm text-gray-500 mt-4">
               Enterprise-grade assessment platform trusted by 500+ organizations worldwide.
             </p>
+            <div className="flex items-center mt-4 text-xs text-gray-500">
+              <span>Built with React</span>
+              <span className="mx-2">•</span>
+              <span>Powered by FastAPI</span>
+              <span className="mx-2">•</span>
+              <span>UI by Shadcn UI</span>
+            </div>
           </div>
 
           {/* Security & Compliance */}
@@ -36,16 +44,16 @@ const Footer = () => {
                 </Link>
               </li>
               <li>
-                <a href="mailto:gdpr@assesslyplatform.com" className="hover:text-white transition-colors flex items-center">
+                <Link to="/gdpr-compliance" className="hover:text-white transition-colors flex items-center">
                   <FileCheck className="mr-2 h-4 w-4" />
                   GDPR Compliance
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="mailto:soc-2@assesslyplatform.com" className="hover:text-white transition-colors flex items-center">
+                <Link to="/soc-2" className="hover:text-white transition-colors flex items-center">
                   <FileCheck className="mr-2 h-4 w-4" />
-                  SOC-2 Certification
-                </a>
+                  SOC-2 Information
+                </Link>
               </li>
               <li>
                 <Link to="/privacy" className="hover:text-white transition-colors">
@@ -78,9 +86,37 @@ const Footer = () => {
                 </a>
               </li>
               <li>
-                <a href="https://docs.assesslyplatform.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
-                  Documentation
+                <a href="mailto:privacy@assesslyplatform.com" className="hover:text-white transition-colors">
+                  privacy@assesslyplatform.com
                 </a>
+              </li>
+              <li>
+                <a href="mailto:legal@assesslyplatform.com" className="hover:text-white transition-colors">
+                  legal@assesslyplatform.com
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          {/* Quick Links */}
+          <div>
+            <h4 className="text-white font-semibold mb-4">Quick Links</h4>
+            <ul className="space-y-2">
+              <li>
+                <a href="https://docs.assesslyplatform.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors flex items-center">
+                  Documentation
+                  <ExternalLink className="ml-2 h-3 w-3" />
+                </a>
+              </li>
+              <li>
+                <Link to="/#features" className="hover:text-white transition-colors">
+                  Features
+                </Link>
+              </li>
+              <li>
+                <Link to="/#pricing" className="hover:text-white transition-colors">
+                  Pricing
+                </Link>
               </li>
               <li>
                 <Link to="/#contact" className="hover:text-white transition-colors">
@@ -102,8 +138,12 @@ const Footer = () => {
                 <span className="h-2 w-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
                 99.9% Uptime
               </span>
-              <span className="text-sm text-gray-500">SOC-2 Compliant</span>
-              <span className="text-sm text-gray-500">GDPR Ready</span>
+              <Link to="/soc-2" className="text-sm text-gray-500 hover:text-white">
+                SOC-2 Compliant
+              </Link>
+              <Link to="/gdpr-compliance" className="text-sm text-gray-500 hover:text-white">
+                GDPR Ready
+              </Link>
             </div>
           </div>
         </div>
