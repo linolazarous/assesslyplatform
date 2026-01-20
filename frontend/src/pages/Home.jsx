@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Building2, Shield, FileEdit, BarChart3, Lock, Plug, 
   ArrowRight, CheckCircle2, TrendingUp, Users, Target,
-  Zap, Globe, Clock, Award, FileCheck, Mail,
-  AlertCircle, Loader2
+  Zap, Mail, Loader2, Globe, Clock, Award, FileCheck,
+  AlertCircle
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -13,34 +13,192 @@ import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Alert, AlertDescription } from '../components/ui/alert';
-import { Skeleton } from '../components/ui/skeleton';
 import Navigation from '../components/Navigation';
 import Footer from '../components/Footer';
-import { 
-  mockFeatures, 
-  mockCapabilities, 
-  mockAssessmentTypes, 
-  mockPricingPlans
-} from '../utils/mock';
-import { contactAPI, demoAPI } from '../services/api';
+import { contactAPI } from '../services/api';
 import { toast } from 'sonner';
 
 // Lazy load heavy components
 const VideoBackground = lazy(() => import('../components/VideoBackground'));
 
-const iconMap = {
-  Building2,
-  Shield,
-  FileEdit,
-  BarChart3,
-  Lock,
-  Plug
-}; // Removed: as const
+// Inline feature data - no external mock imports
+const features = [
+  {
+    id: 1,
+    title: "Multi-Tenant Architecture",
+    description: "Organization-level data isolation with shared infrastructure for cost efficiency. Centralized Super Admin control with custom branding.",
+    icon: Building2
+  },
+  {
+    id: 2,
+    title: "Role-Based Access Control",
+    description: "Granular permissions across Super Admin, Organization Admin, Assessor, and Candidate roles with strict access boundaries.",
+    icon: Shield
+  },
+  {
+    id: 3,
+    title: "Assessment Builder",
+    description: "Intuitive drag-and-drop builder with 15+ question types, AI-assisted generation, templates, and versioning.",
+    icon: FileEdit
+  },
+  {
+    id: 4,
+    title: "Real-Time Analytics",
+    description: "Live dashboards with predictive analytics, AI-powered reports, and export to PDF, Excel, and CSV.",
+    icon: BarChart3
+  },
+  {
+    id: 5,
+    title: "Enterprise Security",
+    description: "End-to-end encryption, SOC-2 ready architecture, GDPR & HIPAA alignment with full audit logs.",
+    icon: Lock
+  },
+  {
+    id: 6,
+    title: "API & Integrations",
+    description: "RESTful API, webhooks, Zapier integration, and connectors for LMS, HRIS, and CRM systems.",
+    icon: Plug
+  }
+];
+
+const capabilities = [
+  {
+    id: 1,
+    title: "Create & Design",
+    description: "Drag-and-drop builder with AI assistance",
+    step: "01"
+  },
+  {
+    id: 2,
+    title: "Configure & Brand",
+    description: "Organization-specific settings and custom domains",
+    step: "02"
+  },
+  {
+    id: 3,
+    title: "Distribute & Invite",
+    description: "Email, links, and seamless integrations",
+    step: "03"
+  },
+  {
+    id: 4,
+    title: "Monitor & Analyze",
+    description: "Live dashboards with real-time insights",
+    step: "04"
+  },
+  {
+    id: 5,
+    title: "Generate Reports",
+    description: "AI-powered insights and visualizations",
+    step: "05"
+  },
+  {
+    id: 6,
+    title: "Take Action",
+    description: "Data-driven decisions with confidence",
+    step: "06"
+  }
+];
+
+const assessmentTypes = [
+  "Exams & Quizzes",
+  "Employee Evaluations",
+  "360° Feedback",
+  "Surveys & Questionnaires",
+  "Certification Tests",
+  "Skills & Aptitude Assessments",
+  "Personality & Behavioral Tests",
+  "Pre-employment Screening",
+  "Course & Training Assessments",
+  "Compliance & Regulatory Testing"
+];
+
+const pricingPlans = [
+  {
+    id: "free",
+    name: "Free",
+    price: 0,
+    period: "month",
+    description: "Perfect for trying out Assessly",
+    features: [
+      "Up to 10 assessments",
+      "50 candidates per month",
+      "Basic question types",
+      "Email support",
+      "7-day data retention",
+      "Community access"
+    ],
+    cta: "Get Started",
+    popular: false
+  },
+  {
+    id: "basic",
+    name: "Basic",
+    price: 29,
+    period: "month",
+    description: "For small teams and organizations",
+    features: [
+      "Unlimited assessments",
+      "500 candidates per month",
+      "All question types",
+      "Priority email support",
+      "30-day data retention",
+      "Custom branding",
+      "Basic analytics",
+      "API access"
+    ],
+    cta: "Start Free Trial",
+    popular: false
+  },
+  {
+    id: "professional",
+    name: "Professional",
+    price: 79,
+    period: "month",
+    description: "For growing organizations",
+    features: [
+      "Unlimited assessments",
+      "5,000 candidates per month",
+      "AI-assisted question generation",
+      "24/7 priority support",
+      "90-day data retention",
+      "Custom branding & domains",
+      "Advanced analytics & reports",
+      "Full API & webhooks",
+      "LMS/HRIS integrations",
+      "Dedicated account manager"
+    ],
+    cta: "Start Free Trial",
+    popular: true
+  },
+  {
+    id: "enterprise",
+    name: "Enterprise",
+    price: null,
+    period: "month",
+    description: "For large-scale operations",
+    features: [
+      "Unlimited everything",
+      "Unlimited candidates",
+      "White-label solutions",
+      "Dedicated infrastructure",
+      "Custom SLA & uptime",
+      "Custom integrations",
+      "SOC-2 compliance support",
+      "On-premise deployment option",
+      "Custom AI model training",
+      "24/7 phone & email support",
+      "Implementation assistance"
+    ],
+    cta: "Contact Sales",
+    popular: false
+  }
+];
 
 const Home = () => {
   const navigate = useNavigate();
   const [videoError, setVideoError] = useState(false);
-  const [metrics, setMetrics] = useState({ orgs: 0, candidates: 0, questions: 0, uptime: 0 });
+  const [metrics, setMetrics] = useState({ orgs: 500, candidates: 85000, questions: 250000, uptime: 99.9 });
   const [selectedPlan, setSelectedPlan] = useState('professional');
   const [isLoading, setIsLoading] = useState({
     contact: false,
@@ -50,7 +208,7 @@ const Home = () => {
   const videoRef = useRef(null);
   const observerRef = useRef(null);
 
-  // Animated counter for trust metrics with intersection observer
+  // Animated counter for trust metrics
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -156,7 +314,7 @@ const Home = () => {
       }
     } catch (error) {
       console.error('Contact form error:', error);
-      toast.error(error.message || 'Failed to send message. Please try again.');
+      toast.error(error.response?.data?.detail || error.message || 'Failed to send message. Please try again.');
     } finally {
       setIsLoading(prev => ({ ...prev, contact: false }));
     }
@@ -179,7 +337,11 @@ const Home = () => {
     setFormErrors({});
 
     try {
-      await demoAPI.submitDemoRequest(data);
+      // Using contact API for demo requests (backend accepts both)
+      await contactAPI.submitContactForm({
+        ...data,
+        message: `Demo Request: ${data.notes || 'No additional notes'}. Company Size: ${data.size || 'Not specified'}`
+      });
       toast.success('Demo request received! Our team will contact you within 24 hours.');
       e.target.reset();
       
@@ -189,7 +351,7 @@ const Home = () => {
       }
     } catch (error) {
       console.error('Demo request error:', error);
-      toast.error(error.message || 'Failed to submit demo request. Please try again.');
+      toast.error(error.response?.data?.detail || error.message || 'Failed to submit demo request. Please try again.');
     } finally {
       setIsLoading(prev => ({ ...prev, demo: false }));
     }
@@ -226,22 +388,8 @@ const Home = () => {
 
   const handleVideoError = useCallback(() => {
     setVideoError(true);
-    // Log to monitoring service
     console.error('Hero video failed to load');
   }, []);
-
-  // Loading state
-  if (!metrics) {
-    return (
-      <div className="min-h-screen bg-white">
-        <Navigation />
-        <div className="pt-16">
-          <Skeleton className="h-screen w-full" />
-        </div>
-        <Footer />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -385,8 +533,8 @@ const Home = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-            {mockFeatures.map((feature) => {
-              const Icon = iconMap[feature.icon];
+            {features.map((feature) => {
+              const Icon = feature.icon;
               return (
                 <Card 
                   key={feature.id} 
@@ -427,7 +575,7 @@ const Home = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {mockCapabilities.map((capability) => (
+            {capabilities.map((capability) => (
               <div 
                 key={capability.id}
                 className="relative p-6 sm:p-8 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl border-2 border-gray-200 hover:border-teal-400 transition-all duration-300 hover:shadow-lg group focus-within:ring-2 focus-within:ring-teal-500"
@@ -466,7 +614,7 @@ const Home = () => {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-            {mockAssessmentTypes.map((type, idx) => (
+            {assessmentTypes.map((type, idx) => (
               <div 
                 key={idx}
                 className="p-4 sm:p-6 bg-white rounded-xl border-2 border-gray-200 hover:border-blue-400 hover:shadow-lg transition-all duration-300 text-center group focus-within:ring-2 focus-within:ring-blue-500"
@@ -496,7 +644,7 @@ const Home = () => {
           </div>
 
           <div className="relative max-w-6xl mx-auto">
-            {/* Mock Dashboard */}
+            {/* Dashboard UI Preview */}
             <div className="bg-gray-800 rounded-2xl border-2 border-gray-700 p-6 sm:p-8 shadow-2xl">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
                 <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-4 sm:p-6 rounded-xl">
@@ -583,7 +731,7 @@ const Home = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {mockPricingPlans.map((plan) => {
+            {pricingPlans.map((plan) => {
               const isSelected = selectedPlan === plan.id;
               const isPopular = plan.popular;
               
