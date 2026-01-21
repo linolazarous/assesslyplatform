@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, Lock, FileText, Calendar, Mail, Building, ExternalLink, ArrowLeft } from 'lucide-react';
-import Navigation from '../components/Navigation'; // Add navigation
+import Navigation from '../../components/Navigation';
 
 const PrivacyPolicy = () => {
   const lastUpdated = 'January 1, 2025';
