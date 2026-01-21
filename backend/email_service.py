@@ -453,8 +453,7 @@ async def send_password_reset_confirmation(
 ) -> bool:
     """Send confirmation email after password reset."""
     subject = "Password Updated Successfully - Assessly Platform"
-    html = f"""
-    <!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
