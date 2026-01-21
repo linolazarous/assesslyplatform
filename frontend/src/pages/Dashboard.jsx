@@ -454,91 +454,90 @@ const Dashboard = () => {
   }
 
   const planLimits = getPlanLimits(user?.plan || 'free');
-  const assessmentUsage = dashboardData?.assessments?.total || 0;
-  const candidateUsage = dashboardData?.candidates?.total || 0;
+const assessmentUsage = dashboardData?.assessments?.total || 0;
+const candidateUsage = dashboardData?.candidates?.total || 0;
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-      <Navigation />
+return (
+  <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+    <Navigation />
 
-      <div className="pt-16">
-        {/* Header */}
-        <header className="bg-white/80 backdrop-blur-sm border-b shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center">
-                  <LayoutDashboard className="mr-3 h-6 w-6 text-blue-600" />
-                  Dashboard
-                </h1>
-                <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <p className="text-gray-600">
-                    Welcome back, <span className="font-semibold text-gray-800">{user?.name || 'User'}</span>
-                  </p>
-                  <Badge 
-                    variant="outline" 
-                    className="border-blue-200 text-blue-700 bg-blue-50"
-                  >
-                    <Briefcase className="h-3 w-3 mr-1" />
-                    {user?.organization || 'Your Organization'}
-                  </Badge>
-                  <Badge 
-                    className={`${
-                      user?.plan === 'free' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white' :
-                      user?.plan === 'basic' ? 'bg-gradient-to-r from-teal-500 to-teal-600 text-white' :
-                      user?.plan === 'professional' ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white' :
-                      'bg-gradient-to-r from-gray-700 to-gray-800 text-white'
-                    }`}
-                  >
-                    {user?.plan?.toUpperCase() || 'FREE'} PLAN
-                  </Badge>
-                  {user?.plan === 'free' && (
-                    <Badge variant="outline" className="text-xs bg-yellow-50 border-yellow-200 text-yellow-700">
-                      {candidateUsage}/{planLimits.candidates} candidates
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <div className="mt-4 md:mt-0 flex flex-wrap gap-2">
-                <Button 
+    <div className="pt-16">
+      {/* Header */}
+      <header className="bg-white/80 backdrop-blur-sm border-b shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center">
+                <LayoutDashboard className="mr-3 h-6 w-6 text-blue-600" />
+                Dashboard
+              </h1>
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <p className="text-gray-600">
+                  Welcome back, <span className="font-semibold text-gray-800">{user?.name || 'User'}</span>
+                </p>
+                <Badge 
                   variant="outline" 
-                  onClick={handleRefresh}
-                  disabled={isRefreshing}
-                  aria-label="Refresh dashboard"
-                  size="sm"
-                  className="shrink-0"
+                  className="border-blue-200 text-blue-700 bg-blue-50"
                 >
-                  <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  {isRefreshing ? 'Refreshing...' : 'Refresh'}
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={handleSettings}
-                  aria-label="Settings"
-                  size="sm"
-                  className="shrink-0"
+                  <Briefcase className="h-3 w-3 mr-1" />
+                  {user?.organization || 'Your Organization'}
+                </Badge>
+                <Badge 
+                  className={`${
+                    user?.plan === 'free' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white' :
+                    user?.plan === 'basic' ? 'bg-gradient-to-r from-teal-500 to-teal-600 text-white' :
+                    user?.plan === 'professional' ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white' :
+                    'bg-gradient-to-r from-gray-700 to-gray-800 text-white'
+                  }`}
                 >
-                  <Settings className="mr-2 h-4 w-4" />
-                  Settings
-                </Button>
-                <Button 
-                  className="bg-gradient-to-r from-blue-600 to-teal-600 hover:from-blue-700 hover:to-teal-700 transition-all shadow-md"
-                  onClick={handleCreateAssessment}
-                  disabled={isRefreshing || (user?.plan === 'free' && assessmentUsage >= planLimits.assessments)}
-                  aria-label="Create new assessment"
-                  size="sm"
-                  className="shrink-0"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Assessment
-                  {user?.plan === 'free' && assessmentUsage >= planLimits.assessments && (
-                    <Badge className="ml-2 bg-yellow-100 text-yellow-800">Limit Reached</Badge>
-                  )}
-                </Button>
+                  {user?.plan?.toUpperCase() || 'FREE'} PLAN
+                </Badge>
+                {user?.plan === 'free' && (
+                  <Badge variant="outline" className="text-xs bg-yellow-50 border-yellow-200 text-yellow-700">
+                    {candidateUsage}/{planLimits.candidates} candidates
+                  </Badge>
+                )}
               </div>
             </div>
+            <div className="mt-4 md:mt-0 flex flex-wrap gap-2">
+              <Button 
+                variant="outline" 
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                aria-label="Refresh dashboard"
+                size="sm"
+                className="shrink-0"
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {isRefreshing ? 'Refreshing...' : 'Refresh'}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={handleSettings}
+                aria-label="Settings"
+                size="sm"
+                className="shrink-0"
+              >
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </Button>
+              <Button 
+                className="bg-gradient-to-r from-blue-600 to-teal-600 hover:from-blue-700 hover:to-teal-700 transition-all shadow-md shrink-0"
+                onClick={handleCreateAssessment}
+                disabled={isRefreshing || (user?.plan === 'free' && assessmentUsage >= planLimits.assessments)}
+                aria-label="Create new assessment"
+                size="sm"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Create Assessment
+                {user?.plan === 'free' && assessmentUsage >= planLimits.assessments && (
+                  <Badge className="ml-2 bg-yellow-100 text-yellow-800">Limit Reached</Badge>
+                )}
+              </Button>
+            </div>
           </div>
-        </header>
+        </div>
+      </header>
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
