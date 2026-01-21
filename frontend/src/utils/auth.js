@@ -3,7 +3,7 @@ import axios from 'axios';
 import { authAPI } from '../services/api';
 import config, { 
   getAuthToken, setAuthToken, getRefreshToken, setRefreshToken, 
-  setUser, getUser, clearAuthData, isAuthenticated 
+  setUser, getUser, clearAuthData, isAuthenticated, decodeToken 
 } from '../config.js';
 
 // Create axios instance with interceptors
@@ -12,16 +12,17 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30 second timeout for production
 });
 
 // Request interceptor to add token
 api.interceptors.request.use(
-  (config) => {
+  (requestConfig) => {
     const token = getAuthToken();
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      requestConfig.headers.Authorization = `Bearer ${token}`;
     }
-    return config;
+    return requestConfig;
   },
   (error) => {
     return Promise.reject(error);
@@ -51,7 +52,7 @@ api.interceptors.response.use(
           
           // Retry original request
           originalRequest.headers.Authorization = `Bearer ${result.access_token}`;
-          return axios(originalRequest);
+          return api(originalRequest); // Use the same axios instance
         }
       } catch (refreshError) {
         console.error('Token refresh failed:', refreshError);
@@ -68,26 +69,33 @@ api.interceptors.response.use(
 
     // Handle other common errors
     if (error.response) {
-      switch (error.response.status) {
+      const status = error.response.status;
+      const errorData = error.response.data;
+      
+      switch (status) {
         case 400:
-          console.error('Bad request:', error.response.data);
+          console.error('Bad request:', errorData);
           break;
         case 403:
-          console.error('Forbidden:', error.response.data);
-          // Optionally redirect to unauthorized page
-          // window.location.href = '/unauthorized';
+          console.error('Forbidden:', errorData);
           break;
         case 404:
           console.error('Resource not found:', error.response.config.url);
           break;
         case 422:
-          console.warn('Validation error:', error.response.data);
+          console.warn('Validation error:', errorData);
+          break;
+        case 429:
+          console.error('Rate limit exceeded:', errorData);
           break;
         case 500:
-          console.error('Server error:', error.response.data);
+        case 502:
+        case 503:
+        case 504:
+          console.error('Server error:', errorData);
           break;
         default:
-          console.error('API Error:', error.response.data);
+          console.error('API Error:', errorData);
       }
     } else if (error.request) {
       console.error('Network error:', error.message);
@@ -111,8 +119,6 @@ export const login = async (email, password) => {
   try {
     // Use the authAPI service
     const result = await authAPI.login({ email, password });
-    
-    // authAPI already handles token storage, but we can return the result
     return result;
   } catch (error) {
     // Format error for consistent error handling
@@ -215,7 +221,7 @@ export const register = async (userData) => {
 
 /**
  * Logout the current user
- * @returns {Promise<void>}
+ * @returns {Promise<object>}
  */
 export const logout = async () => {
   try {
@@ -228,6 +234,8 @@ export const logout = async () => {
     // Always clear local auth data
     clearAuthData();
   }
+  
+  return { success: true, message: "Logged out successfully" };
 };
 
 /**
@@ -369,26 +377,6 @@ export const getAuthHeaders = (additionalHeaders = {}) => {
 };
 
 /**
- * Extract user from JWT token
- * @param {string} token - JWT token
- * @returns {object|null} - Decoded token payload or null
- */
-export const decodeToken = (token) => {
-  try {
-    if (!token) return null;
-    
-    const payload = token.split('.')[1];
-    if (!payload) return null;
-    
-    const decoded = JSON.parse(atob(payload));
-    return decoded;
-  } catch (error) {
-    console.error('Error decoding token:', error);
-    return null;
-  }
-};
-
-/**
  * Check if token is expired
  * @param {string} token - JWT token
  * @returns {boolean}
@@ -458,6 +446,89 @@ export const initAuth = async () => {
   }
 };
 
+/**
+ * Direct API call utility (bypasses authAPI for custom endpoints)
+ * @param {string} method - HTTP method
+ * @param {string} endpoint - API endpoint
+ * @param {object} data - Request data
+ * @param {object} headers - Additional headers
+ * @returns {Promise<object>}
+ */
+export const apiCall = async (method, endpoint, data = null, headers = {}) => {
+  try {
+    const response = await api({
+      method,
+      url: endpoint,
+      data,
+      headers: {
+        ...getAuthHeaders(),
+        ...headers
+      }
+    });
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Upload file with progress tracking
+ * @param {string} endpoint - API endpoint
+ * @param {File} file - File to upload
+ * @param {function} onProgress - Progress callback
+ * @param {object} additionalData - Additional form data
+ * @returns {Promise<object>}
+ */
+export const uploadFile = async (endpoint, file, onProgress = null, additionalData = {}) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  // Append additional data
+  Object.entries(additionalData).forEach(([key, value]) => {
+    formData.append(key, value);
+  });
+  
+  try {
+    const response = await api.post(endpoint, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        ...getAuthHeaders()
+      },
+      onUploadProgress: onProgress ? (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        onProgress(percentCompleted);
+      } : undefined
+    });
+    
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Validate session and refresh token if needed
+ * @returns {Promise<boolean>} - True if session is valid
+ */
+export const validateSession = async () => {
+  try {
+    if (!isAuthenticated()) {
+      return false;
+    }
+    
+    const token = getAuthToken();
+    if (isTokenExpired(token)) {
+      await refreshToken();
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Session validation failed:', error);
+    return false;
+  }
+};
+
+// Export all utilities
 export { 
   isAuthenticated, 
   clearAuthData, 
@@ -466,7 +537,9 @@ export {
   getRefreshToken,
   setRefreshToken,
   getUser,
-  setUser 
+  setUser,
+  decodeToken 
 };
 
+// Default export for direct API usage
 export default api;
