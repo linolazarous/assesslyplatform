@@ -2,7 +2,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, Lock, Server, Users, AlertTriangle, CheckCircle, Cpu, ExternalLink, ArrowLeft } from 'lucide-react';
-import Navigation from '../components/Navigation'; // Add navigation
+import Navigation from '../../components/Navigation';
 
 const SecurityOverview = () => {
   const currentYear = new Date().getFullYear();
