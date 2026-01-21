@@ -1,15 +1,21 @@
+backend/auth_utils.py
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 import os
+import logging
+from fastapi import HTTPException, status
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------
 # Password Hashing
 # ---------------------------
 pwd_context = CryptContext(
     schemes=["bcrypt"],
-    deprecated="auto"
+    deprecated="auto",
+    bcrypt__rounds=12  # Production-ready number of rounds
 )
 
 # ---------------------------
@@ -19,11 +25,14 @@ pwd_context = CryptContext(
 ACCESS_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 REFRESH_SECRET_KEY = os.getenv("JWT_REFRESH_SECRET_KEY")
 
+# Don't raise errors immediately for development
 if not ACCESS_SECRET_KEY:
-    raise RuntimeError("JWT_SECRET_KEY environment variable is not set")
+    logger.warning("JWT_SECRET_KEY environment variable is not set")
+    ACCESS_SECRET_KEY = "development_secret_key_change_in_production" + os.urandom(16).hex()
 
 if not REFRESH_SECRET_KEY:
-    raise RuntimeError("JWT_REFRESH_SECRET_KEY environment variable is not set")
+    logger.warning("JWT_REFRESH_SECRET_KEY environment variable is not set")
+    REFRESH_SECRET_KEY = "development_refresh_secret_change_in_production" + os.urandom(16).hex()
 
 ALGORITHM = "HS256"
 
@@ -37,103 +46,405 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7              # 7 days
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
     if not plain_password or not hashed_password:
+        logger.warning("Empty password or hash provided for verification")
         return False
-    return pwd_context.verify(plain_password, hashed_password)
+    
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception as e:
+        logger.error(f"Password verification error: {e}")
+        return False
 
 
 def get_password_hash(password: str) -> str:
     """Hash a plaintext password"""
     if not password:
         raise ValueError("Password must not be empty")
-    return pwd_context.hash(password)
+    
+    if len(password) < 8:
+        raise ValueError("Password must be at least 8 characters")
+    
+    try:
+        return pwd_context.hash(password)
+    except Exception as e:
+        logger.error(f"Password hashing error: {e}")
+        raise RuntimeError("Failed to hash password") from e
 
 # ---------------------------
 # JWT Creation
 # ---------------------------
 
 def create_access_token(
-    data: Dict,
+    data: Dict[str, Any],
     expires_delta: Optional[timedelta] = None
 ) -> str:
     """
     Create a signed JWT access token
     """
-    to_encode = data.copy()
+    try:
+        to_encode = data.copy()
 
-    expire = datetime.utcnow() + (
-        expires_delta if expires_delta
-        else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
+        expire = datetime.utcnow() + (
+            expires_delta if expires_delta
+            else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
 
-    to_encode.update({
-        "exp": expire,
-        "iat": datetime.utcnow(),
-        "type": "access"
-    })
+        to_encode.update({
+            "exp": expire,
+            "iat": datetime.utcnow(),
+            "type": "access",
+            "iss": "assessly-platform"
+        })
 
-    return jwt.encode(
-        to_encode,
-        ACCESS_SECRET_KEY,
-        algorithm=ALGORITHM
-    )
+        encoded_jwt = jwt.encode(
+            to_encode,
+            ACCESS_SECRET_KEY,
+            algorithm=ALGORITHM
+        )
+        
+        logger.debug(f"Created access token for subject: {data.get('sub')}")
+        return encoded_jwt
+        
+    except Exception as e:
+        logger.error(f"Failed to create access token: {e}")
+        raise RuntimeError("Failed to create access token") from e
 
 
-def create_refresh_token(data: Dict) -> str:
+def create_refresh_token(data: Dict[str, Any]) -> str:
     """
     Create a signed JWT refresh token
     """
-    to_encode = data.copy()
+    try:
+        to_encode = data.copy()
 
-    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
 
-    to_encode.update({
-        "exp": expire,
-        "iat": datetime.utcnow(),
-        "type": "refresh"
-    })
+        to_encode.update({
+            "exp": expire,
+            "iat": datetime.utcnow(),
+            "type": "refresh",
+            "iss": "assessly-platform"
+        })
 
-    return jwt.encode(
-        to_encode,
-        REFRESH_SECRET_KEY,
-        algorithm=ALGORITHM
-    )
+        encoded_jwt = jwt.encode(
+            to_encode,
+            REFRESH_SECRET_KEY,
+            algorithm=ALGORITHM
+        )
+        
+        logger.debug(f"Created refresh token for subject: {data.get('sub')}")
+        return encoded_jwt
+        
+    except Exception as e:
+        logger.error(f"Failed to create refresh token: {e}")
+        raise RuntimeError("Failed to create refresh token") from e
+
+
+def create_tokens(user_id: str, email: str) -> Dict[str, str]:
+    """
+    Create both access and refresh tokens for a user
+    """
+    try:
+        access_token = create_access_token({"sub": user_id, "email": email})
+        refresh_token = create_refresh_token({"sub": user_id})
+        
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer"
+        }
+    except Exception as e:
+        logger.error(f"Failed to create tokens: {e}")
+        raise
 
 # ---------------------------
 # JWT Verification
 # ---------------------------
 
-def _verify_jwt(token: str, secret: str) -> Dict:
+def _verify_jwt(token: str, secret: str, token_type: str) -> Dict[str, Any]:
     """Internal JWT verification helper"""
     try:
-        payload = jwt.decode(token, secret, algorithms=[ALGORITHM])
+        if not token:
+            raise ValueError("Token is empty")
+        
+        payload = jwt.decode(
+            token, 
+            secret, 
+            algorithms=[ALGORITHM],
+            options={"require": ["exp", "iat", "type", "iss"]}
+        )
+        
+        # Validate required claims
+        if payload.get("type") != token_type:
+            raise ValueError(f"Invalid token type. Expected {token_type}, got {payload.get('type')}")
+        
+        if payload.get("iss") != "assessly-platform":
+            raise ValueError("Invalid issuer")
+        
+        # Validate expiration
+        exp_timestamp = payload.get("exp")
+        if not exp_timestamp:
+            raise ValueError("Token missing expiration")
+        
+        exp_datetime = datetime.utcfromtimestamp(exp_timestamp)
+        if exp_datetime < datetime.utcnow():
+            raise ValueError("Token has expired")
+        
         return payload
+        
     except JWTError as e:
-        raise ValueError("Invalid or expired token") from e
+        logger.warning(f"JWT validation failed: {e}")
+        raise ValueError(f"Invalid token: {str(e)}")
+    except Exception as e:
+        logger.error(f"Token verification error: {e}")
+        raise ValueError(f"Token verification failed: {str(e)}")
 
 
-def verify_access_token(token: str) -> Dict:
+def verify_access_token(token: str) -> Dict[str, Any]:
     """Verify and decode an access token"""
-    payload = _verify_jwt(token, ACCESS_SECRET_KEY)
+    try:
+        return _verify_jwt(token, ACCESS_SECRET_KEY, "access")
+    except ValueError as e:
+        logger.warning(f"Invalid access token: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired access token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    if payload.get("type") != "access":
-        raise ValueError("Invalid access token type")
 
-    return payload
-
-
-def verify_refresh_token(token: str) -> Dict:
+def verify_refresh_token(token: str) -> Dict[str, Any]:
     """Verify and decode a refresh token"""
-    payload = _verify_jwt(token, REFRESH_SECRET_KEY)
+    try:
+        return _verify_jwt(token, REFRESH_SECRET_KEY, "refresh")
+    except ValueError as e:
+        logger.warning(f"Invalid refresh token: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    if payload.get("type") != "refresh":
-        raise ValueError("Invalid refresh token type")
 
-    return payload
-
-
-def verify_token(token: str) -> Dict:
+def verify_token(token: str) -> Dict[str, Any]:
     """
     Backward-compatibility helper.
     Verifies ACCESS tokens by default.
     """
     return verify_access_token(token)
+
+
+def decode_token(token: str, ignore_expiration: bool = False) -> Optional[Dict[str, Any]]:
+    """
+    Decode a JWT token without verification (use with caution)
+    Useful for debugging or when verification is done elsewhere
+    """
+    try:
+        return jwt.decode(
+            token,
+            options={"verify_signature": False, "require_exp": not ignore_expiration}
+        )
+    except Exception as e:
+        logger.warning(f"Failed to decode token: {e}")
+        return None
+
+# ---------------------------
+# Token Utility Functions
+# ---------------------------
+
+def extract_user_id_from_token(token: str) -> Optional[str]:
+    """
+    Extract user ID from token (access or refresh)
+    """
+    try:
+        # Try to verify as access token first
+        payload = verify_access_token(token)
+    except (ValueError, HTTPException):
+        try:
+            # If access token fails, try as refresh token
+            payload = verify_refresh_token(token)
+        except (ValueError, HTTPException):
+            logger.warning("Failed to extract user ID from token")
+            return None
+    
+    return payload.get("sub")
+
+
+def is_token_expired(token: str) -> bool:
+    """
+    Check if a token is expired without verifying signature
+    """
+    try:
+        payload = decode_token(token, ignore_expiration=True)
+        if not payload or "exp" not in payload:
+            return True
+        
+        exp_timestamp = payload["exp"]
+        exp_datetime = datetime.utcfromtimestamp(exp_timestamp)
+        return exp_datetime < datetime.utcnow()
+    except Exception:
+        return True
+
+
+def get_token_expiry(token: str) -> Optional[datetime]:
+    """
+    Get token expiry datetime
+    """
+    try:
+        payload = decode_token(token, ignore_expiration=True)
+        if payload and "exp" in payload:
+            return datetime.utcfromtimestamp(payload["exp"])
+    except Exception as e:
+        logger.warning(f"Failed to get token expiry: {e}")
+    
+    return None
+
+
+def refresh_access_token(refresh_token: str) -> Optional[Dict[str, str]]:
+    """
+    Create a new access token using a valid refresh token
+    """
+    try:
+        # Verify refresh token
+        payload = verify_refresh_token(refresh_token)
+        user_id = payload.get("sub")
+        email = payload.get("email")
+        
+        if not user_id:
+            raise ValueError("Refresh token missing subject")
+        
+        # Create new access token
+        new_access_token = create_access_token({"sub": user_id, "email": email})
+        
+        return {
+            "access_token": new_access_token,
+            "token_type": "bearer"
+        }
+        
+    except (ValueError, HTTPException) as e:
+        logger.warning(f"Failed to refresh access token: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error refreshing token: {e}")
+        return None
+
+# ---------------------------
+# Security Helper Functions
+# ---------------------------
+
+def validate_password_complexity(password: str) -> bool:
+    """
+    Validate password meets complexity requirements
+    """
+    if len(password) < 8:
+        return False
+    
+    # Check for at least one uppercase letter
+    if not any(c.isupper() for c in password):
+        return False
+    
+    # Check for at least one lowercase letter
+    if not any(c.islower() for c in password):
+        return False
+    
+    # Check for at least one digit
+    if not any(c.isdigit() for c in password):
+        return False
+    
+    # Check for at least one special character
+    special_chars = "!@#$%^&*()_+-=[]{}|;:,.<>?"
+    if not any(c in special_chars for c in password):
+        return False
+    
+    return True
+
+
+def generate_secure_token(length: int = 32) -> str:
+    """
+    Generate a cryptographically secure random token
+    """
+    import secrets
+    return secrets.token_urlsafe(length)
+
+
+def hash_api_key(api_key: str) -> str:
+    """
+    Hash an API key for secure storage
+    """
+    return pwd_context.hash(api_key)
+
+
+def verify_api_key(plain_api_key: str, hashed_api_key: str) -> bool:
+    """
+    Verify an API key against its hash
+    """
+    return verify_password(plain_api_key, hashed_api_key)
+
+# ---------------------------
+# Rate Limiting Helper
+# ---------------------------
+
+class TokenBucket:
+    """
+    Simple token bucket implementation for rate limiting
+    """
+    def __init__(self, capacity: int, refill_rate: float):
+        self.capacity = capacity
+        self.tokens = capacity
+        self.refill_rate = refill_rate  # tokens per second
+        self.last_refill = datetime.utcnow()
+    
+    def consume(self, tokens: int = 1) -> bool:
+        """Try to consume tokens, return True if successful"""
+        now = datetime.utcnow()
+        time_passed = (now - self.last_refill).total_seconds()
+        
+        # Refill tokens
+        self.tokens = min(
+            self.capacity,
+            self.tokens + time_passed * self.refill_rate
+        )
+        self.last_refill = now
+        
+        # Check if we have enough tokens
+        if self.tokens >= tokens:
+            self.tokens -= tokens
+            return True
+        return False
+
+# ---------------------------
+# Export
+# ---------------------------
+
+__all__ = [
+    # Password
+    "verify_password",
+    "get_password_hash",
+    "validate_password_complexity",
+    
+    # JWT Creation
+    "create_access_token",
+    "create_refresh_token",
+    "create_tokens",
+    
+    # JWT Verification
+    "verify_access_token",
+    "verify_refresh_token",
+    "verify_token",
+    "decode_token",
+    
+    # Token Utilities
+    "extract_user_id_from_token",
+    "is_token_expired",
+    "get_token_expiry",
+    "refresh_access_token",
+    
+    # Security
+    "generate_secure_token",
+    "hash_api_key",
+    "verify_api_key",
+    
+    # Constants
+    "ACCESS_TOKEN_EXPIRE_MINUTES",
+    "REFRESH_TOKEN_EXPIRE_DAYS",
+        ]
