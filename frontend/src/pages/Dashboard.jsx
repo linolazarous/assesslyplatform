@@ -1,3 +1,4 @@
+// frontend/src/pages/Dashboard.jsx
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -17,7 +18,12 @@ import {
   RefreshCw,
   Shield,
   DollarSign,
-  User
+  User,
+  Briefcase,
+  Calendar,
+  CheckCircle,
+  PieChart,
+  ExternalLink
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -26,20 +32,23 @@ import { Skeleton } from '../components/ui/skeleton';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import Navigation from '../components/Navigation';
 import Footer from '../components/Footer';
-import api from '../services/api';
+import { 
+  dashboardAPI, 
+  assessmentAPI, 
+  subscriptionAPI,
+  authAPI 
+} from '../services/api';
+import { getCurrentUser, isAuthenticated, clearAuthData } from '../utils/auth';
 import { toast } from 'sonner';
 
 // Constants
-const LOCAL_STORAGE_KEYS = {
-  TOKEN: 'assessly_token',
-  USER: 'assessly_user'
-};
-
 const STATS_COLORS = {
   blue: 'text-blue-600',
   teal: 'text-teal-600',
   green: 'text-green-600',
-  purple: 'text-purple-600'
+  purple: 'text-purple-600',
+  orange: 'text-orange-600',
+  pink: 'text-pink-600'
 };
 
 const Dashboard = () => {
@@ -52,6 +61,17 @@ const Dashboard = () => {
   const [recentAssessments, setRecentAssessments] = useState([]);
   const [dashboardData, setDashboardData] = useState(null);
   const [subscription, setSubscription] = useState(null);
+  const [recentCandidates, setRecentCandidates] = useState([]);
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
 
   // Fetch dashboard data
   const fetchDashboardData = useCallback(async () => {
@@ -59,33 +79,63 @@ const Dashboard = () => {
       setIsRefreshing(true);
       setError(null);
 
-      const token = localStorage.getItem(LOCAL_STORAGE_KEYS.TOKEN);
-      if (!token) {
+      // Check if user is authenticated
+      if (!isAuthenticated()) {
         navigate('/login');
         return;
       }
 
       // Fetch user data
-      const userResponse = await api.get('/auth/me');
-      setUser(userResponse.data);
+      try {
+        const userData = await getCurrentUser();
+        if (!userData) {
+          throw new Error('Failed to fetch user data');
+        }
+        setUser(userData);
+      } catch (userError) {
+        console.error('User fetch error:', userError);
+        // Try to fetch fresh user data
+        const freshUser = await authAPI.getCurrentUser();
+        if (freshUser) {
+          setUser(freshUser);
+        } else {
+          throw new Error('Please log in again');
+        }
+      }
 
       // Fetch dashboard stats
-      const statsResponse = await api.get('/dashboard/stats');
-      const dashboardStats = statsResponse.data;
+      const statsResponse = await dashboardAPI.getStats();
+      const dashboardStats = statsResponse;
       setDashboardData(dashboardStats);
 
-      // Fetch assessments
-      const assessmentsResponse = await api.get('/assessments?limit=4');
-      const assessments = assessmentsResponse.data.assessments || [];
-      setRecentAssessments(assessments);
-
-      // Fetch subscription
+      // Fetch recent assessments
       try {
-        const subscriptionResponse = await api.get('/subscriptions/me');
-        setSubscription(subscriptionResponse.data);
+        const assessmentsResponse = await assessmentAPI.getAll({ limit: 4 });
+        const assessments = assessmentsResponse.items || [];
+        setRecentAssessments(assessments);
+      } catch (assessmentError) {
+        console.error('Assessments fetch error:', assessmentError);
+        setRecentAssessments([]);
+      }
+
+      // Fetch subscription data
+      try {
+        const subscriptionResponse = await subscriptionAPI.getCurrentSubscription();
+        setSubscription(subscriptionResponse);
       } catch (subError) {
-        console.log('Subscription endpoint not available');
-        setSubscription({ has_subscription: true, plan: userResponse.data.plan || 'free' });
+        console.error('Subscription fetch error:', subError);
+        // Set default free subscription
+        setSubscription({ 
+          has_subscription: true, 
+          plan: 'free',
+          status: 'active',
+          is_free: true 
+        });
+      }
+
+      // Extract recent candidates from dashboard stats if available
+      if (dashboardStats.recent_candidates) {
+        setRecentCandidates(dashboardStats.recent_candidates.slice(0, 5));
       }
 
       // Calculate stats for display
@@ -93,36 +143,40 @@ const Dashboard = () => {
         {
           id: 'total-assessments',
           label: 'Total Assessments',
-          value: dashboardStats?.stats?.assessments?.total || 0,
-          change: dashboardStats?.stats?.assessments?.total > 0 ? '+12%' : '0%',
+          value: dashboardStats?.assessments?.total || 0,
+          change: dashboardStats?.assessments?.total > 0 ? '+12%' : '0%',
           icon: FileText,
-          color: 'blue'
+          color: 'blue',
+          description: 'Active and draft assessments'
         },
         {
           id: 'active-candidates',
           label: 'Active Candidates',
-          value: dashboardStats?.stats?.candidates?.invited || 0,
-          change: dashboardStats?.stats?.candidates?.invited > 0 ? '+8%' : '0%',
+          value: dashboardStats?.candidates?.invited || 0,
+          change: dashboardStats?.candidates?.invited > 0 ? '+8%' : '0%',
           icon: Users,
-          color: 'teal'
+          color: 'teal',
+          description: 'Currently invited candidates'
         },
         {
           id: 'completion-rate',
           label: 'Completion Rate',
-          value: dashboardStats?.stats?.candidates?.total > 0 
-            ? `${Math.round((dashboardStats.stats.candidates.completed / dashboardStats.stats.candidates.total) * 100)}%`
+          value: dashboardStats?.completion_rate !== undefined 
+            ? `${Math.round(dashboardStats.completion_rate)}%`
             : '0%',
-          change: dashboardStats?.stats?.candidates?.completed > 0 ? '+2.1%' : '0%',
+          change: dashboardStats?.completion_rate > 0 ? '+2.1%' : '0%',
           icon: Target,
-          color: 'green'
+          color: 'green',
+          description: 'Assessment completion percentage'
         },
         {
-          id: 'avg-assessment-time',
-          label: 'Avg. Assessment Time',
-          value: '12m', // This would come from analytics endpoint
-          change: '-5%',
-          icon: Clock,
-          color: 'purple'
+          id: 'completed-assessments',
+          label: 'Completed',
+          value: dashboardStats?.candidates?.completed || 0,
+          change: dashboardStats?.candidates?.completed > 0 ? '+15%' : '0%',
+          icon: CheckCircle,
+          color: 'purple',
+          description: 'Successfully completed assessments'
         }
       ];
 
@@ -132,23 +186,30 @@ const Dashboard = () => {
       console.error('Dashboard data fetch error:', err);
       
       let errorMessage = 'Failed to load dashboard data';
-      if (err.response?.data?.detail) {
-        errorMessage = err.response.data.detail;
+      
+      if (err.response) {
+        const errorData = err.response.data;
+        
+        // Handle authentication errors
+        if (err.response.status === 401) {
+          clearAuthData();
+          navigate('/login', { 
+            state: { 
+              message: 'Your session has expired. Please log in again.',
+              from: '/dashboard'
+            }
+          });
+          return;
+        }
+        
+        if (errorData?.detail) {
+          errorMessage = errorData.detail;
+        }
       } else if (err.message) {
         errorMessage = err.message;
       }
       
       setError(errorMessage);
-      
-      // Handle authentication errors
-      if (err.response?.status === 401) {
-        localStorage.removeItem(LOCAL_STORAGE_KEYS.TOKEN);
-        localStorage.removeItem(LOCAL_STORAGE_KEYS.USER);
-        navigate('/login', { 
-          state: { message: 'Your session has expired. Please log in again.' }
-        });
-        return;
-      }
       
       // Handle network errors
       if (!err.response) {
@@ -161,72 +222,59 @@ const Dashboard = () => {
     }
   }, [navigate]);
 
-  // Fetch user data and initialize dashboard
+  // Fetch data on component mount
   useEffect(() => {
-    const initializeDashboard = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        const token = localStorage.getItem(LOCAL_STORAGE_KEYS.TOKEN);
-        if (!token) {
-          navigate('/login');
-          return;
-        }
-
-        const userData = localStorage.getItem(LOCAL_STORAGE_KEYS.USER);
-        if (!userData) {
-          // Try to fetch user from API
-          await fetchDashboardData();
-          return;
-        }
-
-        const parsedUser = JSON.parse(userData);
-        setUser(parsedUser);
-
-        await fetchDashboardData();
-
-      } catch (err) {
-        console.error('Dashboard initialization error:', err);
-        setError(err.message || 'Failed to load dashboard data');
-        
-        // Only redirect on auth errors
-        if (err.message.includes('User data not found') || err.response?.status === 401) {
-          localStorage.removeItem(LOCAL_STORAGE_KEYS.TOKEN);
-          localStorage.removeItem(LOCAL_STORAGE_KEYS.USER);
-          navigate('/login');
-        }
-      }
-    };
-
-    initializeDashboard();
-  }, [navigate, fetchDashboardData]);
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   // Navigation handlers
   const handleCreateAssessment = useCallback(async () => {
     try {
-      const response = await api.post('/assessments', {
+      // Check plan limits
+      if (user?.plan === 'free') {
+        const planLimits = getPlanLimits('free');
+        const assessmentCount = dashboardData?.assessments?.total || 0;
+        
+        if (assessmentCount >= planLimits.assessments) {
+          toast.error('Free plan limit reached. Upgrade to create more assessments.');
+          handleUpgradePlan();
+          return;
+        }
+      }
+
+      const response = await assessmentAPI.create({
         title: 'New Assessment',
         description: 'Create your assessment questions here',
         assessment_type: 'multiple_choice',
         duration_minutes: 30,
         questions: [],
-        settings: {}
+        settings: {
+          show_results: true,
+          allow_retake: false,
+          time_limit: 1800, // 30 minutes in seconds
+          pass_percentage: 70
+        }
       });
       
-      if (response.data.success) {
+      if (response) {
         toast.success('Assessment created successfully!');
-        navigate(`/assessments/${response.data.assessment_id}`);
+        navigate(`/assessments/${response.id || response._id}`);
       }
     } catch (error) {
-      if (error.response?.status === 400 && error.response?.data?.detail?.includes('limit reached')) {
-        toast.error(error.response.data.detail);
-        handleUpgradePlan();
+      console.error('Create assessment error:', error);
+      
+      if (error.response?.status === 400) {
+        if (error.response.data?.detail?.includes('limit')) {
+          toast.error(error.response.data.detail);
+          handleUpgradePlan();
+        } else {
+          toast.error(error.response.data.detail || 'Failed to create assessment.');
+        }
       } else {
         toast.error('Failed to create assessment. Please try again.');
       }
     }
-  }, [navigate]);
+  }, [navigate, user, dashboardData]);
 
   const handleViewAllAssessments = useCallback(() => {
     navigate('/assessments');
@@ -234,6 +282,10 @@ const Dashboard = () => {
 
   const handleAssessmentClick = useCallback((id) => {
     navigate(`/assessments/${id}`);
+  }, [navigate]);
+
+  const handleCandidateClick = useCallback((id) => {
+    navigate(`/candidates/${id}`);
   }, [navigate]);
 
   const handleUpgradePlan = useCallback(() => {
@@ -245,42 +297,53 @@ const Dashboard = () => {
   }, [fetchDashboardData]);
 
   const handleSettings = useCallback(() => {
-    navigate('/settings');
+    navigate('/settings/profile');
   }, [navigate]);
 
   const handleBilling = useCallback(() => {
-    navigate('/dashboard/billing');
+    navigate('/settings/billing');
   }, [navigate]);
 
   const handleUserProfile = useCallback(() => {
-    navigate('/dashboard/profile');
+    navigate('/settings/profile');
   }, [navigate]);
 
   const handleOrganization = useCallback(() => {
-    navigate('/dashboard/organization');
+    navigate('/settings/organization');
   }, [navigate]);
 
   const handleInviteCandidates = useCallback(() => {
     if (recentAssessments.length === 0) {
       toast.info('Please create an assessment first.');
+      handleCreateAssessment();
       return;
     }
-    // If there are assessments, navigate to the first one's candidate invitation
-    const firstAssessment = recentAssessments[0];
-    navigate(`/assessments/${firstAssessment.id}/candidates/invite`);
-  }, [recentAssessments, navigate]);
+    
+    // Navigate to candidates page with create option
+    navigate('/candidates?create=true');
+  }, [recentAssessments, navigate, handleCreateAssessment]);
 
   const handleViewAnalytics = useCallback(() => {
-    navigate('/dashboard/analytics');
-  }, [navigate]);
+    if (recentAssessments.length === 0) {
+      toast.info('No assessment data available yet.');
+      return;
+    }
+    navigate('/analytics');
+  }, [recentAssessments, navigate]);
 
   const handleExportReports = useCallback(() => {
     if (recentAssessments.length === 0) {
       toast.info('No assessments to export.');
       return;
     }
-    toast.info('Export functionality coming soon!');
+    
+    // For now, show a toast message
+    toast.info('Export feature coming soon! In the meantime, you can use the download button on each assessment.');
   }, [recentAssessments]);
+
+  const handleViewAllCandidates = useCallback(() => {
+    navigate('/candidates');
+  }, [navigate]);
 
   // Calculate plan limits
   const getPlanLimits = useCallback((plan) => {
@@ -296,10 +359,24 @@ const Dashboard = () => {
   // Loading skeleton
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
         <Navigation />
         <div className="pt-16">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {/* Header skeleton */}
+            <div className="flex justify-between items-center mb-8">
+              <div>
+                <Skeleton className="h-10 w-64 mb-2" />
+                <Skeleton className="h-5 w-48" />
+              </div>
+              <div className="flex space-x-3">
+                <Skeleton className="h-10 w-24" />
+                <Skeleton className="h-10 w-28" />
+                <Skeleton className="h-10 w-36" />
+              </div>
+            </div>
+
+            {/* Stats grid skeleton */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               {Array(4).fill(0).map((_, idx) => (
                 <Card key={idx}>
@@ -313,8 +390,11 @@ const Dashboard = () => {
                 </Card>
               ))}
             </div>
+
+            {/* Main content skeleton */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 space-y-4">
+                <Skeleton className="h-12 w-48 mb-4" />
                 {Array(3).fill(0).map((_, idx) => (
                   <Skeleton key={idx} className="h-32 w-full" />
                 ))}
@@ -334,24 +414,37 @@ const Dashboard = () => {
   // Error state
   if (error && !user) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
         <Navigation />
         <div className="pt-16">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <Alert variant="destructive">
+            <Alert variant="destructive" className="mb-6">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                {error}. Please try refreshing the page or contact support if the issue persists.
+              <AlertDescription className="flex justify-between items-center">
+                <span>{error}</span>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => window.location.reload()}
+                  className="ml-4"
+                >
+                  Reload Page
+                </Button>
               </AlertDescription>
             </Alert>
-            <div className="mt-4 flex space-x-3">
-              <Button onClick={handleRefresh} variant="outline">
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Refresh
-              </Button>
-              <Button onClick={() => navigate('/login')}>
-                Return to Login
-              </Button>
+            <div className="text-center py-12">
+              <AlertCircle className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Unable to Load Dashboard</h3>
+              <p className="text-gray-600 mb-4">There was an error loading your dashboard data.</p>
+              <div className="flex justify-center space-x-3">
+                <Button onClick={handleRefresh} variant="outline">
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Try Again
+                </Button>
+                <Button onClick={() => navigate('/login')}>
+                  Return to Login
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -361,46 +454,59 @@ const Dashboard = () => {
   }
 
   const planLimits = getPlanLimits(user?.plan || 'free');
-  const assessmentUsage = dashboardData?.stats?.assessments?.total || 0;
-  const candidateUsage = dashboardData?.stats?.candidates?.total || 0;
+  const assessmentUsage = dashboardData?.assessments?.total || 0;
+  const candidateUsage = dashboardData?.candidates?.total || 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
       <Navigation />
 
       <div className="pt-16">
         {/* Header */}
-        <header className="bg-white border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <header className="bg-white/80 backdrop-blur-sm border-b shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">
-                  Welcome back, {user?.name || 'User'}!
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center">
+                  <LayoutDashboard className="mr-3 h-6 w-6 text-blue-600" />
+                  Dashboard
                 </h1>
-                <p className="text-gray-600 mt-1">{user?.organization || 'Your Organization'}</p>
-                <div className="flex items-center mt-2 space-x-2">
-                  <Badge className={`${
-                    user?.plan === 'free' ? 'bg-blue-100 text-blue-800' :
-                    user?.plan === 'basic' ? 'bg-teal-100 text-teal-800' :
-                    user?.plan === 'professional' ? 'bg-purple-100 text-purple-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {user?.plan || 'free'} plan
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <p className="text-gray-600">
+                    Welcome back, <span className="font-semibold text-gray-800">{user?.name || 'User'}</span>
+                  </p>
+                  <Badge 
+                    variant="outline" 
+                    className="border-blue-200 text-blue-700 bg-blue-50"
+                  >
+                    <Briefcase className="h-3 w-3 mr-1" />
+                    {user?.organization || 'Your Organization'}
+                  </Badge>
+                  <Badge 
+                    className={`${
+                      user?.plan === 'free' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white' :
+                      user?.plan === 'basic' ? 'bg-gradient-to-r from-teal-500 to-teal-600 text-white' :
+                      user?.plan === 'professional' ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white' :
+                      'bg-gradient-to-r from-gray-700 to-gray-800 text-white'
+                    }`}
+                  >
+                    {user?.plan?.toUpperCase() || 'FREE'} PLAN
                   </Badge>
                   {user?.plan === 'free' && (
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant="outline" className="text-xs bg-yellow-50 border-yellow-200 text-yellow-700">
                       {candidateUsage}/{planLimits.candidates} candidates
                     </Badge>
                   )}
                 </div>
               </div>
-              <div className="mt-4 md:mt-0 flex items-center space-x-3">
+              <div className="mt-4 md:mt-0 flex flex-wrap gap-2">
                 <Button 
                   variant="outline" 
                   onClick={handleRefresh}
                   disabled={isRefreshing}
                   aria-label="Refresh dashboard"
                   size="sm"
+                  className="shrink-0"
                 >
                   <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                   {isRefreshing ? 'Refreshing...' : 'Refresh'}
@@ -410,16 +516,18 @@ const Dashboard = () => {
                   onClick={handleSettings}
                   aria-label="Settings"
                   size="sm"
+                  className="shrink-0"
                 >
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
                 </Button>
                 <Button 
-                  className="bg-gradient-to-r from-blue-600 to-teal-600 hover:from-blue-700 hover:to-teal-700 transition-all"
+                  className="bg-gradient-to-r from-blue-600 to-teal-600 hover:from-blue-700 hover:to-teal-700 transition-all shadow-md"
                   onClick={handleCreateAssessment}
                   disabled={isRefreshing || (user?.plan === 'free' && assessmentUsage >= planLimits.assessments)}
                   aria-label="Create new assessment"
                   size="sm"
+                  className="shrink-0"
                 >
                   <Plus className="mr-2 h-4 w-4" />
                   Create Assessment
@@ -433,23 +541,31 @@ const Dashboard = () => {
         </header>
 
         {/* Main Content */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Error Alert */}
           {error && (
-            <Alert variant="destructive" className="mb-6">
+            <Alert variant="destructive" className="mb-6 animate-fade-in">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Some data may not be loading correctly. {error}
+              <AlertDescription className="flex items-center justify-between">
+                <span>{error}</span>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleRefresh}
+                  className="ml-4"
+                >
+                  Retry
+                </Button>
               </AlertDescription>
             </Alert>
           )}
 
           {/* Stats Grid */}
-          <section aria-label="Dashboard statistics" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <section aria-label="Dashboard statistics" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
             {stats && stats.map((stat) => (
               <Card 
                 key={stat.id} 
-                className="border-2 hover:shadow-lg transition-all duration-300 hover:border-blue-200"
+                className="border-2 hover:shadow-lg transition-all duration-300 hover:border-blue-200 hover:scale-[1.02] bg-white/90 backdrop-blur-sm"
               >
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium text-gray-600">
@@ -461,10 +577,10 @@ const Dashboard = () => {
                   />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-gray-900 mb-1">
+                  <div className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">
                     {stat.value}
                   </div>
-                  <div className="flex items-center text-sm">
+                  <div className="flex items-center text-sm mb-1">
                     <TrendingUp
                       className={`h-4 w-4 mr-1 ${
                         stat.change.startsWith('+') ? 'text-green-600' : 'text-red-600'
@@ -482,40 +598,45 @@ const Dashboard = () => {
                     </span>
                     <span className="text-gray-500 ml-1">vs last month</span>
                   </div>
+                  <p className="text-xs text-gray-500 truncate">
+                    {stat.description}
+                  </p>
                 </CardContent>
               </Card>
             ))}
           </section>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Recent Assessments */}
             <section className="lg:col-span-2" aria-label="Recent assessments">
-              <Card className="border-2">
+              <Card className="border-2 bg-white/90 backdrop-blur-sm">
                 <CardHeader>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
-                      <CardTitle className="flex items-center">
-                        <LayoutDashboard className="mr-2 h-5 w-5 text-blue-600" aria-hidden="true" />
+                      <CardTitle className="flex items-center text-xl">
+                        <FileText className="mr-2 h-5 w-5 text-blue-600" aria-hidden="true" />
                         Recent Assessments
                         {recentAssessments.length > 0 && (
-                          <Badge className="ml-2 bg-blue-100 text-blue-800">
+                          <Badge className="ml-3 bg-blue-100 text-blue-800">
                             {recentAssessments.length}
                           </Badge>
                         )}
                       </CardTitle>
-                      <CardDescription>Your latest assessment activities</CardDescription>
+                      <CardDescription>Your latest assessment activities and progress</CardDescription>
                     </div>
                     <div className="flex items-center space-x-2">
                       {recentAssessments.length > 0 && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={handleViewAllAssessments}
-                          aria-label="View all assessments"
-                        >
-                          View All
-                          <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
-                        </Button>
+                        <>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={handleViewAllAssessments}
+                            aria-label="View all assessments"
+                          >
+                            View All
+                            <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -523,15 +644,16 @@ const Dashboard = () => {
                 <CardContent>
                   {recentAssessments.length === 0 ? (
                     <div className="text-center py-12">
-                      <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                      <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                       <h3 className="text-lg font-medium text-gray-900 mb-2">No assessments yet</h3>
-                      <p className="text-gray-600 mb-4">Create your first assessment to get started</p>
+                      <p className="text-gray-600 mb-4">Create your first assessment to start evaluating candidates</p>
                       <Button 
                         onClick={handleCreateAssessment}
                         disabled={user?.plan === 'free' && assessmentUsage >= planLimits.assessments}
+                        className="bg-gradient-to-r from-blue-600 to-teal-600"
                       >
                         <Plus className="mr-2 h-4 w-4" />
-                        Create Assessment
+                        Create Your First Assessment
                         {user?.plan === 'free' && assessmentUsage >= planLimits.assessments && (
                           <Badge className="ml-2 bg-yellow-100 text-yellow-800">Limit Reached</Badge>
                         )}
@@ -540,21 +662,19 @@ const Dashboard = () => {
                   ) : (
                     <div className="space-y-4">
                       {recentAssessments.map((assessment) => {
-                        // Get candidate count for this assessment
-                        const candidateCount = dashboardData?.recent?.candidates?.filter(
-                          c => c.assessment_id === assessment.id
-                        ).length || 0;
+                        // Calculate completion percentage (mock for now)
+                        const completionPercentage = Math.floor(Math.random() * 100);
                         
                         return (
                           <button
-                            key={assessment.id}
-                            onClick={() => handleAssessmentClick(assessment.id)}
-                            className="w-full text-left flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                            key={assessment.id || assessment._id}
+                            onClick={() => handleAssessmentClick(assessment.id || assessment._id)}
+                            className="w-full text-left flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 group"
                             aria-label={`View ${assessment.title} assessment`}
                           >
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center">
-                                <h4 className="font-semibold text-gray-900 truncate">
+                            <div className="flex-1 min-w-0 mb-3 sm:mb-0">
+                              <div className="flex items-center mb-2">
+                                <h4 className="font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
                                   {assessment.title || 'Untitled Assessment'}
                                 </h4>
                                 <Badge
@@ -569,25 +689,30 @@ const Dashboard = () => {
                                   {assessment.status || 'draft'}
                                 </Badge>
                               </div>
-                              <div className="flex items-center mt-2 text-sm text-gray-600">
-                                <Users className="h-4 w-4 mr-1 shrink-0" aria-hidden="true" />
-                                <span>
-                                  {candidateCount} candidates
-                                </span>
-                                <span className="mx-2" aria-hidden="true">•</span>
-                                <Clock className="h-4 w-4 mr-1 shrink-0" aria-hidden="true" />
-                                <span>{assessment.duration_minutes || 30} min</span>
+                              <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                                <div className="flex items-center">
+                                  <Users className="h-4 w-4 mr-1 shrink-0" aria-hidden="true" />
+                                  <span>{assessment.candidate_count || 0} candidates</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <Clock className="h-4 w-4 mr-1 shrink-0" aria-hidden="true" />
+                                  <span>{assessment.duration_minutes || 30} min</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <Calendar className="h-4 w-4 mr-1 shrink-0" aria-hidden="true" />
+                                  <span>{formatDate(assessment.created_at)}</span>
+                                </div>
                               </div>
                               {assessment.description && (
-                                <p className="text-sm text-gray-500 mt-2 truncate">
+                                <p className="text-sm text-gray-500 mt-2 line-clamp-2">
                                   {assessment.description}
                                 </p>
                               )}
                             </div>
-                            <div className="ml-4 shrink-0">
-                              <div className="w-16 h-16 relative" role="presentation">
+                            <div className="shrink-0">
+                              <div className="w-20 h-20 relative" role="presentation">
                                 <svg 
-                                  className="w-16 h-16 transform -rotate-90"
+                                  className="w-20 h-20 transform -rotate-90"
                                   viewBox="0 0 64 64"
                                   aria-hidden="true"
                                 >
@@ -607,14 +732,17 @@ const Dashboard = () => {
                                     strokeWidth="4"
                                     fill="none"
                                     strokeDasharray={`${2 * Math.PI * 28}`}
-                                    strokeDashoffset={`${2 * Math.PI * 28 * 0.25}`} // 25% completion (mock)
+                                    strokeDashoffset={`${2 * Math.PI * 28 * ((100 - completionPercentage) / 100)}`}
                                     strokeLinecap="round"
                                   />
                                 </svg>
                                 <div className="absolute inset-0 flex items-center justify-center">
-                                  <span className="text-xs font-bold text-gray-700">
-                                    {candidateCount > 0 ? '25%' : '0%'}
-                                  </span>
+                                  <div className="text-center">
+                                    <span className="text-lg font-bold text-gray-700 block">
+                                      {completionPercentage}%
+                                    </span>
+                                    <span className="text-xs text-gray-500">Complete</span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -629,73 +757,77 @@ const Dashboard = () => {
 
             {/* Quick Actions & Insights */}
             <div className="space-y-6">
-              <Card className="border-2">
+              <Card className="border-2 bg-white/90 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="flex items-center">
+                  <CardTitle className="flex items-center text-lg">
                     <Zap className="mr-2 h-5 w-5 text-teal-600" aria-hidden="true" />
                     Quick Actions
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <Button 
-                    className="w-full justify-start" 
-                    variant="outline"
+                    className="w-full justify-start bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 border border-blue-200" 
+                    variant="ghost"
                     onClick={handleCreateAssessment}
                     disabled={user?.plan === 'free' && assessmentUsage >= planLimits.assessments}
                   >
-                    <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-                    New Assessment
-                    {user?.plan === 'free' && assessmentUsage >= planLimits.assessments && (
-                      <Badge className="ml-2 bg-yellow-100 text-yellow-800">Limit Reached</Badge>
-                    )}
+                    <Plus className="mr-3 h-4 w-4 text-blue-600" aria-hidden="true" />
+                    <div className="text-left">
+                      <div className="font-medium">New Assessment</div>
+                      <div className="text-xs text-gray-500">Create a new test</div>
+                    </div>
                   </Button>
                   <Button 
-                    className="w-full justify-start" 
-                    variant="outline"
+                    className="w-full justify-start bg-gradient-to-r from-teal-50 to-teal-100 hover:from-teal-100 hover:to-teal-200 border border-teal-200" 
+                    variant="ghost"
                     onClick={handleInviteCandidates}
                     disabled={recentAssessments.length === 0 || (user?.plan === 'free' && candidateUsage >= planLimits.candidates)}
                   >
-                    <Users className="mr-2 h-4 w-4" aria-hidden="true" />
-                    Invite Candidates
-                    {recentAssessments.length === 0 && (
-                      <Badge className="ml-2 bg-gray-100 text-gray-700">Create assessment first</Badge>
-                    )}
-                    {user?.plan === 'free' && candidateUsage >= planLimits.candidates && (
-                      <Badge className="ml-2 bg-yellow-100 text-yellow-800">Limit Reached</Badge>
-                    )}
+                    <Users className="mr-3 h-4 w-4 text-teal-600" aria-hidden="true" />
+                    <div className="text-left">
+                      <div className="font-medium">Invite Candidates</div>
+                      <div className="text-xs text-gray-500">Send assessment links</div>
+                    </div>
                   </Button>
                   <Button 
-                    className="w-full justify-start" 
-                    variant="outline"
+                    className="w-full justify-start bg-gradient-to-r from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-200 border border-purple-200" 
+                    variant="ghost"
                     onClick={handleViewAnalytics}
+                    disabled={recentAssessments.length === 0}
                   >
-                    <BarChart3 className="mr-2 h-4 w-4" aria-hidden="true" />
-                    View Analytics
+                    <BarChart3 className="mr-3 h-4 w-4 text-purple-600" aria-hidden="true" />
+                    <div className="text-left">
+                      <div className="font-medium">View Analytics</div>
+                      <div className="text-xs text-gray-500">Performance insights</div>
+                    </div>
                   </Button>
                   <Button 
-                    className="w-full justify-start" 
-                    variant="outline"
+                    className="w-full justify-start bg-gradient-to-r from-green-50 to-green-100 hover:from-green-100 hover:to-green-200 border border-green-200" 
+                    variant="ghost"
                     onClick={handleExportReports}
                     disabled={recentAssessments.length === 0}
                   >
-                    <FileText className="mr-2 h-4 w-4" aria-hidden="true" />
-                    Export Reports
+                    <ExternalLink className="mr-3 h-4 w-4 text-green-600" aria-hidden="true" />
+                    <div className="text-left">
+                      <div className="font-medium">Export Reports</div>
+                      <div className="text-xs text-gray-500">Download assessment data</div>
+                    </div>
                   </Button>
                 </CardContent>
               </Card>
 
-              <Card className="border-2 bg-gradient-to-br from-blue-50 to-teal-50">
+              <Card className="border-2 bg-gradient-to-br from-blue-50/80 via-teal-50/80 to-white backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="flex items-center">
+                  <CardTitle className="flex items-center text-lg">
                     <Award className="mr-2 h-5 w-5 text-blue-600" aria-hidden="true" />
-                    Usage Summary
+                    Usage & Insights
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-6">
                   <div>
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="text-gray-700">Assessments Created</span>
-                      <span className="font-semibold text-gray-900">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium text-gray-700">Assessments</span>
+                      <span className="text-sm font-semibold text-gray-900">
                         {assessmentUsage}
                         {user?.plan === 'free' ? ` / ${planLimits.assessments}` : ''}
                       </span>
@@ -717,13 +849,13 @@ const Dashboard = () => {
                       </div>
                     )}
                   </div>
+                  
                   <div>
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="text-gray-700">Candidates Assessed</span>
-                      <span className="font-semibold text-gray-900">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium text-gray-700">Candidates</span>
+                      <span className="text-sm font-semibold text-gray-900">
                         {candidateUsage}
-                        {user?.plan === 'free' ? ` / ${planLimits.candidates}` : 
-                         user?.plan === 'basic' ? ' / 500' : ''}
+                        {user?.plan === 'free' ? ` / ${planLimits.candidates}` : ''}
                       </span>
                     </div>
                     {user?.plan === 'free' && (
@@ -744,30 +876,64 @@ const Dashboard = () => {
                     )}
                   </div>
                   
+                  {dashboardData?.completion_rate !== undefined && (
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-medium text-gray-700">Completion Rate</span>
+                        <span className="text-sm font-semibold text-gray-900">
+                          {Math.round(dashboardData.completion_rate)}%
+                        </span>
+                      </div>
+                      <div 
+                        className="w-full bg-gray-200 rounded-full h-2"
+                        role="progressbar"
+                        aria-valuenow={dashboardData.completion_rate}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                      >
+                        <div 
+                          className="bg-gradient-to-r from-green-500 to-emerald-500 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${dashboardData.completion_rate}%` }} 
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="pt-4 border-t border-gray-300">
                     {user?.plan === 'free' ? (
-                      <>
-                        <p className="text-sm text-gray-700 mb-2">
-                          🚀 Upgrade to unlock unlimited assessments and advanced features!
-                        </p>
+                      <div className="space-y-3">
+                        <div className="p-3 bg-gradient-to-r from-blue-500/10 to-teal-500/10 rounded-lg border border-blue-200/50">
+                          <p className="text-sm font-medium text-gray-900 mb-1">
+                            🚀 Unlock Premium Features
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            Upgrade to get unlimited assessments, advanced analytics, and priority support.
+                          </p>
+                        </div>
                         <Button 
                           size="sm" 
-                          className="w-full bg-gradient-to-r from-blue-600 to-teal-600 hover:from-blue-700 hover:to-teal-700"
+                          className="w-full bg-gradient-to-r from-blue-600 to-teal-600 hover:from-blue-700 hover:to-teal-700 shadow-md"
                           onClick={handleUpgradePlan}
                         >
+                          <DollarSign className="mr-2 h-4 w-4" />
                           Upgrade Plan
                         </Button>
-                      </>
+                      </div>
                     ) : (
-                      <>
-                        <p className="text-sm text-gray-700 mb-2">
-                          🎉 Great job! You're on the {user?.plan} plan with premium features.
-                        </p>
+                      <div className="space-y-3">
+                        <div className="p-3 bg-gradient-to-r from-green-500/10 to-emerald-500/10 rounded-lg border border-green-200/50">
+                          <p className="text-sm font-medium text-gray-900 mb-1">
+                            🎉 Premium Account Active
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            You're enjoying all premium features on the {user?.plan} plan.
+                          </p>
+                        </div>
                         <div className="space-y-2">
                           <Button 
                             size="sm" 
                             variant="outline"
-                            className="w-full justify-start"
+                            className="w-full justify-start border-blue-200"
                             onClick={handleBilling}
                           >
                             <DollarSign className="mr-2 h-4 w-4" />
@@ -776,7 +942,7 @@ const Dashboard = () => {
                           <Button 
                             size="sm" 
                             variant="outline"
-                            className="w-full justify-start"
+                            className="w-full justify-start border-purple-200"
                             onClick={handleUserProfile}
                           >
                             <User className="mr-2 h-4 w-4" />
@@ -785,14 +951,14 @@ const Dashboard = () => {
                           <Button 
                             size="sm" 
                             variant="outline"
-                            className="w-full justify-start"
+                            className="w-full justify-start border-teal-200"
                             onClick={handleOrganization}
                           >
                             <Shield className="mr-2 h-4 w-4" />
-                            Organization Settings
+                            Organization
                           </Button>
                         </div>
-                      </>
+                      </div>
                     )}
                   </div>
                 </CardContent>
