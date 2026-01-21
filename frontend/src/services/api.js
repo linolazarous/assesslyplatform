@@ -9,7 +9,7 @@ import config, {
 // BASE CONFIG
 // -----------------------------
 const api = axios.create({
-  baseURL: config.API_BASE_URL,
+  baseURL: config.API_BASE_URL, // Already includes /api: https://assesslyplatform-pfm1.onrender.com/api
   headers: {
     "Content-Type": "application/json",
   },
@@ -42,8 +42,8 @@ api.interceptors.response.use(
           throw new Error('No refresh token available');
         }
 
-        // NOTE: Backend expects refresh_token in body as "refresh_token" key
-        const response = await api.post('/api/auth/refresh', { 
+        // FIXED: Removed /api prefix (baseURL already includes it)
+        const response = await api.post('/auth/refresh', { 
           refresh_token: refreshToken 
         });
 
@@ -109,12 +109,13 @@ api.interceptors.response.use(
 );
 
 // -----------------------------
-// AUTH APIs
+// AUTH APIs - FIXED ENDPOINTS
 // -----------------------------
 export const authAPI = {
   register: async (userData) => {
     try {
-      const { data } = await api.post('/api/auth/register', userData);
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/auth/register', userData);
       // Store tokens and user data on successful registration
       if (data.access_token) {
         setAuthToken(data.access_token);
@@ -131,7 +132,8 @@ export const authAPI = {
 
   login: async (credentials) => {
     try {
-      const { data } = await api.post('/api/auth/login', credentials);
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/auth/login', credentials);
       // Store tokens and user data on successful login
       if (data.access_token) {
         setAuthToken(data.access_token);
@@ -148,7 +150,8 @@ export const authAPI = {
 
   getCurrentUser: async () => {
     try {
-      const { data } = await api.get('/api/auth/me');
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/auth/me');
       // Update user data in storage
       if (data) setUser(data);
       return data;
@@ -167,8 +170,8 @@ export const authAPI = {
       const refreshToken = getRefreshToken();
       if (!refreshToken) throw new Error('No refresh token');
       
-      // Backend expects refresh_token in body as "refresh_token" key
-      const { data } = await api.post('/api/auth/refresh', { 
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/auth/refresh', { 
         refresh_token: refreshToken 
       });
       
@@ -186,8 +189,8 @@ export const authAPI = {
 
   logout: async () => {
     try {
-      // Call backend logout
-      await api.post('/api/auth/logout');
+      // FIXED: Removed /api prefix
+      await api.post('/auth/logout');
     } catch (error) {
       // Silently fail if logout endpoint has issues
       console.log('Backend logout endpoint not available');
@@ -200,7 +203,8 @@ export const authAPI = {
   // NOTE: These endpoints don't exist in the backend yet - they return 404
   verifyEmail: async (token) => {
     try {
-      const { data } = await api.post('/api/auth/verify-email', { token });
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/auth/verify-email', { token });
       return data;
     } catch (error) {
       console.error('Email verification error:', error);
@@ -210,7 +214,8 @@ export const authAPI = {
 
   forgotPassword: async (email) => {
     try {
-      const { data } = await api.post('/api/auth/forgot-password', { email });
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/auth/forgot-password', { email });
       return data;
     } catch (error) {
       console.error('Forgot password error:', error);
@@ -220,7 +225,8 @@ export const authAPI = {
 
   resetPassword: async (token, newPassword) => {
     try {
-      const { data } = await api.post('/api/auth/reset-password', { 
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/auth/reset-password', { 
         token, 
         new_password: newPassword 
       });
@@ -233,12 +239,13 @@ export const authAPI = {
 };
 
 // -----------------------------
-// CONTACT FORM APIs
+// CONTACT FORM APIs - FIXED ENDPOINTS
 // -----------------------------
 export const contactAPI = {
   submitContactForm: async (formData) => {
     try {
-      const { data } = await api.post('/api/contact', formData);
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/contact', formData);
       return data;
     } catch (error) {
       console.error('Submit contact form error:', error);
@@ -246,10 +253,11 @@ export const contactAPI = {
     }
   },
 
-  // NOTE: This endpoint doesn't exist in backend - only POST /api/contact exists
+  // NOTE: This endpoint doesn't exist in backend - only POST /contact exists
   getContactForms: async () => {
     try {
-      const { data } = await api.get('/api/contact');
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/contact');
       return data;
     } catch (error) {
       // If endpoint doesn't exist, return empty array
@@ -263,12 +271,13 @@ export const contactAPI = {
 };
 
 // -----------------------------
-// DEMO REQUEST APIs
+// DEMO REQUEST APIs - FIXED ENDPOINTS
 // -----------------------------
 export const demoAPI = {
   submitDemoRequest: async (formData) => {
     try {
-      const { data } = await api.post('/api/demo', formData);
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/demo', formData);
       return data;
     } catch (error) {
       console.error('Submit demo request error:', error);
@@ -276,10 +285,11 @@ export const demoAPI = {
     }
   },
 
-  // NOTE: This endpoint doesn't exist in backend - only POST /api/demo exists
+  // NOTE: This endpoint doesn't exist in backend - only POST /demo exists
   getDemoRequests: async () => {
     try {
-      const { data } = await api.get('/api/demo');
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/demo');
       return data;
     } catch (error) {
       // If endpoint doesn't exist, return empty array
@@ -293,12 +303,13 @@ export const demoAPI = {
 };
 
 // -----------------------------
-// SUBSCRIPTION APIs
+// SUBSCRIPTION APIs - FIXED ENDPOINTS
 // -----------------------------
 export const subscriptionAPI = {
   createCheckoutSession: async (planId) => {
     try {
-      const { data } = await api.post('/api/subscriptions/checkout', { plan_id: planId });
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/subscriptions/checkout', { plan_id: planId });
       return data;
     } catch (error) {
       console.error('Create checkout session error:', error);
@@ -308,7 +319,8 @@ export const subscriptionAPI = {
 
   getCurrentSubscription: async () => {
     try {
-      const { data } = await api.get('/api/subscriptions/me');
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/subscriptions/me');
       return data;
     } catch (error) {
       console.error('Get current subscription error:', error);
@@ -318,7 +330,8 @@ export const subscriptionAPI = {
 
   cancelSubscription: async () => {
     try {
-      const { data } = await api.post('/api/subscriptions/cancel');
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/subscriptions/cancel');
       return data;
     } catch (error) {
       console.error('Cancel subscription error:', error);
@@ -328,7 +341,8 @@ export const subscriptionAPI = {
 
   getAvailablePlans: async () => {
     try {
-      const { data } = await api.get('/api/plans');
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/plans');
       return data;
     } catch (error) {
       console.error('Get available plans error:', error);
@@ -349,12 +363,13 @@ export const subscriptionAPI = {
 };
 
 // -----------------------------
-// ORGANIZATION APIs
+// ORGANIZATION APIs - FIXED ENDPOINTS
 // -----------------------------
 export const organizationAPI = {
   getCurrent: async () => {
     try {
-      const { data } = await api.get('/api/organizations/me');
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/organizations/me');
       return data;
     } catch (error) {
       console.error('Get organization error:', error);
@@ -364,7 +379,8 @@ export const organizationAPI = {
 
   update: async (payload) => {
     try {
-      const { data } = await api.put('/api/organizations/me', payload);
+      // FIXED: Removed /api prefix
+      const { data } = await api.put('/organizations/me', payload);
       return data;
     } catch (error) {
       console.error('Update organization error:', error);
@@ -374,12 +390,13 @@ export const organizationAPI = {
 };
 
 // -----------------------------
-// ASSESSMENT APIs
+// ASSESSMENT APIs - FIXED ENDPOINTS
 // -----------------------------
 export const assessmentAPI = {
   create: async (payload) => {
     try {
-      const { data } = await api.post('/api/assessments', payload);
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/assessments', payload);
       return data;
     } catch (error) {
       console.error('Create assessment error:', error);
@@ -389,7 +406,8 @@ export const assessmentAPI = {
 
   getAll: async (params = {}) => {
     try {
-      const { data } = await api.get('/api/assessments', { params });
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/assessments', { params });
       return data;
     } catch (error) {
       console.error('Get all assessments error:', error);
@@ -399,7 +417,8 @@ export const assessmentAPI = {
 
   getById: async (id) => {
     try {
-      const { data } = await api.get(`/api/assessments/${id}`);
+      // FIXED: Removed /api prefix
+      const { data } = await api.get(`/assessments/${id}`);
       return data;
     } catch (error) {
       console.error('Get assessment by ID error:', error);
@@ -409,7 +428,8 @@ export const assessmentAPI = {
 
   update: async (id, payload) => {
     try {
-      const { data } = await api.put(`/api/assessments/${id}`, payload);
+      // FIXED: Removed /api prefix
+      const { data } = await api.put(`/assessments/${id}`, payload);
       return data;
     } catch (error) {
       console.error('Update assessment error:', error);
@@ -419,7 +439,8 @@ export const assessmentAPI = {
 
   delete: async (id) => {
     try {
-      const { data } = await api.delete(`/api/assessments/${id}`);
+      // FIXED: Removed /api prefix
+      const { data } = await api.delete(`/assessments/${id}`);
       return data;
     } catch (error) {
       console.error('Delete assessment error:', error);
@@ -430,7 +451,8 @@ export const assessmentAPI = {
   // Additional assessment endpoints that exist in backend
   getQuestions: async (assessmentId) => {
     try {
-      const { data } = await api.get(`/api/assessments/${assessmentId}/questions`);
+      // FIXED: Removed /api prefix
+      const { data } = await api.get(`/assessments/${assessmentId}/questions`);
       return data;
     } catch (error) {
       console.error('Get assessment questions error:', error);
@@ -440,7 +462,8 @@ export const assessmentAPI = {
 
   addQuestion: async (assessmentId, question) => {
     try {
-      const { data } = await api.post(`/api/assessments/${assessmentId}/questions`, question);
+      // FIXED: Removed /api prefix
+      const { data } = await api.post(`/assessments/${assessmentId}/questions`, question);
       return data;
     } catch (error) {
       console.error('Add assessment question error:', error);
@@ -450,7 +473,8 @@ export const assessmentAPI = {
 
   updateQuestion: async (assessmentId, questionId, question) => {
     try {
-      const { data } = await api.put(`/api/assessments/${assessmentId}/questions/${questionId}`, question);
+      // FIXED: Removed /api prefix
+      const { data } = await api.put(`/assessments/${assessmentId}/questions/${questionId}`, question);
       return data;
     } catch (error) {
       console.error('Update assessment question error:', error);
@@ -460,7 +484,8 @@ export const assessmentAPI = {
 
   getSettings: async (assessmentId) => {
     try {
-      const { data } = await api.get(`/api/assessments/${assessmentId}/settings`);
+      // FIXED: Removed /api prefix
+      const { data } = await api.get(`/assessments/${assessmentId}/settings`);
       return data;
     } catch (error) {
       console.error('Get assessment settings error:', error);
@@ -470,7 +495,8 @@ export const assessmentAPI = {
 
   updateSettings: async (assessmentId, settings) => {
     try {
-      const { data } = await api.put(`/api/assessments/${assessmentId}/settings`, settings);
+      // FIXED: Removed /api prefix
+      const { data } = await api.put(`/assessments/${assessmentId}/settings`, settings);
       return data;
     } catch (error) {
       console.error('Update assessment settings error:', error);
@@ -480,12 +506,13 @@ export const assessmentAPI = {
 };
 
 // -----------------------------
-// CANDIDATE APIs
+// CANDIDATE APIs - FIXED ENDPOINTS
 // -----------------------------
 export const candidateAPI = {
   create: async (payload) => {
     try {
-      const { data } = await api.post('/api/candidates', payload);
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/candidates', payload);
       return data;
     } catch (error) {
       console.error('Create candidate error:', error);
@@ -495,7 +522,8 @@ export const candidateAPI = {
 
   getAll: async (params = {}) => {
     try {
-      const { data } = await api.get('/api/candidates', { params });
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/candidates', { params });
       return data;
     } catch (error) {
       console.error('Get all candidates error:', error);
@@ -506,7 +534,8 @@ export const candidateAPI = {
   // NOTE: These endpoints don't exist in backend
   getById: async (id) => {
     try {
-      const { data } = await api.get(`/api/candidates/${id}`);
+      // FIXED: Removed /api prefix
+      const { data } = await api.get(`/candidates/${id}`);
       return data;
     } catch (error) {
       console.error('Get candidate by ID error:', error);
@@ -516,7 +545,8 @@ export const candidateAPI = {
 
   update: async (id, payload) => {
     try {
-      const { data } = await api.put(`/api/candidates/${id}`, payload);
+      // FIXED: Removed /api prefix
+      const { data } = await api.put(`/candidates/${id}`, payload);
       return data;
     } catch (error) {
       console.error('Update candidate error:', error);
@@ -526,7 +556,8 @@ export const candidateAPI = {
 
   delete: async (id) => {
     try {
-      const { data } = await api.delete(`/api/candidates/${id}`);
+      // FIXED: Removed /api prefix
+      const { data } = await api.delete(`/candidates/${id}`);
       return data;
     } catch (error) {
       console.error('Delete candidate error:', error);
@@ -536,7 +567,8 @@ export const candidateAPI = {
 
   getByAssessment: async (assessmentId) => {
     try {
-      const { data } = await api.get('/api/candidates', { 
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/candidates', { 
         params: { assessment_id: assessmentId } 
       });
       return data;
@@ -548,12 +580,13 @@ export const candidateAPI = {
 };
 
 // -----------------------------
-// USER PROFILE APIs
+// USER PROFILE APIs - FIXED ENDPOINTS
 // -----------------------------
 export const userAPI = {
   updateProfile: async (payload) => {
     try {
-      const { data } = await api.put('/api/users/me', payload);
+      // FIXED: Removed /api prefix
+      const { data } = await api.put('/users/me', payload);
       // Update local storage if user data is returned
       if (data) {
         setUser(data);
@@ -567,7 +600,8 @@ export const userAPI = {
 
   updatePassword: async (currentPassword, newPassword) => {
     try {
-      const { data } = await api.put('/api/users/me/password', {
+      // FIXED: Removed /api prefix
+      const { data } = await api.put('/users/me/password', {
         current_password: currentPassword,
         new_password: newPassword
       });
@@ -581,7 +615,8 @@ export const userAPI = {
   // NOTE: Use authAPI.getCurrentUser() instead - same endpoint
   getProfile: async () => {
     try {
-      const { data } = await api.get('/api/auth/me');
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/auth/me');
       return data;
     } catch (error) {
       console.error('Get profile error:', error);
@@ -591,12 +626,13 @@ export const userAPI = {
 };
 
 // -----------------------------
-// DASHBOARD APIs
+// DASHBOARD APIs - FIXED ENDPOINTS
 // -----------------------------
 export const dashboardAPI = {
   getStats: async () => {
     try {
-      const { data } = await api.get('/api/dashboard/stats');
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/dashboard/stats');
       return data;
     } catch (error) {
       // If endpoint doesn't exist yet, return fallback data
@@ -617,13 +653,14 @@ export const dashboardAPI = {
 };
 
 // -----------------------------
-// PAYMENT & BILLING APIs
+// PAYMENT & BILLING APIs - FIXED ENDPOINTS
 // -----------------------------
 export const paymentAPI = {
   // NOTE: These endpoints don't exist in backend
   createPaymentIntent: async (amount) => {
     try {
-      const { data } = await api.post('/api/payments/intent', { amount });
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/payments/intent', { amount });
       return data;
     } catch (error) {
       // If endpoint doesn't exist, return mock data for now
@@ -643,7 +680,8 @@ export const paymentAPI = {
 
   getBillingHistory: async () => {
     try {
-      const { data } = await api.get('/api/billing/history');
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/billing/history');
       return data;
     } catch (error) {
       // If endpoint doesn't exist, return empty array
@@ -657,12 +695,13 @@ export const paymentAPI = {
 };
 
 // -----------------------------
-// WEBHOOK APIs
+// WEBHOOK APIs - FIXED ENDPOINTS
 // -----------------------------
 export const webhookAPI = {
   stripe: async (payload, signature) => {
     try {
-      const { data } = await api.post('/api/webhooks/stripe', payload, {
+      // FIXED: Removed /api prefix
+      const { data } = await api.post('/webhooks/stripe', payload, {
         headers: {
           'stripe-signature': signature
         }
@@ -676,12 +715,13 @@ export const webhookAPI = {
 };
 
 // -----------------------------
-// HEALTH CHECK
+// HEALTH CHECK - FIXED ENDPOINTS
 // -----------------------------
 export const healthAPI = {
   check: async () => {
     try {
-      const { data } = await api.get('/api/health');
+      // FIXED: Removed /api prefix
+      const { data } = await api.get('/health');
       return data;
     } catch (error) {
       console.error('Health check error:', error);
@@ -718,6 +758,21 @@ export const apiUtils = {
   
   // Get config
   getConfig: () => config,
+  
+  // Direct API call helper
+  call: async (method, endpoint, data = null, config = {}) => {
+    try {
+      const response = await api({
+        method,
+        url: endpoint,
+        data,
+        ...config
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
 };
 
 // Export all APIs
