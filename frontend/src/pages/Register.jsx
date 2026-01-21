@@ -8,14 +8,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Checkbox } from '../components/ui/checkbox';
 import { Badge } from '../components/ui/badge';
-import { register } from '../utils/auth'; // Import from auth utils
+import { authAPI } from '../services/api'; // Updated import path
 import { toast } from 'sonner';
-import config from '../config.js'; // Import config
+import config, { isAuthenticated } from '../config.js'; // Updated import
 import {
   Building2, Mail, Lock, User, ArrowLeft,
   AlertCircle, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Shield, Key, ExternalLink
 } from 'lucide-react';
+import ReCAPTCHA from 'react-google-recaptcha'; // Add reCAPTCHA
 
 // Constants using config
 const PASSWORD_REQUIREMENTS = {
@@ -36,13 +37,15 @@ const Register = () => {
   const [formErrors, setFormErrors] = useState({});
   const [passwordScore, setPasswordScore] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [recaptchaToken, setRecaptchaToken] = useState(null);
+  const [recaptchaKey] = useState(import.meta.env.VITE_RECAPTCHA_SITE_KEY || '');
 
   // Get referral code from URL
   const referralCode = new URLSearchParams(window.location.search).get('ref');
 
   // Redirect if already logged in
   useEffect(() => {
-    if (config.isAuthenticated()) {
+    if (isAuthenticated()) {
       navigate('/dashboard', { replace: true });
     }
   }, [navigate]);
@@ -82,22 +85,16 @@ const Register = () => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const nameRegex = /^[a-zA-Z\s]{2,50}$/;
 
-    // Name validation
-    if (!formData.first_name?.trim()) {
-      errors.first_name = 'First name is required';
-    } else if (!nameRegex.test(formData.first_name.trim())) {
-      errors.first_name = 'First name must be 2-50 characters with letters only';
-    }
-
-    if (!formData.last_name?.trim()) {
-      errors.last_name = 'Last name is required';
-    } else if (!nameRegex.test(formData.last_name.trim())) {
-      errors.last_name = 'Last name must be 2-50 characters with letters only';
+    // Name validation - Backend expects 'name' field (not first_name/last_name)
+    if (!formData.name?.trim()) {
+      errors.name = 'Full name is required';
+    } else if (!nameRegex.test(formData.name.trim())) {
+      errors.name = 'Name must be 2-50 characters with letters only';
     }
     
     // Email validation
     if (!formData.email?.trim()) {
-      errors.email = 'Work email is required';
+      errors.email = 'Email is required';
     } else if (!emailRegex.test(formData.email)) {
       errors.email = 'Please enter a valid email address';
     }
@@ -143,13 +140,18 @@ const Register = () => {
       errors.confirm_password = 'Passwords do not match';
     }
     
+    // reCAPTCHA validation (only if enabled)
+    if (recaptchaKey && !recaptchaToken) {
+      errors.recaptcha = 'Please complete the reCAPTCHA verification';
+    }
+    
     // Terms validation
     if (!acceptedTerms) {
       errors.terms = 'You must accept the Terms of Service and Privacy Policy';
     }
     
     return errors;
-  }, [acceptedTerms]);
+  }, [acceptedTerms, recaptchaToken, recaptchaKey]);
 
   // Handle input changes
   const handleInputChange = useCallback((field, value) => {
@@ -161,23 +163,29 @@ const Register = () => {
     }
   }, [calculatePasswordStrength]);
 
+  // Handle reCAPTCHA change
+  const handleRecaptchaChange = useCallback((token) => {
+    setRecaptchaToken(token);
+    setFormErrors(prev => ({ ...prev, recaptcha: undefined }));
+  }, []);
+
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     const formData = new FormData(e.target);
     const data = {
-      first_name: formData.get('first_name')?.toString() || '',
-      last_name: formData.get('last_name')?.toString() || '',
+      name: formData.get('name')?.toString() || '',
       email: formData.get('email')?.toString() || '',
       organization: formData.get('organization')?.toString() || '',
       password: formData.get('password')?.toString() || '',
       confirm_password: formData.get('confirm_password')?.toString() || '',
-      // Optional fields your backend might accept
-      role: 'admin',
-      plan: selectedPlan,
-      referral_code: referralCode,
     };
+
+    // Add reCAPTCHA token if available
+    if (recaptchaToken) {
+      data.recaptcha_token = recaptchaToken;
+    }
 
     const errors = validateForm(data);
     if (Object.keys(errors).length > 0) {
@@ -190,8 +198,13 @@ const Register = () => {
     setFormErrors({});
 
     try {
-      // Use the auth utility for registration
-      const result = await register(data);
+      // Use the authAPI for registration
+      const result = await authAPI.register(data);
+      
+      // Check if registration was successful
+      if (!result || !result.access_token) {
+        throw new Error('Registration failed - no access token received');
+      }
       
       // Track successful registration
       if (window.gtag) {
@@ -207,22 +220,24 @@ const Register = () => {
         });
       }
 
-      // Handle email verification flow
-      if (result.user?.is_verified === false) {
+      // Handle email verification flow - check if user is verified
+      // Note: Backend doesn't return is_verified in the token response
+      // You might need to check this differently
+      if (config.FEATURES.EMAIL_VERIFICATION) {
         toast.success('Account created! Please check your email to verify your account.');
         
         navigate('/verify-email', { 
           state: { 
             email: data.email,
-            name: `${data.first_name} ${data.last_name}`,
-            user_id: result.user.id
+            name: data.name,
+            user_id: result.user?.id
           }
         });
       } else {
         toast.success('Account created successfully! Redirecting to dashboard...');
         
         // Show welcome message
-        toast.info(`Welcome to Assessly, ${result.user?.first_name || 'User'}! Start by creating your first assessment.`);
+        toast.info(`Welcome to Assessly, ${result.user?.name || 'User'}! Start by creating your first assessment.`);
         
         // Redirect to dashboard after short delay
         setTimeout(() => {
@@ -247,8 +262,8 @@ const Register = () => {
         }
         
         // Handle field-specific validation errors from backend
-        if (errorData?.detail && typeof errorData.detail === 'object') {
-          Object.entries(errorData.detail).forEach(([field, messages]) => {
+        if (errorData?.errors && typeof errorData.errors === 'object') {
+          Object.entries(errorData.errors).forEach(([field, messages]) => {
             if (Array.isArray(messages)) {
               fieldErrors[field] = messages[0];
             }
@@ -256,11 +271,30 @@ const Register = () => {
           setFormErrors(fieldErrors);
           errorMessage = 'Please fix the errors in the form.';
         } 
+        // Handle backend validation errors
+        else if (errorData?.detail && typeof errorData.detail === 'object') {
+          Object.entries(errorData.detail).forEach(([field, messages]) => {
+            if (Array.isArray(messages)) {
+              fieldErrors[field] = messages[0];
+            } else if (typeof messages === 'string') {
+              // Map backend field names to frontend field names
+              const frontendField = field === 'password' ? 'password' : field;
+              fieldErrors[frontendField] = messages;
+            }
+          });
+          setFormErrors(fieldErrors);
+          errorMessage = 'Please fix the errors in the form.';
+        }
+        // Handle specific backend errors
         else if (errorData?.detail?.includes('already registered') || 
                  errorData?.detail?.includes('already exists') ||
                  error.response.status === 400) {
-          errorMessage = 'An account with this email already exists. Please sign in instead.';
-          setFormErrors({ email: errorMessage });
+          if (errorData.detail.includes('email')) {
+            errorMessage = 'An account with this email already exists. Please sign in instead.';
+            setFormErrors({ email: errorMessage });
+          } else {
+            errorMessage = errorData.detail || 'Registration failed. Please check your information.';
+          }
         } 
         else if (errorData?.detail) {
           errorMessage = errorData.detail;
@@ -275,6 +309,12 @@ const Register = () => {
       }
       
       toast.error(errorMessage);
+      
+      // Reset reCAPTCHA on error
+      if (window.grecaptcha && recaptchaKey) {
+        window.grecaptcha.reset();
+        setRecaptchaToken(null);
+      }
       
     } finally {
       setLoading(false);
@@ -298,6 +338,11 @@ const Register = () => {
 
   // Handle social login using config
   const handleSocialLogin = (provider) => {
+    if (!config.SERVICES[`${provider.toUpperCase()}_CLIENT_ID`]) {
+      toast.error(`${provider} login is not configured`);
+      return;
+    }
+    
     // Track social login attempt
     if (window.gtag) {
       window.gtag('event', 'social_login_attempt', {
@@ -307,9 +352,7 @@ const Register = () => {
     }
     
     // Redirect to backend OAuth endpoint
-    const redirectUri = `${window.location.origin}/dashboard`;
-    const authUrl = `${config.API_BASE_URL}${config.AUTH.ENDPOINTS.LOGIN}/${provider}?plan=${selectedPlan}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-    
+    const authUrl = `${config.API_BASE_URL}/auth/${provider}`;
     window.location.href = authUrl;
   };
 
@@ -376,94 +419,72 @@ const Register = () => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleSocialLogin('google')}
-                    disabled={loading}
-                    className="hover:bg-gray-50"
-                  >
-                    <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24">
-                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                    </svg>
-                    Google
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleSocialLogin('github')}
-                    disabled={loading}
-                    className="hover:bg-gray-50"
-                  >
-                    <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                    </svg>
-                    GitHub
-                  </Button>
+                  {config.SERVICES.GOOGLE_CLIENT_ID && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleSocialLogin('google')}
+                      disabled={loading}
+                      className="hover:bg-gray-50"
+                    >
+                      <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                      </svg>
+                      Google
+                    </Button>
+                  )}
+                  {config.SERVICES.GITHUB_CLIENT_ID && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleSocialLogin('github')}
+                      disabled={loading}
+                      className="hover:bg-gray-50"
+                    >
+                      <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                      </svg>
+                      GitHub
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-              {/* Name Fields - Split into first and last name */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="first_name" className="flex items-center">
-                    <User className="mr-2 h-4 w-4" aria-hidden="true" />
-                    First Name
-                  </Label>
-                  <Input
-                    id="first_name"
-                    name="first_name"
-                    type="text"
-                    required
-                    placeholder="John"
-                    className="mt-1"
-                    aria-describedby={formErrors.first_name ? "first-name-error" : undefined}
-                    aria-invalid={!!formErrors.first_name}
-                    onChange={(e) => handleInputChange('first_name', e.target.value)}
-                    disabled={loading}
-                    autoComplete="given-name"
-                    maxLength={50}
-                  />
-                  {formErrors.first_name && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.first_name}</p>
-                  )}
-                </div>
-                
-                <div>
-                  <Label htmlFor="last_name" className="flex items-center">
-                    <User className="mr-2 h-4 w-4" aria-hidden="true" />
-                    Last Name
-                  </Label>
-                  <Input
-                    id="last_name"
-                    name="last_name"
-                    type="text"
-                    required
-                    placeholder="Doe"
-                    className="mt-1"
-                    aria-describedby={formErrors.last_name ? "last-name-error" : undefined}
-                    aria-invalid={!!formErrors.last_name}
-                    onChange={(e) => handleInputChange('last_name', e.target.value)}
-                    disabled={loading}
-                    autoComplete="family-name"
-                    maxLength={50}
-                  />
-                  {formErrors.last_name && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.last_name}</p>
-                  )}
-                </div>
+              {/* Full Name Field - Backend expects 'name' */}
+              <div>
+                <Label htmlFor="name" className="flex items-center">
+                  <User className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Full Name
+                </Label>
+                <Input
+                  id="name"
+                  name="name"
+                  type="text"
+                  required
+                  placeholder="John Doe"
+                  className="mt-1"
+                  aria-describedby={formErrors.name ? "name-error" : undefined}
+                  aria-invalid={!!formErrors.name}
+                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  disabled={loading}
+                  autoComplete="name"
+                  maxLength={50}
+                />
+                {formErrors.name && (
+                  <p className="mt-1 text-sm text-red-600">{formErrors.name}</p>
+                )}
               </div>
 
-              {/* Work Email */}
+              {/* Email */}
               <div>
                 <Label htmlFor="email" className="flex items-center">
                   <Mail className="mr-2 h-4 w-4" aria-hidden="true" />
-                  Work Email
+                  Email Address
                 </Label>
                 <Input
                   id="email"
@@ -658,6 +679,26 @@ const Register = () => {
                 )}
               </div>
 
+              {/* reCAPTCHA */}
+              {recaptchaKey && (
+                <div>
+                  <ReCAPTCHA
+                    sitekey={recaptchaKey}
+                    onChange={handleRecaptchaChange}
+                    onErrored={() => {
+                      setFormErrors(prev => ({ ...prev, recaptcha: 'reCAPTCHA verification failed. Please try again.' }));
+                    }}
+                    className="mt-2"
+                  />
+                  {formErrors.recaptcha && (
+                    <Alert variant="destructive" className="mt-2 py-2 text-sm">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{formErrors.recaptcha}</AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              )}
+
               {/* Terms Agreement */}
               <div className="pt-2">
                 <div className="flex items-start space-x-2">
@@ -718,7 +759,7 @@ const Register = () => {
               <Button
                 type="submit"
                 className="w-full bg-gradient-to-r from-blue-600 via-teal-500 to-green-500 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={loading}
+                disabled={loading || (recaptchaKey && !recaptchaToken)}
                 aria-label="Create your account"
               >
                 {loading ? (
