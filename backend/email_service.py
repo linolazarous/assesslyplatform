@@ -122,8 +122,7 @@ async def send_contact_notification(
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
     
     return _send_email([INFO_EMAIL], subject, html)
 
