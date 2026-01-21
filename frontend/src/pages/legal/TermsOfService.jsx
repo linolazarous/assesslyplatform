@@ -2,7 +2,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Scale, FileText, AlertTriangle, BookOpen, Shield, Mail, ExternalLink, ArrowLeft } from 'lucide-react';
-import Navigation from '../components/Navigation'; // Add navigation
+import Navigation from '../../components/Navigation';
 
 const TermsOfService = () => {
   const effectiveDate = 'January 1, 2025';
