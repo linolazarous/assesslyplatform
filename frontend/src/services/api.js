@@ -1,20 +1,15 @@
 // frontend/src/services/api.js
 import axios from "axios";
-
-/**
- * VITE environment variables must start with VITE_
- * Ensure you have a .env file in frontend/ with:
- * VITE_BACKEND_URL=https://assesslyplatform-pfm1.onrender.com
- * VITE_STRIPE_PUBLISHABLE_KEY=your_stripe_key_here
- */
+import config, { 
+  getAuthToken, setAuthToken, getRefreshToken, setRefreshToken,
+  setUser, clearAuthData, isAuthenticated 
+} from '../config.js';
 
 // -----------------------------
 // BASE CONFIG
 // -----------------------------
-const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "https://assesslyplatform-pfm1.onrender.com";
-
 const api = axios.create({
-  baseURL: `${API_BASE_URL}/api`,
+  baseURL: config.API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
@@ -22,29 +17,62 @@ const api = axios.create({
 });
 
 // Automatically add auth token if exists
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("assessly_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
+api.interceptors.request.use((requestConfig) => {
+  const token = getAuthToken();
+  if (token) {
+    requestConfig.headers.Authorization = `Bearer ${token}`;
+  }
+  return requestConfig;
 });
 
-// Handle response errors globally
+// Handle token refresh on 401 responses
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+
     // Handle 401 Unauthorized (token expired)
-    if (error.response?.status === 401) {
-      localStorage.removeItem("assessly_token");
-      localStorage.removeItem("assessly_user");
-      // Redirect to login if not already there
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        // Try to refresh token
+        const refreshToken = getRefreshToken();
+        if (!refreshToken) {
+          throw new Error('No refresh token available');
+        }
+
+        const response = await axios.post(
+          `${config.API_BASE_URL}${config.AUTH.ENDPOINTS.REFRESH}`,
+          { refresh_token: refreshToken }
+        );
+
+        const { access_token, refresh_token } = response.data;
+
+        // Update tokens
+        setAuthToken(access_token);
+        if (refresh_token) setRefreshToken(refresh_token);
+
+        // Update original request header
+        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        
+        // Retry original request
+        return api(originalRequest);
+      } catch (refreshError) {
+        // Refresh failed, logout user
+        clearAuthData();
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login?session=expired';
+        }
+        return Promise.reject(refreshError);
       }
     }
-    
+
     // Handle 403 Forbidden (insufficient permissions)
     if (error.response?.status === 403) {
       console.error('Access forbidden:', error.response.data);
+      // Optionally redirect to unauthorized page
+      // window.location.href = '/unauthorized';
     }
     
     // Handle 404 Not Found
@@ -52,9 +80,28 @@ api.interceptors.response.use(
       console.error('Resource not found:', error.response.config.url);
     }
     
+    // Handle 422 Validation Error
+    if (error.response?.status === 422) {
+      // Validation errors are handled by the calling component
+      console.warn('Validation error:', error.response.data);
+    }
+    
     // Handle 500 Internal Server Error
     if (error.response?.status === 500) {
       console.error('Server error:', error.response.data);
+      // Optionally show a user-friendly error message
+      // toast.error('Server error. Please try again later.');
+    }
+
+    // Handle network errors
+    if (error.code === 'ECONNABORTED') {
+      console.error('Request timeout:', error.config.url);
+      // toast.error('Request timeout. Please check your connection.');
+    }
+
+    if (!error.response) {
+      console.error('Network error:', error.message);
+      // toast.error('Network error. Please check your connection.');
     }
     
     return Promise.reject(error);
@@ -67,11 +114,12 @@ api.interceptors.response.use(
 export const authAPI = {
   register: async (userData) => {
     try {
-      const { data } = await api.post("/auth/register", userData);
+      const { data } = await api.post(config.AUTH.ENDPOINTS.REGISTER, userData);
       // Store tokens and user data on successful registration
       if (data.access_token) {
-        localStorage.setItem("assessly_token", data.access_token);
-        localStorage.setItem("assessly_user", JSON.stringify(data.user));
+        setAuthToken(data.access_token);
+        if (data.refresh_token) setRefreshToken(data.refresh_token);
+        if (data.user) setUser(data.user);
       }
       return data;
     } catch (error) {
@@ -82,11 +130,12 @@ export const authAPI = {
 
   login: async (credentials) => {
     try {
-      const { data } = await api.post("/auth/login", credentials);
+      const { data } = await api.post(config.AUTH.ENDPOINTS.LOGIN, credentials);
       // Store tokens and user data on successful login
       if (data.access_token) {
-        localStorage.setItem("assessly_token", data.access_token);
-        localStorage.setItem("assessly_user", JSON.stringify(data.user));
+        setAuthToken(data.access_token);
+        if (data.refresh_token) setRefreshToken(data.refresh_token);
+        if (data.user) setUser(data.user);
       }
       return data;
     } catch (error) {
@@ -97,20 +146,34 @@ export const authAPI = {
 
   getCurrentUser: async () => {
     try {
-      const { data } = await api.get("/auth/me");
+      const { data } = await api.get(config.AUTH.ENDPOINTS.ME);
+      // Update user data in storage
+      if (data.user) setUser(data.user);
       return data;
     } catch (error) {
       console.error('Get current user error:', error);
+      // Don't throw if unauthorized - let component handle it
+      if (error.response?.status === 401) {
+        return { user: null, error: 'Unauthorized' };
+      }
       throw error;
     }
   },
 
-  refreshToken: async (refreshToken) => {
+  refreshToken: async () => {
     try {
-      const { data } = await api.post("/auth/refresh", { refresh_token: refreshToken });
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) throw new Error('No refresh token');
+      
+      const { data } = await api.post(config.AUTH.ENDPOINTS.REFRESH, { 
+        refresh_token: refreshToken 
+      });
+      
       if (data.access_token) {
-        localStorage.setItem("assessly_token", data.access_token);
+        setAuthToken(data.access_token);
+        if (data.refresh_token) setRefreshToken(data.refresh_token);
       }
+      
       return data;
     } catch (error) {
       console.error('Refresh token error:', error);
@@ -120,14 +183,46 @@ export const authAPI = {
 
   logout: async () => {
     try {
-      // Clear local storage
-      localStorage.removeItem("assessly_token");
-      localStorage.removeItem("assessly_user");
-      // Optionally call backend logout endpoint if implemented
-      // await api.post("/auth/logout");
-      return { success: true, message: "Logged out successfully" };
+      // Call backend logout if endpoint exists
+      await api.post(config.AUTH.ENDPOINTS.LOGOUT);
     } catch (error) {
-      console.error('Logout error:', error);
+      // Silently fail if logout endpoint doesn't exist
+      console.log('Backend logout endpoint not available');
+    } finally {
+      clearAuthData();
+      return { success: true, message: "Logged out successfully" };
+    }
+  },
+
+  verifyEmail: async (token) => {
+    try {
+      const { data } = await api.post(config.AUTH.ENDPOINTS.VERIFY_EMAIL, { token });
+      return data;
+    } catch (error) {
+      console.error('Email verification error:', error);
+      throw error;
+    }
+  },
+
+  forgotPassword: async (email) => {
+    try {
+      const { data } = await api.post(config.AUTH.ENDPOINTS.FORGOT_PASSWORD, { email });
+      return data;
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      throw error;
+    }
+  },
+
+  resetPassword: async (token, newPassword) => {
+    try {
+      const { data } = await api.post(config.AUTH.ENDPOINTS.RESET_PASSWORD, { 
+        token, 
+        new_password: newPassword 
+      });
+      return data;
+    } catch (error) {
+      console.error('Reset password error:', error);
       throw error;
     }
   },
@@ -147,7 +242,6 @@ export const contactAPI = {
     }
   },
 
-  // Note: This endpoint may not exist in your backend
   getContactForms: async () => {
     try {
       const { data } = await api.get("/contact");
@@ -177,7 +271,6 @@ export const demoAPI = {
     }
   },
 
-  // Note: This endpoint may not exist in your backend
   getDemoRequests: async () => {
     try {
       const { data } = await api.get("/demo");
@@ -194,10 +287,9 @@ export const demoAPI = {
 };
 
 // -----------------------------
-// SUBSCRIPTION APIs (Updated to match backend)
+// SUBSCRIPTION APIs
 // -----------------------------
 export const subscriptionAPI = {
-  // Create checkout session
   createCheckoutSession: async (planId) => {
     try {
       const { data } = await api.post("/subscriptions/checkout", { plan_id: planId });
@@ -208,7 +300,6 @@ export const subscriptionAPI = {
     }
   },
 
-  // Get current subscription
   getCurrentSubscription: async () => {
     try {
       const { data } = await api.get("/subscriptions/me");
@@ -219,7 +310,6 @@ export const subscriptionAPI = {
     }
   },
 
-  // Cancel subscription
   cancelSubscription: async (immediate = false) => {
     try {
       const { data } = await api.post("/subscriptions/cancel", { immediate });
@@ -230,7 +320,6 @@ export const subscriptionAPI = {
     }
   },
 
-  // Get available plans
   getAvailablePlans: async () => {
     try {
       const { data } = await api.get("/plans");
@@ -241,7 +330,6 @@ export const subscriptionAPI = {
     }
   },
 
-  // Upgrade/downgrade subscription
   changeSubscription: async (newPlanId) => {
     try {
       const { data } = await api.post("/subscriptions/upgrade", { new_plan_id: newPlanId });
@@ -254,7 +342,7 @@ export const subscriptionAPI = {
 };
 
 // -----------------------------
-// ORGANIZATION APIs (Updated to match backend)
+// ORGANIZATION APIs
 // -----------------------------
 export const organizationAPI = {
   getCurrent: async () => {
@@ -334,7 +422,7 @@ export const assessmentAPI = {
 };
 
 // -----------------------------
-// CANDIDATE APIs (New)
+// CANDIDATE APIs
 // -----------------------------
 export const candidateAPI = {
   create: async (payload) => {
@@ -387,7 +475,6 @@ export const candidateAPI = {
     }
   },
 
-  // Get candidates for specific assessment
   getByAssessment: async (assessmentId) => {
     try {
       const { data } = await api.get("/candidates", { params: { assessment_id: assessmentId } });
@@ -400,7 +487,7 @@ export const candidateAPI = {
 };
 
 // -----------------------------
-// USER PROFILE APIs (New)
+// USER PROFILE APIs
 // -----------------------------
 export const userAPI = {
   updateProfile: async (payload) => {
@@ -408,9 +495,7 @@ export const userAPI = {
       const { data } = await api.put("/users/me", payload);
       // Update local storage if user data is returned
       if (data.user) {
-        const currentUser = JSON.parse(localStorage.getItem("assessly_user") || "{}");
-        const updatedUser = { ...currentUser, ...data.user };
-        localStorage.setItem("assessly_user", JSON.stringify(updatedUser));
+        setUser(data.user);
       }
       return data;
     } catch (error) {
@@ -444,7 +529,7 @@ export const userAPI = {
 };
 
 // -----------------------------
-// DASHBOARD APIs (New)
+// DASHBOARD APIs
 // -----------------------------
 export const dashboardAPI = {
   getStats: async () => {
@@ -469,10 +554,9 @@ export const dashboardAPI = {
 };
 
 // -----------------------------
-// PAYMENT & BILLING APIs (Updated)
+// PAYMENT & BILLING APIs
 // -----------------------------
 export const paymentAPI = {
-  // Note: These endpoints may need to be implemented in your backend
   createPaymentIntent: async (amount) => {
     try {
       const { data } = await api.post("/payments/intent", { amount });
@@ -493,7 +577,6 @@ export const paymentAPI = {
     }
   },
 
-  // Get billing history
   getBillingHistory: async () => {
     try {
       const { data } = await api.get("/billing/history");
@@ -548,36 +631,29 @@ export const healthAPI = {
 // -----------------------------
 export const apiUtils = {
   // Check if user is authenticated
-  isAuthenticated: () => {
-    const token = localStorage.getItem("assessly_token");
-    return !!token;
-  },
+  isAuthenticated: isAuthenticated,
 
   // Get current user from localStorage
   getCurrentUser: () => {
-    try {
-      const userStr = localStorage.getItem("assessly_user");
-      return userStr ? JSON.parse(userStr) : null;
-    } catch (error) {
-      console.error('Error parsing user from localStorage:', error);
-      return null;
-    }
+    const userStr = localStorage.getItem(config.AUTH.USER_KEY);
+    return userStr ? JSON.parse(userStr) : null;
   },
 
   // Clear all auth data
-  clearAuthData: () => {
-    localStorage.removeItem("assessly_token");
-    localStorage.removeItem("assessly_user");
-  },
+  clearAuthData: clearAuthData,
 
   // Set auth data
-  setAuthData: (token, user) => {
-    localStorage.setItem("assessly_token", token);
-    localStorage.setItem("assessly_user", JSON.stringify(user));
+  setAuthData: (token, user, refreshToken = null) => {
+    setAuthToken(token);
+    if (refreshToken) setRefreshToken(refreshToken);
+    if (user) setUser(user);
   },
 
   // Get API base URL
-  getBaseURL: () => API_BASE_URL,
+  getBaseURL: () => config.API_BASE_URL,
+  
+  // Get config
+  getConfig: () => config,
 };
 
 // Export all APIs
