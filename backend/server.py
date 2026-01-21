@@ -2621,6 +2621,15 @@ async def handle_invoice_payment_failed(event: Dict):
         logger.error(f"Error processing payment failed: {e}")
 
 # ===========================================
+# Root Redirect
+# ===========================================
+
+@app.get("/", include_in_schema=False)
+async def root_redirect():
+    """Redirect root to API documentation."""
+    return RedirectResponse(url="/api/")
+
+# ===========================================
 # Include Router
 # ===========================================
 
