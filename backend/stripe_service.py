@@ -1,4 +1,3 @@
-backend/stripe_service.py
 import stripe
 import os
 import logging
