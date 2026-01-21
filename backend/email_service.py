@@ -73,8 +73,7 @@ async def send_contact_notification(
 ) -> bool:
     """Send notification for contact form submission."""
     subject = f"New Contact Form Submission from {name}"
-    html = f"""
-    <!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
@@ -136,8 +135,7 @@ async def send_demo_request_notification(
 ) -> bool:
     """Send notification for demo request."""
     subject = f"New Demo Request: {company}"
-    html = f"""
-    <!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
@@ -216,8 +214,7 @@ async def send_welcome_email(
 ) -> bool:
     """Send welcome email to new users."""
     subject = f"Welcome to Assessly Platform, {name}!"
-    html = f"""
-    <!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
@@ -319,8 +316,7 @@ async def send_email_verification(
     verification_link = f"{FRONTEND_URL}/verify-email?token={token}&user_id={user_id}"
     
     subject = "Verify Your Email Address - Assessly Platform"
-    html = f"""
-    <!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
@@ -389,8 +385,7 @@ async def send_password_reset_email(
     reset_link = f"{FRONTEND_URL}/reset-password?token={reset_token}"
     
     subject = "Reset Your Password - Assessly Platform"
-    html = f"""
-    <!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
@@ -528,8 +523,7 @@ async def send_assessment_invitation(
 ) -> bool:
     """Send assessment invitation to candidate."""
     subject = f"You're Invited to Take: {assessment_title}"
-    html = f"""
-    <!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
@@ -606,8 +600,7 @@ async def send_admin_notification(
     
     color = level_colors.get(level, "#4facfe")
     
-    html = f"""
-    <!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
