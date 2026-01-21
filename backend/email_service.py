@@ -201,8 +201,7 @@ async def send_demo_request_notification(
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
     
     return _send_email([INFO_EMAIL, SUPPORT_EMAIL], subject, html)
 
@@ -298,8 +297,7 @@ async def send_welcome_email(
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
     
     return _send_email([email], subject, html)
 
@@ -374,8 +372,7 @@ async def send_email_verification(
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
     
     return _send_email([email], subject, html)
 
@@ -450,8 +447,7 @@ async def send_password_reset_email(
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
     
     return _send_email([email], subject, html)
 
@@ -515,8 +511,7 @@ async def send_password_reset_confirmation(
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
     
     return _send_email([email], subject, html)
 
@@ -591,8 +586,7 @@ async def send_assessment_invitation(
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
     
     return _send_email([candidate_email], subject, html)
 
@@ -649,7 +643,6 @@ async def send_admin_notification(
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
     
     return _send_email([SUPPORT_EMAIL, INFO_EMAIL], f"[{level.upper()}] {subject}", html)
