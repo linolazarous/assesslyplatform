@@ -323,14 +323,21 @@ if config.is_production:
             "api.assesslyplatform.com",
             "localhost",
             "127.0.0.1",
-            config.FRONTEND_URL.replace("https://", "").replace("http://", "").split(":")[0]
+            config.FRONTEND_URL.replace("https://", "").replace("http://", "").split(":")[0],
+            "assesslyplatformfrontend.onrender.com"  # Add your frontend domain
         ]
     )
 
-# CORS middleware
+# CORS middleware - FIXED: Add frontend URL directly
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.CORS_ORIGINS,
+    allow_origins=[
+        "http://localhost:5173",  # Local development
+        "http://localhost:3000",  # Alternative local port
+        "https://assesslyplatformfrontend.onrender.com",  # Your frontend
+        config.FRONTEND_URL,  # From config if set
+        *config.CORS_ORIGINS  # Any existing origins
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
