@@ -26,7 +26,7 @@ from models import (
     Subscription, SubscriptionCreate,
     Organization, OrganizationUpdate,
     Assessment, AssessmentCreate, AssessmentUpdate,
-    Candidate, CandidateCreate,
+    Candidate, CandidateCreate, CandidateUpdate,
     Question, AssessmentSettings,
     DashboardStats, SuccessResponse, ErrorResponse, PaginatedResponse
 )
@@ -42,7 +42,9 @@ from email_service import (
     send_contact_notification,
     send_demo_request_notification,
     send_welcome_email,
-    send_email_verification
+    send_email_verification,
+    send_password_reset_email,
+    send_password_reset_confirmation
 )
 from stripe_service import (
     get_or_create_stripe_customer,
@@ -202,6 +204,20 @@ class DatabaseManager:
             await self.db.subscriptions.create_index([("user_id", 1)])
             await self.db.subscriptions.create_index([("status", 1)])
             await self.db.subscriptions.create_index([("stripe_subscription_id", 1)])
+            
+            # Contact forms collection indexes
+            await self.db.contact_forms.create_index([("created_at", -1)])
+            
+            # Demo requests collection indexes
+            await self.db.demo_requests.create_index([("created_at", -1)])
+            
+            # Password reset tokens collection indexes
+            await self.db.password_reset_tokens.create_index([("token", 1)], unique=True)
+            await self.db.password_reset_tokens.create_index([("expires_at", 1)], expireAfterSeconds=3600)  # 1 hour TTL
+            
+            # Email verification tokens collection indexes
+            await self.db.email_verification_tokens.create_index([("token", 1)], unique=True)
+            await self.db.email_verification_tokens.create_index([("expires_at", 1)], expireAfterSeconds=86400)  # 24 hours TTL
             
             # OAuth states collection indexes
             await self.db.oauth_states.create_index([("state", 1)], unique=True)
@@ -792,6 +808,171 @@ async def logout(current_user: User = Depends(get_current_user)):
     return {"message": "Successfully logged out", "redirect_url": f"{config.FRONTEND_URL}/login"}
 
 # ===========================================
+# Email Verification Endpoints
+# ===========================================
+
+@api_router.post("/auth/verify-email", tags=["Authentication"])
+async def verify_email(token: str = Body(..., embed=True)):
+    """Verify user email address."""
+    try:
+        # Find verification token
+        token_data = await db_manager.db.email_verification_tokens.find_one({"token": token})
+        if not token_data:
+            raise HTTPException(status_code=400, detail="Invalid or expired verification token")
+        
+        # Get user
+        user_data = await db_manager.db.users.find_one({"id": token_data["user_id"]})
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Update user verification status
+        await db_manager.db.users.update_one(
+            {"id": user_data["id"]},
+            {"$set": {"is_verified": True, "updated_at": datetime.utcnow()}}
+        )
+        
+        # Delete verification token
+        await db_manager.db.email_verification_tokens.delete_one({"token": token})
+        
+        logger.info(f"Email verified for user: {user_data['email']}")
+        
+        return SuccessResponse(message="Email verified successfully")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Email verification error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to verify email"
+        )
+
+
+@api_router.post("/auth/resend-verification", tags=["Authentication"])
+async def resend_verification(email: str = Body(..., embed=True)):
+    """Resend email verification."""
+    try:
+        # Find user
+        user_data = await db_manager.db.users.find_one({"email": email})
+        if not user_data:
+            # Don't reveal that user doesn't exist
+            return SuccessResponse(message="If an account exists with this email, a verification email has been sent")
+        
+        # Check if already verified
+        if user_data.get("is_verified", False):
+            return SuccessResponse(message="Email already verified")
+        
+        # Send verification email
+        await send_email_verification(user_data["name"], user_data["email"], user_data["id"])
+        
+        logger.info(f"Verification email resent to: {email}")
+        
+        return SuccessResponse(message="Verification email sent successfully")
+        
+    except Exception as e:
+        logger.error(f"Resend verification error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to resend verification email"
+        )
+
+# ===========================================
+# Password Reset Endpoints
+# ===========================================
+
+@api_router.post("/auth/forgot-password", tags=["Authentication"])
+async def forgot_password(email: str = Body(..., embed=True)):
+    """Request password reset."""
+    try:
+        # Find user
+        user_data = await db_manager.db.users.find_one({"email": email})
+        if not user_data:
+            # Don't reveal that user doesn't exist
+            return SuccessResponse(message="If an account exists with this email, a password reset email has been sent")
+        
+        # Generate reset token
+        reset_token = secrets.token_urlsafe(32)
+        
+        # Store reset token
+        await db_manager.db.password_reset_tokens.insert_one({
+            "token": reset_token,
+            "user_id": user_data["id"],
+            "email": email,
+            "expires_at": datetime.utcnow() + timedelta(hours=1),
+            "created_at": datetime.utcnow()
+        })
+        
+        # Send password reset email
+        await send_password_reset_email(user_data["name"], email, reset_token)
+        
+        logger.info(f"Password reset requested for: {email}")
+        
+        return SuccessResponse(message="Password reset email sent successfully")
+        
+    except Exception as e:
+        logger.error(f"Forgot password error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process password reset request"
+        )
+
+
+@api_router.post("/auth/reset-password", tags=["Authentication"])
+async def reset_password(
+    token: str = Body(..., embed=True),
+    new_password: str = Body(..., embed=True)
+):
+    """Reset password with token."""
+    try:
+        # Find reset token
+        token_data = await db_manager.db.password_reset_tokens.find_one({"token": token})
+        if not token_data:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        
+        # Check if token is expired
+        if token_data["expires_at"] < datetime.utcnow():
+            await db_manager.db.password_reset_tokens.delete_one({"token": token})
+            raise HTTPException(status_code=400, detail="Reset token has expired")
+        
+        # Get user
+        user_data = await db_manager.db.users.find_one({"id": token_data["user_id"]})
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Validate new password
+        if len(new_password) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+        
+        # Update password
+        new_hashed_password = get_password_hash(new_password)
+        await db_manager.db.users.update_one(
+            {"id": user_data["id"]},
+            {"$set": {
+                "hashed_password": new_hashed_password,
+                "updated_at": datetime.utcnow()
+            }}
+        )
+        
+        # Delete used token
+        await db_manager.db.password_reset_tokens.delete_one({"token": token})
+        
+        # Send confirmation email
+        await send_password_reset_confirmation(user_data["name"], user_data["email"])
+        
+        logger.info(f"Password reset for user: {user_data['email']}")
+        
+        return SuccessResponse(message="Password reset successfully")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Reset password error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to reset password"
+        )
+
+# ===========================================
 # Assessment Endpoints
 # ===========================================
 
@@ -1352,6 +1533,165 @@ async def get_candidates(
             detail="Failed to retrieve candidates"
         )
 
+
+@api_router.get("/candidates/{candidate_id}", response_model=Candidate, tags=["Candidates"])
+async def get_candidate(
+    candidate_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get a specific candidate by ID."""
+    try:
+        # Find candidate
+        candidate_data = await db_manager.db.candidates.find_one({"id": candidate_id, "user_id": current_user.id})
+        if not candidate_data:
+            # Try with _id for backward compatibility
+            try:
+                obj_id = to_object_id(candidate_id)
+                candidate_data = await db_manager.db.candidates.find_one({"_id": obj_id, "user_id": current_user.id})
+            except:
+                pass
+        
+        if not candidate_data:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        
+        # Ensure all required fields exist
+        candidate_data["id"] = str(candidate_data["_id"]) if "_id" in candidate_data else candidate_data.get("id", candidate_id)
+        if "_id" in candidate_data:
+            del candidate_data["_id"]
+        
+        return Candidate(**candidate_data)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get candidate error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve candidate"
+        )
+
+
+@api_router.put("/candidates/{candidate_id}", response_model=Candidate, tags=["Candidates"])
+async def update_candidate(
+    candidate_id: str,
+    candidate_update: CandidateUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Update a candidate."""
+    try:
+        # Check if candidate exists and belongs to user
+        candidate_data = await db_manager.db.candidates.find_one({"id": candidate_id, "user_id": current_user.id})
+        if not candidate_data:
+            # Try with _id for backward compatibility
+            try:
+                obj_id = to_object_id(candidate_id)
+                candidate_data = await db_manager.db.candidates.find_one({"_id": obj_id, "user_id": current_user.id})
+            except:
+                pass
+        
+        if not candidate_data:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        
+        # Prepare update data
+        update_data = candidate_update.dict(exclude_unset=True)
+        update_data["updated_at"] = datetime.utcnow()
+        
+        # Update candidate
+        result = await db_manager.db.candidates.update_one(
+            {"id": candidate_id},
+            {"$set": update_data}
+        )
+        
+        # If not found with id field, try with _id
+        if result.matched_count == 0:
+            try:
+                obj_id = to_object_id(candidate_id)
+                await db_manager.db.candidates.update_one(
+                    {"_id": obj_id},
+                    {"$set": update_data}
+                )
+            except:
+                pass
+        
+        logger.info(f"Candidate updated: {candidate_id} by user {current_user.id}")
+        
+        # Get updated candidate
+        updated_candidate = await db_manager.db.candidates.find_one({"id": candidate_id})
+        if not updated_candidate:
+            # Try with _id
+            try:
+                obj_id = to_object_id(candidate_id)
+                updated_candidate = await db_manager.db.candidates.find_one({"_id": obj_id})
+            except:
+                pass
+        
+        if not updated_candidate:
+            raise HTTPException(status_code=404, detail="Candidate not found after update")
+        
+        updated_candidate["id"] = str(updated_candidate["_id"]) if "_id" in updated_candidate else updated_candidate.get("id", candidate_id)
+        if "_id" in updated_candidate:
+            del updated_candidate["_id"]
+        
+        return Candidate(**updated_candidate)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update candidate error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update candidate"
+        )
+
+
+@api_router.delete("/candidates/{candidate_id}", tags=["Candidates"])
+async def delete_candidate(
+    candidate_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a candidate."""
+    try:
+        # Check if candidate exists and belongs to user
+        candidate_data = await db_manager.db.candidates.find_one({"id": candidate_id, "user_id": current_user.id})
+        if not candidate_data:
+            # Try with _id for backward compatibility
+            try:
+                obj_id = to_object_id(candidate_id)
+                candidate_data = await db_manager.db.candidates.find_one({"_id": obj_id, "user_id": current_user.id})
+                candidate_id = str(candidate_data["_id"]) if candidate_data else candidate_id
+            except:
+                pass
+        
+        if not candidate_data:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        
+        # Delete candidate
+        result = await db_manager.db.candidates.delete_one({"id": candidate_id})
+        
+        # If not found with id field, try with _id
+        if result.deleted_count == 0:
+            try:
+                obj_id = to_object_id(candidate_id)
+                await db_manager.db.candidates.delete_one({"_id": obj_id})
+            except:
+                pass
+        
+        logger.info(f"Candidate deleted: {candidate_id} by user {current_user.id}")
+        
+        return SuccessResponse(
+            message="Candidate deleted successfully",
+            data={"redirect_url": f"{config.FRONTEND_URL}/candidates"}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete candidate error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete candidate"
+        )
+
 # ===========================================
 # Organization Endpoints
 # ===========================================
@@ -1645,6 +1985,35 @@ async def submit_contact(contact: ContactFormCreate):
         )
 
 
+@api_router.get("/contact", tags=["Public"])
+async def get_contact_forms(
+    current_user: User = Depends(get_current_user)
+):
+    """Get all contact forms (admin only)."""
+    try:
+        # Check if user is admin (you might want to add admin role to User model)
+        # For now, we'll only allow the user to see forms they submitted
+        contact_forms = await db_manager.db.contact_forms.find(
+            {"email": current_user.email}
+        ).sort("created_at", -1).to_list(length=100)
+        
+        forms = []
+        for data in contact_forms:
+            data["id"] = str(data["_id"]) if "_id" in data else data.get("id", str(uuid.uuid4()))
+            if "_id" in data:
+                del data["_id"]
+            forms.append(ContactForm(**data))
+        
+        return {"forms": forms}
+        
+    except Exception as e:
+        logger.error(f"Get contact forms error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve contact forms"
+        )
+
+
 @api_router.post("/demo", status_code=status.HTTP_201_CREATED, tags=["Public"])
 async def submit_demo(demo: DemoRequestCreate):
     """Submit demo request."""
@@ -1674,6 +2043,35 @@ async def submit_demo(demo: DemoRequestCreate):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to submit demo request"
+        )
+
+
+@api_router.get("/demo", tags=["Public"])
+async def get_demo_requests(
+    current_user: User = Depends(get_current_user)
+):
+    """Get all demo requests (admin only)."""
+    try:
+        # Check if user is admin (you might want to add admin role to User model)
+        # For now, we'll only allow the user to see requests they submitted
+        demo_requests = await db_manager.db.demo_requests.find(
+            {"email": current_user.email}
+        ).sort("created_at", -1).to_list(length=100)
+        
+        requests = []
+        for data in demo_requests:
+            data["id"] = str(data["_id"]) if "_id" in data else data.get("id", str(uuid.uuid4()))
+            if "_id" in data:
+                del data["_id"]
+            requests.append(DemoRequest(**data))
+        
+        return {"requests": requests}
+        
+    except Exception as e:
+        logger.error(f"Get demo requests error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve demo requests"
         )
 
 # ===========================================
@@ -2014,6 +2412,79 @@ async def get_available_plans():
         ]
     }
 
+# ===========================================
+# Billing & Payment Endpoints
+# ===========================================
+
+@api_router.post("/payments/intent", tags=["Subscriptions"])
+async def create_payment_intent(
+    payload: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a payment intent (for one-time payments)."""
+    try:
+        amount = payload.get("amount")
+        
+        if not amount or amount <= 0:
+            raise HTTPException(status_code=400, detail="Valid amount is required")
+        
+        # For now, return a mock payment intent
+        # In production, integrate with Stripe PaymentIntent API
+        return {
+            "client_secret": f"pi_mock_{secrets.token_urlsafe(16)}",
+            "id": f"pi_{secrets.token_urlsafe(8)}",
+            "amount": amount,
+            "currency": "usd",
+            "status": "requires_payment_method"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Create payment intent error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create payment intent"
+        )
+
+
+@api_router.get("/billing/history", tags=["Subscriptions"])
+async def get_billing_history(
+    current_user: User = Depends(get_current_user)
+):
+    """Get user's billing history."""
+    try:
+        # Get user's subscriptions
+        subscriptions = await db_manager.db.subscriptions.find(
+            {"user_id": current_user.id}
+        ).sort("created_at", -1).to_list(length=50)
+        
+        invoices = []
+        for sub in subscriptions:
+            if sub.get("stripe_subscription_id") and sub.get("stripe_subscription_id") != "free_plan":
+                invoices.append({
+                    "id": sub.get("stripe_subscription_id", f"inv_{secrets.token_urlsafe(8)}"),
+                    "amount": sub.get("amount", 0),
+                    "currency": sub.get("currency", "usd"),
+                    "status": "paid" if sub.get("status") == "active" else sub.get("status", "pending"),
+                    "created": sub.get("created_at", datetime.utcnow()),
+                    "period_start": sub.get("current_period_start"),
+                    "period_end": sub.get("current_period_end"),
+                    "description": f"{sub.get('plan_id', 'Unknown').title()} Plan"
+                })
+        
+        return {"invoices": invoices}
+        
+    except Exception as e:
+        logger.error(f"Get billing history error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve billing history"
+        )
+
+# ===========================================
+# Webhook Endpoints
+# ===========================================
 
 @api_router.post("/webhooks/stripe", tags=["Subscriptions"])
 async def stripe_webhook(request: Request):
@@ -2207,4 +2678,4 @@ if __name__ == "__main__":
         access_log=False if config.is_production else True,
         timeout_keep_alive=30,
         workers=4 if config.is_production else 1
-    )
+)
