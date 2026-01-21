@@ -1,10 +1,12 @@
 import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'https://assesslyplatform-pfm1.onrender.com/api';
+import config, { 
+  getAuthToken, setAuthToken, getRefreshToken, setRefreshToken, 
+  setUser, clearAuthData, isAuthenticated 
+} from '../config.js';
 
 // Create axios instance with interceptors
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: config.API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -13,7 +15,7 @@ const api = axios.create({
 // Request interceptor to add token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('access_token');
+    const token = getAuthToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -35,27 +37,27 @@ api.interceptors.response.use(
 
       try {
         // Try to refresh token
-        const refreshToken = localStorage.getItem('refresh_token');
+        const refreshToken = getRefreshToken();
         if (!refreshToken) {
           throw new Error('No refresh token');
         }
 
-        const response = await axios.post(`${API_URL}/auth/refresh`, {
+        const response = await axios.post(`${config.API_BASE_URL}${config.AUTH.ENDPOINTS.REFRESH}`, {
           refresh_token: refreshToken,
         });
 
         const { access_token, refresh_token } = response.data;
 
         // Update tokens
-        localStorage.setItem('access_token', access_token);
-        localStorage.setItem('refresh_token', refresh_token);
+        setAuthToken(access_token);
+        setRefreshToken(refresh_token);
 
         // Retry original request
         originalRequest.headers.Authorization = `Bearer ${access_token}`;
         return axios(originalRequest);
       } catch (refreshError) {
         // Refresh failed, logout user
-        logout();
+        clearAuthData();
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }
@@ -68,74 +70,68 @@ api.interceptors.response.use(
 // Auth utilities
 export const login = async (email, password) => {
   try {
-    const response = await api.post('/auth/login', { email, password });
+    const response = await api.post(config.AUTH.ENDPOINTS.LOGIN, { email, password });
     
     if (response.data.access_token) {
       // Store tokens
-      localStorage.setItem('access_token', response.data.access_token);
-      localStorage.setItem('refresh_token', response.data.refresh_token);
+      setAuthToken(response.data.access_token);
+      setRefreshToken(response.data.refresh_token);
       
       // Store user data
       if (response.data.user) {
-        localStorage.setItem('user', JSON.stringify(response.data.user));
+        setUser(response.data.user);
       }
       
       return response.data;
     }
+    
+    throw new Error('No access token received');
   } catch (error) {
-    throw error.response?.data || error;
+    const errorData = error.response?.data || error.message;
+    throw new Error(typeof errorData === 'object' ? errorData.detail || 'Login failed' : errorData);
   }
 };
 
 export const register = async (userData) => {
   try {
-    const response = await api.post('/auth/register', userData);
+    const response = await api.post(config.AUTH.ENDPOINTS.REGISTER, userData);
     
     if (response.data.access_token) {
       // Store tokens
-      localStorage.setItem('access_token', response.data.access_token);
-      localStorage.setItem('refresh_token', response.data.refresh_token);
+      setAuthToken(response.data.access_token);
+      setRefreshToken(response.data.refresh_token);
       
       // Store user data
       if (response.data.user) {
-        localStorage.setItem('user', JSON.stringify(response.data.user));
+        setUser(response.data.user);
       }
       
       return response.data;
     }
+    
+    throw new Error('No access token received');
   } catch (error) {
-    throw error.response?.data || error;
+    const errorData = error.response?.data || error.message;
+    throw new Error(typeof errorData === 'object' ? errorData.detail || 'Registration failed' : errorData);
   }
 };
 
-export const logout = () => {
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
-  localStorage.removeItem('user');
+export const logout = async () => {
+  try {
+    // Call backend logout if endpoint exists
+    await api.post(config.AUTH.ENDPOINTS.LOGOUT);
+  } catch (error) {
+    // Silently fail if logout endpoint doesn't exist
+    console.log('Backend logout endpoint not available');
+  } finally {
+    clearAuthData();
+  }
 };
 
 export const getCurrentUser = () => {
-  const userStr = localStorage.getItem('user');
-  if (userStr) {
-    try {
-      return JSON.parse(userStr);
-    } catch (e) {
-      return null;
-    }
-  }
-  return null;
+  return getUser();
 };
 
-export const isAuthenticated = () => {
-  return !!localStorage.getItem('access_token');
-};
-
-export const getAuthHeaders = () => {
-  const token = localStorage.getItem('access_token');
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-};
+export { isAuthenticated, clearAuthData, getAuthHeaders };
 
 export default api;
