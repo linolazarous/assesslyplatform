@@ -2,7 +2,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, FileText, Users, Mail, CheckCircle, ExternalLink, ArrowLeft, Cpu, Lock, Building } from 'lucide-react';
-import Navigation from '../components/Navigation'; // Add navigation
+import Navigation from '../../components/Navigation';
 
 const GDPRCompliance = () => {
   const currentYear = new Date().getFullYear();
