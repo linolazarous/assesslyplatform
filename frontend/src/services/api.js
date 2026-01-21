@@ -42,10 +42,10 @@ api.interceptors.response.use(
           throw new Error('No refresh token available');
         }
 
-        const response = await axios.post(
-          `${config.API_BASE_URL}${config.AUTH.ENDPOINTS.REFRESH}`,
-          { refresh_token: refreshToken }
-        );
+        // NOTE: Backend expects refresh_token in body as "refresh_token" key
+        const response = await api.post('/api/auth/refresh', { 
+          refresh_token: refreshToken 
+        });
 
         const { access_token, refresh_token } = response.data;
 
@@ -114,10 +114,11 @@ api.interceptors.response.use(
 export const authAPI = {
   register: async (userData) => {
     try {
-      const { data } = await api.post(config.AUTH.ENDPOINTS.REGISTER, userData);
+      const { data } = await api.post('/api/auth/register', userData);
       // Store tokens and user data on successful registration
       if (data.access_token) {
         setAuthToken(data.access_token);
+        // Backend returns refresh_token separately
         if (data.refresh_token) setRefreshToken(data.refresh_token);
         if (data.user) setUser(data.user);
       }
@@ -130,10 +131,11 @@ export const authAPI = {
 
   login: async (credentials) => {
     try {
-      const { data } = await api.post(config.AUTH.ENDPOINTS.LOGIN, credentials);
+      const { data } = await api.post('/api/auth/login', credentials);
       // Store tokens and user data on successful login
       if (data.access_token) {
         setAuthToken(data.access_token);
+        // Backend returns refresh_token separately
         if (data.refresh_token) setRefreshToken(data.refresh_token);
         if (data.user) setUser(data.user);
       }
@@ -146,9 +148,9 @@ export const authAPI = {
 
   getCurrentUser: async () => {
     try {
-      const { data } = await api.get(config.AUTH.ENDPOINTS.ME);
+      const { data } = await api.get('/api/auth/me');
       // Update user data in storage
-      if (data.user) setUser(data.user);
+      if (data) setUser(data);
       return data;
     } catch (error) {
       console.error('Get current user error:', error);
@@ -165,7 +167,8 @@ export const authAPI = {
       const refreshToken = getRefreshToken();
       if (!refreshToken) throw new Error('No refresh token');
       
-      const { data } = await api.post(config.AUTH.ENDPOINTS.REFRESH, { 
+      // Backend expects refresh_token in body as "refresh_token" key
+      const { data } = await api.post('/api/auth/refresh', { 
         refresh_token: refreshToken 
       });
       
@@ -183,10 +186,10 @@ export const authAPI = {
 
   logout: async () => {
     try {
-      // Call backend logout if endpoint exists
-      await api.post(config.AUTH.ENDPOINTS.LOGOUT);
+      // Call backend logout
+      await api.post('/api/auth/logout');
     } catch (error) {
-      // Silently fail if logout endpoint doesn't exist
+      // Silently fail if logout endpoint has issues
       console.log('Backend logout endpoint not available');
     } finally {
       clearAuthData();
@@ -194,9 +197,10 @@ export const authAPI = {
     }
   },
 
+  // NOTE: These endpoints don't exist in the backend yet - they return 404
   verifyEmail: async (token) => {
     try {
-      const { data } = await api.post(config.AUTH.ENDPOINTS.VERIFY_EMAIL, { token });
+      const { data } = await api.post('/api/auth/verify-email', { token });
       return data;
     } catch (error) {
       console.error('Email verification error:', error);
@@ -206,7 +210,7 @@ export const authAPI = {
 
   forgotPassword: async (email) => {
     try {
-      const { data } = await api.post(config.AUTH.ENDPOINTS.FORGOT_PASSWORD, { email });
+      const { data } = await api.post('/api/auth/forgot-password', { email });
       return data;
     } catch (error) {
       console.error('Forgot password error:', error);
@@ -216,7 +220,7 @@ export const authAPI = {
 
   resetPassword: async (token, newPassword) => {
     try {
-      const { data } = await api.post(config.AUTH.ENDPOINTS.RESET_PASSWORD, { 
+      const { data } = await api.post('/api/auth/reset-password', { 
         token, 
         new_password: newPassword 
       });
@@ -234,7 +238,7 @@ export const authAPI = {
 export const contactAPI = {
   submitContactForm: async (formData) => {
     try {
-      const { data } = await api.post("/contact", formData);
+      const { data } = await api.post('/api/contact', formData);
       return data;
     } catch (error) {
       console.error('Submit contact form error:', error);
@@ -242,9 +246,10 @@ export const contactAPI = {
     }
   },
 
+  // NOTE: This endpoint doesn't exist in backend - only POST /api/contact exists
   getContactForms: async () => {
     try {
-      const { data } = await api.get("/contact");
+      const { data } = await api.get('/api/contact');
       return data;
     } catch (error) {
       // If endpoint doesn't exist, return empty array
@@ -263,7 +268,7 @@ export const contactAPI = {
 export const demoAPI = {
   submitDemoRequest: async (formData) => {
     try {
-      const { data } = await api.post("/demo", formData);
+      const { data } = await api.post('/api/demo', formData);
       return data;
     } catch (error) {
       console.error('Submit demo request error:', error);
@@ -271,9 +276,10 @@ export const demoAPI = {
     }
   },
 
+  // NOTE: This endpoint doesn't exist in backend - only POST /api/demo exists
   getDemoRequests: async () => {
     try {
-      const { data } = await api.get("/demo");
+      const { data } = await api.get('/api/demo');
       return data;
     } catch (error) {
       // If endpoint doesn't exist, return empty array
@@ -292,7 +298,7 @@ export const demoAPI = {
 export const subscriptionAPI = {
   createCheckoutSession: async (planId) => {
     try {
-      const { data } = await api.post("/subscriptions/checkout", { plan_id: planId });
+      const { data } = await api.post('/api/subscriptions/checkout', { plan_id: planId });
       return data;
     } catch (error) {
       console.error('Create checkout session error:', error);
@@ -302,7 +308,7 @@ export const subscriptionAPI = {
 
   getCurrentSubscription: async () => {
     try {
-      const { data } = await api.get("/subscriptions/me");
+      const { data } = await api.get('/api/subscriptions/me');
       return data;
     } catch (error) {
       console.error('Get current subscription error:', error);
@@ -310,9 +316,9 @@ export const subscriptionAPI = {
     }
   },
 
-  cancelSubscription: async (immediate = false) => {
+  cancelSubscription: async () => {
     try {
-      const { data } = await api.post("/subscriptions/cancel", { immediate });
+      const { data } = await api.post('/api/subscriptions/cancel');
       return data;
     } catch (error) {
       console.error('Cancel subscription error:', error);
@@ -322,7 +328,7 @@ export const subscriptionAPI = {
 
   getAvailablePlans: async () => {
     try {
-      const { data } = await api.get("/plans");
+      const { data } = await api.get('/api/plans');
       return data;
     } catch (error) {
       console.error('Get available plans error:', error);
@@ -330,10 +336,11 @@ export const subscriptionAPI = {
     }
   },
 
+  // NOTE: This endpoint doesn't exist in backend - use createCheckoutSession instead
   changeSubscription: async (newPlanId) => {
     try {
-      const { data } = await api.post("/subscriptions/upgrade", { new_plan_id: newPlanId });
-      return data;
+      // Use checkout session for subscription changes
+      return await subscriptionAPI.createCheckoutSession(newPlanId);
     } catch (error) {
       console.error('Change subscription error:', error);
       throw error;
@@ -347,7 +354,7 @@ export const subscriptionAPI = {
 export const organizationAPI = {
   getCurrent: async () => {
     try {
-      const { data } = await api.get("/organizations/me");
+      const { data } = await api.get('/api/organizations/me');
       return data;
     } catch (error) {
       console.error('Get organization error:', error);
@@ -357,7 +364,7 @@ export const organizationAPI = {
 
   update: async (payload) => {
     try {
-      const { data } = await api.put("/organizations/me", payload);
+      const { data } = await api.put('/api/organizations/me', payload);
       return data;
     } catch (error) {
       console.error('Update organization error:', error);
@@ -372,7 +379,7 @@ export const organizationAPI = {
 export const assessmentAPI = {
   create: async (payload) => {
     try {
-      const { data } = await api.post("/assessments", payload);
+      const { data } = await api.post('/api/assessments', payload);
       return data;
     } catch (error) {
       console.error('Create assessment error:', error);
@@ -382,7 +389,7 @@ export const assessmentAPI = {
 
   getAll: async (params = {}) => {
     try {
-      const { data } = await api.get("/assessments", { params });
+      const { data } = await api.get('/api/assessments', { params });
       return data;
     } catch (error) {
       console.error('Get all assessments error:', error);
@@ -392,7 +399,7 @@ export const assessmentAPI = {
 
   getById: async (id) => {
     try {
-      const { data } = await api.get(`/assessments/${id}`);
+      const { data } = await api.get(`/api/assessments/${id}`);
       return data;
     } catch (error) {
       console.error('Get assessment by ID error:', error);
@@ -402,7 +409,7 @@ export const assessmentAPI = {
 
   update: async (id, payload) => {
     try {
-      const { data } = await api.put(`/assessments/${id}`, payload);
+      const { data } = await api.put(`/api/assessments/${id}`, payload);
       return data;
     } catch (error) {
       console.error('Update assessment error:', error);
@@ -412,10 +419,61 @@ export const assessmentAPI = {
 
   delete: async (id) => {
     try {
-      const { data } = await api.delete(`/assessments/${id}`);
+      const { data } = await api.delete(`/api/assessments/${id}`);
       return data;
     } catch (error) {
       console.error('Delete assessment error:', error);
+      throw error;
+    }
+  },
+
+  // Additional assessment endpoints that exist in backend
+  getQuestions: async (assessmentId) => {
+    try {
+      const { data } = await api.get(`/api/assessments/${assessmentId}/questions`);
+      return data;
+    } catch (error) {
+      console.error('Get assessment questions error:', error);
+      throw error;
+    }
+  },
+
+  addQuestion: async (assessmentId, question) => {
+    try {
+      const { data } = await api.post(`/api/assessments/${assessmentId}/questions`, question);
+      return data;
+    } catch (error) {
+      console.error('Add assessment question error:', error);
+      throw error;
+    }
+  },
+
+  updateQuestion: async (assessmentId, questionId, question) => {
+    try {
+      const { data } = await api.put(`/api/assessments/${assessmentId}/questions/${questionId}`, question);
+      return data;
+    } catch (error) {
+      console.error('Update assessment question error:', error);
+      throw error;
+    }
+  },
+
+  getSettings: async (assessmentId) => {
+    try {
+      const { data } = await api.get(`/api/assessments/${assessmentId}/settings`);
+      return data;
+    } catch (error) {
+      console.error('Get assessment settings error:', error);
+      throw error;
+    }
+  },
+
+  updateSettings: async (assessmentId, settings) => {
+    try {
+      const { data } = await api.put(`/api/assessments/${assessmentId}/settings`, settings);
+      return data;
+    } catch (error) {
+      console.error('Update assessment settings error:', error);
       throw error;
     }
   },
@@ -427,7 +485,7 @@ export const assessmentAPI = {
 export const candidateAPI = {
   create: async (payload) => {
     try {
-      const { data } = await api.post("/candidates", payload);
+      const { data } = await api.post('/api/candidates', payload);
       return data;
     } catch (error) {
       console.error('Create candidate error:', error);
@@ -437,7 +495,7 @@ export const candidateAPI = {
 
   getAll: async (params = {}) => {
     try {
-      const { data } = await api.get("/candidates", { params });
+      const { data } = await api.get('/api/candidates', { params });
       return data;
     } catch (error) {
       console.error('Get all candidates error:', error);
@@ -445,9 +503,10 @@ export const candidateAPI = {
     }
   },
 
+  // NOTE: These endpoints don't exist in backend
   getById: async (id) => {
     try {
-      const { data } = await api.get(`/candidates/${id}`);
+      const { data } = await api.get(`/api/candidates/${id}`);
       return data;
     } catch (error) {
       console.error('Get candidate by ID error:', error);
@@ -457,7 +516,7 @@ export const candidateAPI = {
 
   update: async (id, payload) => {
     try {
-      const { data } = await api.put(`/candidates/${id}`, payload);
+      const { data } = await api.put(`/api/candidates/${id}`, payload);
       return data;
     } catch (error) {
       console.error('Update candidate error:', error);
@@ -467,7 +526,7 @@ export const candidateAPI = {
 
   delete: async (id) => {
     try {
-      const { data } = await api.delete(`/candidates/${id}`);
+      const { data } = await api.delete(`/api/candidates/${id}`);
       return data;
     } catch (error) {
       console.error('Delete candidate error:', error);
@@ -477,7 +536,9 @@ export const candidateAPI = {
 
   getByAssessment: async (assessmentId) => {
     try {
-      const { data } = await api.get("/candidates", { params: { assessment_id: assessmentId } });
+      const { data } = await api.get('/api/candidates', { 
+        params: { assessment_id: assessmentId } 
+      });
       return data;
     } catch (error) {
       console.error('Get candidates by assessment error:', error);
@@ -492,10 +553,10 @@ export const candidateAPI = {
 export const userAPI = {
   updateProfile: async (payload) => {
     try {
-      const { data } = await api.put("/users/me", payload);
+      const { data } = await api.put('/api/users/me', payload);
       // Update local storage if user data is returned
-      if (data.user) {
-        setUser(data.user);
+      if (data) {
+        setUser(data);
       }
       return data;
     } catch (error) {
@@ -506,7 +567,7 @@ export const userAPI = {
 
   updatePassword: async (currentPassword, newPassword) => {
     try {
-      const { data } = await api.put("/users/me/password", {
+      const { data } = await api.put('/api/users/me/password', {
         current_password: currentPassword,
         new_password: newPassword
       });
@@ -517,9 +578,10 @@ export const userAPI = {
     }
   },
 
+  // NOTE: Use authAPI.getCurrentUser() instead - same endpoint
   getProfile: async () => {
     try {
-      const { data } = await api.get("/auth/me");
+      const { data } = await api.get('/api/auth/me');
       return data;
     } catch (error) {
       console.error('Get profile error:', error);
@@ -534,17 +596,18 @@ export const userAPI = {
 export const dashboardAPI = {
   getStats: async () => {
     try {
-      const { data } = await api.get("/dashboard/stats");
+      const { data } = await api.get('/api/dashboard/stats');
       return data;
     } catch (error) {
       // If endpoint doesn't exist yet, return fallback data
       if (error.response?.status === 404) {
         return {
-          stats: {
-            assessments: { total: 0, published: 0, draft: 0 },
-            candidates: { total: 0, invited: 0, completed: 0 }
-          },
-          recent: { assessments: [], candidates: [] }
+          assessments: { total: 0, published: 0, draft: 0 },
+          candidates: { total: 0, invited: 0, completed: 0 },
+          completion_rate: 0,
+          average_score: 0,
+          recent_assessments: [],
+          recent_candidates: []
         };
       }
       console.error('Get dashboard stats error:', error);
@@ -557,9 +620,10 @@ export const dashboardAPI = {
 // PAYMENT & BILLING APIs
 // -----------------------------
 export const paymentAPI = {
+  // NOTE: These endpoints don't exist in backend
   createPaymentIntent: async (amount) => {
     try {
-      const { data } = await api.post("/payments/intent", { amount });
+      const { data } = await api.post('/api/payments/intent', { amount });
       return data;
     } catch (error) {
       // If endpoint doesn't exist, return mock data for now
@@ -579,7 +643,7 @@ export const paymentAPI = {
 
   getBillingHistory: async () => {
     try {
-      const { data } = await api.get("/billing/history");
+      const { data } = await api.get('/api/billing/history');
       return data;
     } catch (error) {
       // If endpoint doesn't exist, return empty array
@@ -598,7 +662,7 @@ export const paymentAPI = {
 export const webhookAPI = {
   stripe: async (payload, signature) => {
     try {
-      const { data } = await api.post("/webhooks/stripe", payload, {
+      const { data } = await api.post('/api/webhooks/stripe', payload, {
         headers: {
           'stripe-signature': signature
         }
@@ -617,7 +681,7 @@ export const webhookAPI = {
 export const healthAPI = {
   check: async () => {
     try {
-      const { data } = await api.get("/health");
+      const { data } = await api.get('/api/health');
       return data;
     } catch (error) {
       console.error('Health check error:', error);
