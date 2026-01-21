@@ -2,7 +2,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, FileCheck, Award, Calendar, ExternalLink, CheckCircle, Server, Users, ArrowLeft } from 'lucide-react';
-import Navigation from '../components/Navigation'; // Add navigation
+import Navigation from '../../components/Navigation';
 
 const SOC2Info = () => {
   const currentYear = new Date().getFullYear();
