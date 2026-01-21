@@ -1,5 +1,6 @@
+backend/models.py
 from pydantic import BaseModel, Field, EmailStr, validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from bson import ObjectId
 import uuid
@@ -43,6 +44,7 @@ class UserUpdate(BaseModel):
     job_title: Optional[str] = None
     phone: Optional[str] = None
     notifications_enabled: Optional[bool] = True
+    email_notifications: Optional[bool] = None
 
 class User(UserBase):
     id: str = Field(default_factory=generate_id)
@@ -62,6 +64,7 @@ class User(UserBase):
     last_login: Optional[datetime] = None
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
@@ -77,6 +80,9 @@ class Token(BaseModel):
     token_type: str = "bearer"
     user: User
     redirect_url: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 # ===========================================
 # Assessment Models
@@ -87,6 +93,9 @@ class QuestionOption(BaseModel):
     text: str
     correct: bool = False
     explanation: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 class Question(BaseModel):
     id: str = Field(default_factory=generate_id)
@@ -100,6 +109,9 @@ class Question(BaseModel):
     time_limit: Optional[int] = None  # seconds
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        from_attributes = True
 
 class AssessmentSettings(BaseModel):
     shuffle_questions: bool = False
@@ -114,6 +126,9 @@ class AssessmentSettings(BaseModel):
     show_correct_answers: bool = False
     show_explanations: bool = False
     security_level: str = "basic"  # basic, strict, locked_down
+    
+    class Config:
+        from_attributes = True
 
 class AssessmentBase(BaseModel):
     title: str
@@ -122,10 +137,16 @@ class AssessmentBase(BaseModel):
     duration_minutes: int = 30
     category: str = "General"
     tags: List[str] = []
+    
+    class Config:
+        from_attributes = True
 
 class AssessmentCreate(AssessmentBase):
     settings: Optional[AssessmentSettings] = None
     questions: Optional[List[Question]] = []
+    
+    class Config:
+        from_attributes = True
 
 class AssessmentUpdate(BaseModel):
     title: Optional[str] = None
@@ -137,6 +158,9 @@ class AssessmentUpdate(BaseModel):
     status: Optional[str] = None  # draft, published, archived
     settings: Optional[AssessmentSettings] = None
     questions: Optional[List[Question]] = None
+    
+    class Config:
+        from_attributes = True
 
 class Assessment(AssessmentBase):
     id: str = Field(default_factory=generate_id)
@@ -154,6 +178,7 @@ class Assessment(AssessmentBase):
     published_at: Optional[datetime] = None
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
@@ -167,9 +192,32 @@ class CandidateBase(BaseModel):
     email: EmailStr
     name: Optional[str] = None
     assessment_id: str
+    
+    class Config:
+        from_attributes = True
 
 class CandidateCreate(CandidateBase):
     metadata: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        from_attributes = True
+
+# MISSING MODEL - ADDING THIS
+class CandidateUpdate(BaseModel):
+    """Update model for candidate fields."""
+    status: Optional[str] = None
+    name: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    score: Optional[float] = None
+    time_spent: Optional[int] = None  # seconds
+    answers: Optional[List[Dict[str, Any]]] = None
+    feedback: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 class Candidate(CandidateBase):
     id: str = Field(default_factory=generate_id)
@@ -188,6 +236,7 @@ class Candidate(CandidateBase):
     metadata: Dict[str, Any] = {}
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
@@ -202,12 +251,18 @@ class OrganizationBase(BaseModel):
     website: Optional[str] = None
     industry: Optional[str] = None
     size: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 class OrganizationUpdate(BaseModel):
     name: Optional[str] = None
     website: Optional[str] = None
     industry: Optional[str] = None
     size: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 class Organization(OrganizationBase):
     id: str = Field(default_factory=generate_id)
@@ -218,6 +273,7 @@ class Organization(OrganizationBase):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
@@ -230,6 +286,9 @@ class Organization(OrganizationBase):
 class SubscriptionCreate(BaseModel):
     plan_id: str
     payment_method_id: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 class Subscription(BaseModel):
     id: str = Field(default_factory=generate_id)
@@ -248,6 +307,7 @@ class Subscription(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
@@ -262,6 +322,9 @@ class ContactFormCreate(BaseModel):
     email: EmailStr
     company: Optional[str] = None
     message: str
+    
+    class Config:
+        from_attributes = True
 
 class ContactForm(ContactFormCreate):
     id: str = Field(default_factory=generate_id)
@@ -269,6 +332,7 @@ class ContactForm(ContactFormCreate):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
@@ -280,6 +344,9 @@ class DemoRequestCreate(BaseModel):
     company: str
     size: Optional[str] = None
     notes: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 class DemoRequest(DemoRequestCreate):
     id: str = Field(default_factory=generate_id)
@@ -287,6 +354,7 @@ class DemoRequest(DemoRequestCreate):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
@@ -303,6 +371,7 @@ class OAuthState(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
@@ -311,6 +380,9 @@ class OAuthState(BaseModel):
 class OAuthCallback(BaseModel):
     code: str
     state: str
+    
+    class Config:
+        from_attributes = True
 
 # ===========================================
 # Dashboard & Analytics Models
@@ -325,6 +397,7 @@ class DashboardStats(BaseModel):
     recent_candidates: List[Dict[str, Any]]
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
@@ -335,6 +408,7 @@ class AnalyticsData(BaseModel):
     data: List[Dict[str, Any]]
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
@@ -348,12 +422,18 @@ class SuccessResponse(BaseModel):
     success: bool = True
     message: str
     data: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        from_attributes = True
 
 class ErrorResponse(BaseModel):
     success: bool = False
     error: str
     detail: Optional[str] = None
     code: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 class PaginatedResponse(BaseModel):
     items: List[Any]
@@ -363,6 +443,7 @@ class PaginatedResponse(BaseModel):
     pages: int
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
@@ -379,6 +460,7 @@ class StripeWebhook(BaseModel):
     created: int
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
@@ -395,10 +477,50 @@ class FileUpload(BaseModel):
     url: Optional[str] = None
     
     class Config:
+        from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.isoformat(),
             ObjectId: lambda oid: str(oid)
         }
+
+# ===========================================
+# Additional Models needed for server.py
+# ===========================================
+
+# Platform Stats Model for Home page API
+class PlatformStats(BaseModel):
+    total_organizations: int
+    total_candidates: int
+    total_questions: int
+    uptime_percentage: float
+    active_assessments: int
+    active_candidates: int
+    completion_rate: float
+    
+    class Config:
+        from_attributes = True
+
+# Email Verification Token Model
+class EmailVerificationToken(BaseModel):
+    token: str
+    user_id: str
+    email: str
+    expires_at: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        from_attributes = True
+
+# Password Reset Token Model
+class PasswordResetToken(BaseModel):
+    token: str
+    user_id: str
+    email: str
+    expires_at: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        from_attributes = True
 
 # ===========================================
 # Export all models
@@ -413,7 +535,7 @@ __all__ = [
     "QuestionOption", "Question", "AssessmentSettings", "AssessmentBase",
     "AssessmentCreate", "AssessmentUpdate", "Assessment",
     # Candidate
-    "CandidateBase", "CandidateCreate", "Candidate",
+    "CandidateBase", "CandidateCreate", "CandidateUpdate", "Candidate",
     # Organization
     "OrganizationBase", "OrganizationUpdate", "Organization",
     # Subscription
@@ -423,11 +545,13 @@ __all__ = [
     # OAuth
     "OAuthState", "OAuthCallback",
     # Dashboard & Analytics
-    "DashboardStats", "AnalyticsData",
+    "DashboardStats", "AnalyticsData", "PlatformStats",
     # API Response
     "SuccessResponse", "ErrorResponse", "PaginatedResponse",
     # Webhook
     "StripeWebhook",
     # File Upload
     "FileUpload",
+    # Verification & Reset Tokens
+    "EmailVerificationToken", "PasswordResetToken",
     ]
