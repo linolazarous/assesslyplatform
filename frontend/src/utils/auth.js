@@ -3,8 +3,9 @@ import axios from 'axios';
 import { authAPI } from '../services/api';
 import config, { 
   getAuthToken, setAuthToken, getRefreshToken, setRefreshToken, 
-  setUser, getUser, clearAuthData, isAuthenticated, decodeToken 
-} from '../config.js'; // decodeToken is now imported from config.js
+  setUser, getUser, clearAuthData, isAuthenticated, 
+  decodeToken, isTokenExpired, getTokenLifetime  // Added isTokenExpired and getTokenLifetime
+} from '../config.js'; // All functions now imported from config.js
 
 // Create axios instance with interceptors
 const api = axios.create({
@@ -106,31 +107,6 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-/**
- * Check if token is expired
- * @param {string} token - JWT token
- * @returns {boolean}
- */
-export const isTokenExpired = (token) => {
-  const decoded = decodeToken(token);
-  if (!decoded || !decoded.exp) return true;
-  
-  return decoded.exp * 1000 < Date.now();
-};
-
-/**
- * Get remaining token lifetime in seconds
- * @param {string} token - JWT token
- * @returns {number} - Seconds until expiration
- */
-export const getTokenLifetime = (token) => {
-  const decoded = decodeToken(token);
-  if (!decoded || !decoded.exp) return 0;
-  
-  const now = Math.floor(Date.now() / 1000);
-  return Math.max(0, decoded.exp - now);
-};
 
 // Auth utilities
 
@@ -538,7 +514,7 @@ export {
   setRefreshToken,
   getUser,
   setUser,
-  // REMOVED decodeToken from here since it's already imported from config.js
+  decodeToken,
   isTokenExpired,
   getTokenLifetime
 };
