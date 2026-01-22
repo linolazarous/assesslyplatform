@@ -3,7 +3,7 @@ import axios from 'axios';
 import { authAPI } from '../services/api';
 import config, { 
   getAuthToken, setAuthToken, getRefreshToken, setRefreshToken, 
-  setUser, getUser, clearAuthData, isAuthenticated, decodeToken 
+  setUser, getUser, clearAuthData, isAuthenticated 
 } from '../config.js';
 
 // Create axios instance with interceptors
@@ -106,6 +106,51 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+/**
+ * Extract user from JWT token
+ * @param {string} token - JWT token
+ * @returns {object|null} - Decoded token payload or null
+ */
+export const decodeToken = (token) => {
+  try {
+    if (!token) return null;
+    
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    
+    const decoded = JSON.parse(atob(payload));
+    return decoded;
+  } catch (error) {
+    console.error('Error decoding token:', error);
+    return null;
+  }
+};
+
+/**
+ * Check if token is expired
+ * @param {string} token - JWT token
+ * @returns {boolean}
+ */
+export const isTokenExpired = (token) => {
+  const decoded = decodeToken(token);
+  if (!decoded || !decoded.exp) return true;
+  
+  return decoded.exp * 1000 < Date.now();
+};
+
+/**
+ * Get remaining token lifetime in seconds
+ * @param {string} token - JWT token
+ * @returns {number} - Seconds until expiration
+ */
+export const getTokenLifetime = (token) => {
+  const decoded = decodeToken(token);
+  if (!decoded || !decoded.exp) return 0;
+  
+  const now = Math.floor(Date.now() / 1000);
+  return Math.max(0, decoded.exp - now);
+};
 
 // Auth utilities
 
@@ -377,31 +422,6 @@ export const getAuthHeaders = (additionalHeaders = {}) => {
 };
 
 /**
- * Check if token is expired
- * @param {string} token - JWT token
- * @returns {boolean}
- */
-export const isTokenExpired = (token) => {
-  const decoded = decodeToken(token);
-  if (!decoded || !decoded.exp) return true;
-  
-  return decoded.exp * 1000 < Date.now();
-};
-
-/**
- * Get remaining token lifetime in seconds
- * @param {string} token - JWT token
- * @returns {number} - Seconds until expiration
- */
-export const getTokenLifetime = (token) => {
-  const decoded = decodeToken(token);
-  if (!decoded || !decoded.exp) return 0;
-  
-  const now = Math.floor(Date.now() / 1000);
-  return Math.max(0, decoded.exp - now);
-};
-
-/**
  * Set up automatic token refresh
  * @param {number} refreshThreshold - Refresh token when remaining lifetime is below this (in seconds)
  */
@@ -538,7 +558,9 @@ export {
   setRefreshToken,
   getUser,
   setUser,
-  decodeToken 
+  decodeToken,
+  isTokenExpired,
+  getTokenLifetime
 };
 
 // Default export for direct API usage
