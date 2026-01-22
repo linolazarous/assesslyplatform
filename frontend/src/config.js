@@ -435,6 +435,26 @@ export const isAuthenticated = () => {
   }
 };
 
+/**
+ * Extract user from JWT token
+ * @param {string} token - JWT token
+ * @returns {object|null} - Decoded token payload or null
+ */
+export const decodeToken = (token) => {
+  try {
+    if (!token) return null;
+    
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    
+    const decoded = JSON.parse(atob(payload));
+    return decoded;
+  } catch (error) {
+    console.error('Error decoding token:', error);
+    return null;
+  }
+};
+
 export const getAuthHeaders = (additionalHeaders = {}) => {
   const token = getAuthToken();
   const headers = {
@@ -485,6 +505,70 @@ export const formatCurrency = (amount, currency = 'usd') => {
   }).format(amount);
 };
 
+/**
+ * Get remaining token lifetime in seconds
+ * @param {string} token - JWT token
+ * @returns {number} - Seconds until expiration
+ */
+export const getTokenLifetime = (token) => {
+  const decoded = decodeToken(token);
+  if (!decoded || !decoded.exp) return 0;
+  
+  const now = Math.floor(Date.now() / 1000);
+  return Math.max(0, decoded.exp - now);
+};
+
+/**
+ * Check if token is expired
+ * @param {string} token - JWT token
+ * @returns {boolean}
+ */
+export const isTokenExpired = (token) => {
+  const decoded = decodeToken(token);
+  if (!decoded || !decoded.exp) return true;
+  
+  return decoded.exp * 1000 < Date.now();
+};
+
+/**
+ * Validate email format
+ * @param {string} email - Email address to validate
+ * @returns {boolean} - True if email is valid
+ */
+export const isValidEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+/**
+ * Validate password strength
+ * @param {string} password - Password to validate
+ * @returns {object} - Validation result with isValid and message
+ */
+export const validatePassword = (password) => {
+  if (!password) {
+    return { isValid: false, message: 'Password is required' };
+  }
+  
+  if (password.length < 8) {
+    return { isValid: false, message: 'Password must be at least 8 characters long' };
+  }
+  
+  if (!/(?=.*[a-z])/.test(password)) {
+    return { isValid: false, message: 'Password must contain at least one lowercase letter' };
+  }
+  
+  if (!/(?=.*[A-Z])/.test(password)) {
+    return { isValid: false, message: 'Password must contain at least one uppercase letter' };
+  }
+  
+  if (!/(?=.*\d)/.test(password)) {
+    return { isValid: false, message: 'Password must contain at least one number' };
+  }
+  
+  return { isValid: true, message: 'Password is valid' };
+};
+
 // Development helpers
 export const isDevelopment = () => {
   return import.meta.env.MODE === 'development';
@@ -492,6 +576,10 @@ export const isDevelopment = () => {
 
 export const isProduction = () => {
   return import.meta.env.MODE === 'production';
+};
+
+export const isStaging = () => {
+  return import.meta.env.MODE === 'staging' || window.location.hostname.includes('staging');
 };
 
 export const logConfig = () => {
@@ -503,6 +591,87 @@ export const logConfig = () => {
       FEATURES: config.FEATURES,
       AUTH_ENDPOINTS: config.AUTH.ENDPOINTS
     });
+  }
+};
+
+/**
+ * Get environment-specific configuration
+ * @returns {object} - Environment config
+ */
+export const getEnvironmentConfig = () => {
+  if (isProduction()) {
+    return {
+      isProduction: true,
+      isDevelopment: false,
+      apiUrl: config.API_BASE_URL,
+      logLevel: 'error',
+      enableDebug: false
+    };
+  } else if (isStaging()) {
+    return {
+      isProduction: false,
+      isDevelopment: false,
+      isStaging: true,
+      apiUrl: config.API_BASE_URL,
+      logLevel: 'warn',
+      enableDebug: true
+    };
+  } else {
+    // Development
+    return {
+      isProduction: false,
+      isDevelopment: true,
+      apiUrl: config.API_BASE_URL,
+      logLevel: 'debug',
+      enableDebug: true
+    };
+  }
+};
+
+/**
+ * Safe localStorage access with error handling
+ * @param {string} key - Storage key
+ * @param {any} defaultValue - Default value if key doesn't exist or error occurs
+ * @returns {any} - Retrieved value or default
+ */
+export const safeLocalStorageGet = (key, defaultValue = null) => {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) : defaultValue;
+  } catch (error) {
+    console.error(`Error reading from localStorage key "${key}":`, error);
+    return defaultValue;
+  }
+};
+
+/**
+ * Safe localStorage set with error handling
+ * @param {string} key - Storage key
+ * @param {any} value - Value to store
+ * @returns {boolean} - True if successful
+ */
+export const safeLocalStorageSet = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (error) {
+    console.error(`Error writing to localStorage key "${key}":`, error);
+    return false;
+  }
+};
+
+/**
+ * Safe localStorage remove with error handling
+ * @param {string} key - Storage key
+ * @returns {boolean} - True if successful
+ */
+export const safeLocalStorageRemove = (key) => {
+  try {
+    localStorage.removeItem(key);
+    return true;
+  } catch (error) {
+    console.error(`Error removing from localStorage key "${key}":`, error);
+    return false;
   }
 };
 
