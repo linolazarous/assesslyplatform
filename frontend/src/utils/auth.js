@@ -3,8 +3,8 @@ import axios from 'axios';
 import { authAPI } from '../services/api';
 import config, { 
   getAuthToken, setAuthToken, getRefreshToken, setRefreshToken, 
-  setUser, getUser, clearAuthData, isAuthenticated 
-} from '../config.js';
+  setUser, getUser, clearAuthData, isAuthenticated, decodeToken 
+} from '../config.js'; // decodeToken is now imported from config.js
 
 // Create axios instance with interceptors
 const api = axios.create({
@@ -106,26 +106,6 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-/**
- * Extract user from JWT token
- * @param {string} token - JWT token
- * @returns {object|null} - Decoded token payload or null
- */
-export const decodeToken = (token) => {
-  try {
-    if (!token) return null;
-    
-    const payload = token.split('.')[1];
-    if (!payload) return null;
-    
-    const decoded = JSON.parse(atob(payload));
-    return decoded;
-  } catch (error) {
-    console.error('Error decoding token:', error);
-    return null;
-  }
-};
 
 /**
  * Check if token is expired
@@ -558,7 +538,7 @@ export {
   setRefreshToken,
   getUser,
   setUser,
-  decodeToken,
+  // REMOVED decodeToken from here since it's already imported from config.js
   isTokenExpired,
   getTokenLifetime
 };
