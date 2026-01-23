@@ -1,8 +1,8 @@
 // frontend/src/config.js
 // Environment Configuration
 const config = {
-  // API Configuration
-  API_BASE_URL: import.meta.env.VITE_API_URL || 'https://assesslyplatform-pfm1.onrender.com/api',
+  // API Configuration - Updated: No /api in base URL
+  API_BASE_URL: import.meta.env.VITE_API_URL || 'https://assesslyplatform-pfm1.onrender.com',
   FRONTEND_URL: import.meta.env.VITE_FRONTEND_URL || window.location.origin,
   
   // Authentication Configuration
@@ -12,17 +12,20 @@ const config = {
     REFRESH_TOKEN_KEY: 'refresh_token',
     USER_KEY: 'user',
     
-    // API Endpoints - Updated to match backend endpoints
+    // API Endpoints - UPDATED: Added /api prefix to match backend
     ENDPOINTS: {
-      LOGIN: '/auth/login',
-      REGISTER: '/auth/register',
-      LOGOUT: '/auth/logout',
-      REFRESH: '/auth/refresh',
-      ME: '/auth/me',
-      VERIFY_EMAIL: '/auth/verify-email',
-      FORGOT_PASSWORD: '/auth/forgot-password',
-      RESET_PASSWORD: '/auth/reset-password',
-      RESEND_VERIFICATION: '/auth/resend-verification'
+      LOGIN: '/api/auth/login',
+      REGISTER: '/api/auth/register',
+      LOGOUT: '/api/auth/logout',
+      REFRESH: '/api/auth/refresh',
+      ME: '/api/auth/me',
+      VERIFY_EMAIL: '/api/auth/verify-email',
+      FORGOT_PASSWORD: '/api/auth/forgot-password',
+      RESET_PASSWORD: '/api/auth/reset-password',
+      RESEND_VERIFICATION: '/api/auth/resend-verification',
+      // Social auth redirects - these are for frontend navigation
+      GOOGLE: '/api/auth/google',
+      GITHUB: '/api/auth/github'
     },
     
     // Token expiration (in seconds)
@@ -93,80 +96,78 @@ const config = {
     GOOGLE_CLIENT_ID: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
     GITHUB_CLIENT_ID: import.meta.env.VITE_GITHUB_CLIENT_ID || '',
     
-    // API Service URLs
+    // API Service URLs - UPDATED: All endpoints now have /api prefix
     API: {
       // Authentication
       AUTH: {
-        LOGIN: '/auth/login',
-        REGISTER: '/auth/register',
-        LOGOUT: '/auth/logout',
-        REFRESH: '/auth/refresh',
-        ME: '/auth/me',
-        VERIFY_EMAIL: '/auth/verify-email',
-        FORGOT_PASSWORD: '/auth/forgot-password',
-        RESET_PASSWORD: '/auth/reset-password',
-        RESEND_VERIFICATION: '/auth/resend-verification'
+        LOGIN: '/api/auth/login',
+        REGISTER: '/api/auth/register',
+        LOGOUT: '/api/auth/logout',
+        REFRESH: '/api/auth/refresh',
+        ME: '/api/auth/me',
+        VERIFY_EMAIL: '/api/auth/verify-email',
+        FORGOT_PASSWORD: '/api/auth/forgot-password',
+        RESET_PASSWORD: '/api/auth/reset-password',
+        RESEND_VERIFICATION: '/api/auth/resend-verification'
       },
       
       // Assessments
       ASSESSMENTS: {
-        BASE: '/assessments',
-        DETAIL: '/assessments/:id',
-        QUESTIONS: '/assessments/:id/questions',
-        SETTINGS: '/assessments/:id/settings',
-        QUESTION_DETAIL: '/assessments/:assessmentId/questions/:questionId'
+        BASE: '/api/assessments',
+        DETAIL: '/api/assessments/:id',
+        QUESTIONS: '/api/assessments/:id/questions',
+        SETTINGS: '/api/assessments/:id/settings',
+        QUESTION_DETAIL: '/api/assessments/:assessmentId/questions/:questionId'
       },
       
       // Candidates
       CANDIDATES: {
-        BASE: '/candidates',
-        DETAIL: '/candidates/:id'
+        BASE: '/api/candidates',
+        DETAIL: '/api/candidates/:id'
       },
       
       // Organization
       ORGANIZATION: {
-        BASE: '/organizations/me'
+        BASE: '/api/organizations/me'
       },
       
       // User
       USER: {
-        PROFILE: '/users/me',
-        PASSWORD: '/users/me/password'
+        PROFILE: '/api/users/me',
+        PASSWORD: '/api/users/me/password'
       },
       
       // Dashboard
       DASHBOARD: {
-        STATS: '/dashboard/stats'
+        STATS: '/api/dashboard/stats'
       },
       
       // Subscriptions
       SUBSCRIPTIONS: {
-        CHECKOUT: '/subscriptions/checkout',
-        ME: '/subscriptions/me',
-        CANCEL: '/subscriptions/cancel',
-        PLANS: '/plans',
-        UPGRADE: '/subscriptions/upgrade' // Note: This doesn't exist in backend, uses checkout instead
+        CHECKOUT: '/api/subscriptions/checkout',
+        ME: '/api/subscriptions/me',
+        CANCEL: '/api/subscriptions/cancel',
+        PLANS: '/api/plans',
+        UPGRADE: '/api/subscriptions/upgrade' // Note: This doesn't exist in backend
       },
       
       // Payments
       PAYMENTS: {
-        INTENT: '/payments/intent',
-        HISTORY: '/billing/history'
+        INTENT: '/api/payments/intent',
+        HISTORY: '/api/billing/history'
       },
       
       // Webhooks
       WEBHOOKS: {
-        STRIPE: '/webhooks/stripe'
+        STRIPE: '/api/webhooks/stripe'
       },
       
       // Public endpoints
       PUBLIC: {
-        CONTACT: '/contact',
-        DEMO: '/demo'
-      },
-      
-      // Health
-      HEALTH: '/health'
+        CONTACT: '/api/contact',
+        DEMO: '/api/demo',
+        HEALTH: '/api/health'
+      }
     }
   },
   
@@ -455,6 +456,7 @@ export const decodeToken = (token) => {
   }
 };
 
+// UPDATED: Helper to get full API URL with /api prefix if needed
 export const getAuthHeaders = (additionalHeaders = {}) => {
   const token = getAuthToken();
   const headers = {
@@ -469,10 +471,50 @@ export const getAuthHeaders = (additionalHeaders = {}) => {
   return headers;
 };
 
+// UPDATED: Get full URL for API endpoints
 export const getFullUrl = (endpoint) => {
-  // Remove leading slash if present in endpoint
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
-  return `${config.API_BASE_URL}/${cleanEndpoint}`;
+  // If endpoint already includes the full URL, return it
+  if (endpoint.startsWith('http')) {
+    return endpoint;
+  }
+  
+  // Remove duplicate /api prefix if present
+  const cleanEndpoint = endpoint.replace(/^\/api\/api\//, '/api/');
+  
+  // Add base URL
+  return `${config.API_BASE_URL}${cleanEndpoint}`;
+};
+
+// Helper to get API endpoint from config
+export const getApiEndpoint = (service, endpointKey, params = {}) => {
+  try {
+    // Navigate through config.SERVICES.API structure
+    const endpointPath = endpointKey.split('.');
+    let endpointObj = config.SERVICES.API;
+    
+    for (const path of endpointPath) {
+      if (endpointObj[path]) {
+        endpointObj = endpointObj[path];
+      } else {
+        console.error(`Endpoint not found: ${endpointKey}`);
+        return '';
+      }
+    }
+    
+    let endpoint = endpointObj;
+    
+    // Replace parameters in endpoint template
+    if (typeof endpoint === 'string') {
+      Object.keys(params).forEach(key => {
+        endpoint = endpoint.replace(`:${key}`, params[key]);
+      });
+    }
+    
+    return endpoint;
+  } catch (error) {
+    console.error(`Error getting API endpoint ${endpointKey}:`, error);
+    return '';
+  }
 };
 
 export const getRoute = (routeKey, params = {}) => {
@@ -492,14 +534,24 @@ export const getRoute = (routeKey, params = {}) => {
 };
 
 export const getPlanDetails = (planId) => {
-  const planKey = planId.toUpperCase();
-  return config.PLANS[planKey] || config.PLANS.FREE;
+  // Handle case-insensitive lookup
+  const planKeys = Object.keys(config.PLANS);
+  const foundKey = planKeys.find(key => 
+    key.toLowerCase() === planId.toLowerCase() || 
+    config.PLANS[key].id === planId
+  );
+  
+  return foundKey ? config.PLANS[foundKey] : config.PLANS.FREE;
 };
 
 export const formatCurrency = (amount, currency = 'usd') => {
+  if (amount === 'Custom' || amount === 0) {
+    return amount === 0 ? 'Free' : 'Custom';
+  }
+  
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: currency,
+    currency: currency.toUpperCase(),
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(amount);
