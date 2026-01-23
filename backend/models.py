@@ -1,556 +1,357 @@
-from pydantic import BaseModel, Field, EmailStr, validator
-from typing import Optional, List, Dict, Any, Union
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, JSON, ForeignKey, Float, Enum
+from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
-from bson import ObjectId
 import uuid
+import enum
+
+Base = declarative_base()
 
 # ===========================================
 # Helper Functions
 # ===========================================
 
-def generate_id():
+def generate_uuid():
     """Generate a UUID string."""
     return str(uuid.uuid4())
 
 # ===========================================
-# User Models
+# Enum Definitions
 # ===========================================
 
-class UserBase(BaseModel):
-    email: EmailStr
-    name: str
-    organization: str = "Personal"
-    job_title: Optional[str] = None
-    phone: Optional[str] = None
+class UserRole(str, enum.Enum):
+    USER = "user"
+    ADMIN = "admin"
+    SUPER_ADMIN = "super_admin"
 
-class UserCreate(UserBase):
-    password: str
-    recaptcha_token: Optional[str] = None
-    
-    @validator('password')
-    def password_strength(cls, v):
-        if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters')
-        return v
+class PlanType(str, enum.Enum):
+    FREE = "free"
+    PRO = "pro"
+    ENTERPRISE = "enterprise"
 
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
+class AssessmentType(str, enum.Enum):
+    MULTIPLE_CHOICE = "multiple_choice"
+    CODING = "coding"
+    MIXED = "mixed"
+    CUSTOM = "custom"
 
-class UserUpdate(BaseModel):
-    name: Optional[str] = None
-    organization: Optional[str] = None
-    job_title: Optional[str] = None
-    phone: Optional[str] = None
-    notifications_enabled: Optional[bool] = True
-    email_notifications: Optional[bool] = None
+class AssessmentStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
 
-class User(UserBase):
-    id: str = Field(default_factory=generate_id)
-    hashed_password: Optional[str] = None
-    google_id: Optional[str] = None
-    github_id: Optional[str] = None
-    stripe_customer_id: Optional[str] = None
-    avatar: Optional[str] = None
-    plan: str = "free"
-    is_verified: bool = False
-    is_active: bool = True
-    role: str = "user"
-    notifications_enabled: bool = True
-    email_notifications: bool = True
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    last_login: Optional[datetime] = None
-    
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
+class CandidateStatus(str, enum.Enum):
+    INVITED = "invited"
+    STARTED = "started"
+    COMPLETED = "completed"
+    EXPIRED = "expired"
+
+class QuestionType(str, enum.Enum):
+    MULTIPLE_CHOICE = "multiple_choice"
+    TEXT = "text"
+    CODE = "code"
+    FILE_UPLOAD = "file_upload"
+
+class SubscriptionStatus(str, enum.Enum):
+    ACTIVE = "active"
+    CANCELED = "canceled"
+    PAST_DUE = "past_due"
+    INCOMPLETE = "incomplete"
 
 # ===========================================
-# Token Models
+# User Model
 # ===========================================
 
-class Token(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    user: User
-    redirect_url: Optional[str] = None
+class User(Base):
+    __tablename__ = "users"
     
-    class Config:
-        from_attributes = True
+    id = Column(String, primary_key=True, default=generate_uuid)
+    email = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    organization = Column(String, default="Personal")
+    job_title = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    hashed_password = Column(String, nullable=True)  # Nullable for OAuth users
+    google_id = Column(String, unique=True, nullable=True)
+    github_id = Column(String, unique=True, nullable=True)
+    stripe_customer_id = Column(String, nullable=True)
+    avatar = Column(String, nullable=True)
+    plan = Column(String, default="free")
+    is_verified = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    role = Column(String, default="user")
+    notifications_enabled = Column(Boolean, default=True)
+    email_notifications = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    last_login = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    assessments = relationship("Assessment", back_populates="user", cascade="all, delete-orphan")
+    organizations = relationship("Organization", back_populates="owner", cascade="all, delete-orphan")
+    subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
+    candidates = relationship("Candidate", back_populates="user", cascade="all, delete-orphan")
 
 # ===========================================
-# Assessment Models
+# Organization Model
 # ===========================================
 
-class QuestionOption(BaseModel):
-    id: str
-    text: str
-    correct: bool = False
-    explanation: Optional[str] = None
+class Organization(Base):
+    __tablename__ = "organizations"
     
-    class Config:
-        from_attributes = True
-
-class Question(BaseModel):
-    id: str = Field(default_factory=generate_id)
-    text: str
-    type: str = "multiple_choice"  # multiple_choice, text, code, file_upload
-    options: List[QuestionOption] = []
-    correct_answer: Optional[str] = None
-    explanation: Optional[str] = None
-    points: int = 1
-    order: int = 0
-    time_limit: Optional[int] = None  # seconds
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    id = Column(String, primary_key=True, default=generate_uuid)
+    owner_id = Column(String, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
+    slug = Column(String, unique=True, index=True, nullable=False)
+    website = Column(String, nullable=True)
+    industry = Column(String, nullable=True)
+    size = Column(String, nullable=True)
+    settings = Column(JSON, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
-    class Config:
-        from_attributes = True
-
-class AssessmentSettings(BaseModel):
-    shuffle_questions: bool = False
-    show_score: bool = True
-    allow_retake: bool = False
-    time_limit: int = 30  # minutes
-    passing_score: int = 70
-    require_full_name: bool = True
-    require_email: bool = True
-    auto_submit: bool = True
-    instructions: Optional[str] = None
-    show_correct_answers: bool = False
-    show_explanations: bool = False
-    security_level: str = "basic"  # basic, strict, locked_down
-    
-    class Config:
-        from_attributes = True
-
-class AssessmentBase(BaseModel):
-    title: str
-    description: Optional[str] = None
-    assessment_type: str = "multiple_choice"  # multiple_choice, coding, mixed, custom
-    duration_minutes: int = 30
-    category: str = "General"
-    tags: List[str] = []
-    
-    class Config:
-        from_attributes = True
-
-class AssessmentCreate(AssessmentBase):
-    settings: Optional[AssessmentSettings] = None
-    questions: Optional[List[Question]] = []
-    
-    class Config:
-        from_attributes = True
-
-class AssessmentUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    assessment_type: Optional[str] = None
-    duration_minutes: Optional[int] = None
-    category: Optional[str] = None
-    tags: Optional[List[str]] = None
-    status: Optional[str] = None  # draft, published, archived
-    settings: Optional[AssessmentSettings] = None
-    questions: Optional[List[Question]] = None
-    
-    class Config:
-        from_attributes = True
-
-class Assessment(AssessmentBase):
-    id: str = Field(default_factory=generate_id)
-    user_id: str
-    organization_id: str
-    settings: AssessmentSettings = Field(default_factory=lambda: AssessmentSettings())
-    questions: List[Question] = []
-    status: str = "draft"
-    candidate_count: int = 0
-    completion_rate: float = 0.0
-    average_time: float = 0.0
-    average_score: float = 0.0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    published_at: Optional[datetime] = None
-    
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
+    # Relationships
+    owner = relationship("User", back_populates="organizations")
+    assessments = relationship("Assessment", back_populates="organization", cascade="all, delete-orphan")
 
 # ===========================================
-# Candidate Models
+# Assessment Model
 # ===========================================
 
-class CandidateBase(BaseModel):
-    email: EmailStr
-    name: Optional[str] = None
-    assessment_id: str
+class Assessment(Base):
+    __tablename__ = "assessments"
     
-    class Config:
-        from_attributes = True
-
-class CandidateCreate(CandidateBase):
-    metadata: Optional[Dict[str, Any]] = None
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    assessment_type = Column(String, default="multiple_choice")
+    duration_minutes = Column(Integer, default=30)
+    category = Column(String, default="General")
+    tags = Column(JSON, default=list)
+    status = Column(String, default="draft")
+    candidate_count = Column(Integer, default=0)
+    completion_rate = Column(Float, default=0.0)
+    average_time = Column(Float, default=0.0)
+    average_score = Column(Float, default=0.0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    published_at = Column(DateTime(timezone=True), nullable=True)
     
-    class Config:
-        from_attributes = True
-
-# MISSING MODEL - ADDING THIS
-class CandidateUpdate(BaseModel):
-    """Update model for candidate fields."""
-    status: Optional[str] = None
-    name: Optional[str] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    score: Optional[float] = None
-    time_spent: Optional[int] = None  # seconds
-    answers: Optional[List[Dict[str, Any]]] = None
-    feedback: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
-    notes: Optional[str] = None
+    # JSON fields for settings and questions
+    settings = Column(JSON, default={
+        "shuffle_questions": False,
+        "show_score": True,
+        "allow_retake": False,
+        "time_limit": 30,
+        "passing_score": 70,
+        "require_full_name": True,
+        "require_email": True,
+        "auto_submit": True,
+        "instructions": None,
+        "show_correct_answers": False,
+        "show_explanations": False,
+        "security_level": "basic"
+    })
+    questions = Column(JSON, default=list)
     
-    class Config:
-        from_attributes = True
-
-class Candidate(CandidateBase):
-    id: str = Field(default_factory=generate_id)
-    user_id: str
-    invitation_token: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    status: str = "invited"  # invited, started, completed, expired
-    score: Optional[float] = None
-    time_spent: Optional[int] = None  # seconds
-    answers: List[Dict[str, Any]] = []
-    feedback: Optional[str] = None
-    invited_at: datetime = Field(default_factory=datetime.utcnow)
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    metadata: Dict[str, Any] = {}
-    
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
+    # Relationships
+    user = relationship("User", back_populates="assessments")
+    organization = relationship("Organization", back_populates="assessments")
+    candidates = relationship("Candidate", back_populates="assessment", cascade="all, delete-orphan")
 
 # ===========================================
-# Organization Models
+# Question Model (for separate question management if needed)
 # ===========================================
 
-class OrganizationBase(BaseModel):
-    name: str
-    website: Optional[str] = None
-    industry: Optional[str] = None
-    size: Optional[str] = None
+class Question(Base):
+    __tablename__ = "questions"
     
-    class Config:
-        from_attributes = True
-
-class OrganizationUpdate(BaseModel):
-    name: Optional[str] = None
-    website: Optional[str] = None
-    industry: Optional[str] = None
-    size: Optional[str] = None
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    text = Column(Text, nullable=False)
+    question_type = Column(String, default="multiple_choice")
+    options = Column(JSON, default=list)  # List of QuestionOption dicts
+    correct_answer = Column(Text, nullable=True)
+    explanation = Column(Text, nullable=True)
+    points = Column(Integer, default=1)
+    order = Column(Integer, default=0)
+    time_limit = Column(Integer, nullable=True)  # seconds
+    category = Column(String, nullable=True)
+    tags = Column(JSON, default=list)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
-    class Config:
-        from_attributes = True
-
-class Organization(OrganizationBase):
-    id: str = Field(default_factory=generate_id)
-    owner_id: str
-    slug: str
-    settings: Dict[str, Any] = {}
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
+    # Relationships
+    user = relationship("User")
 
 # ===========================================
-# Subscription & Billing Models
+# Candidate Model
 # ===========================================
 
-class SubscriptionCreate(BaseModel):
-    plan_id: str
-    payment_method_id: Optional[str] = None
+class Candidate(Base):
+    __tablename__ = "candidates"
     
-    class Config:
-        from_attributes = True
-
-class Subscription(BaseModel):
-    id: str = Field(default_factory=generate_id)
-    user_id: str
-    plan_id: str
-    stripe_subscription_id: Optional[str] = None
-    stripe_customer_id: Optional[str] = None
-    status: str = "active"  # active, canceled, past_due, incomplete
-    amount: Optional[int] = None  # in cents
-    currency: str = "usd"
-    current_period_start: Optional[datetime] = None
-    current_period_end: Optional[datetime] = None
-    cancel_at_period_end: bool = False
-    canceled_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    assessment_id = Column(String, ForeignKey("assessments.id"), nullable=False)
+    email = Column(String, nullable=False)
+    name = Column(String, nullable=True)
+    invitation_token = Column(String, unique=True, default=generate_uuid)
+    status = Column(String, default="invited")
+    score = Column(Float, nullable=True)
+    time_spent = Column(Integer, nullable=True)  # seconds
+    answers = Column(JSON, default=list)
+    feedback = Column(Text, nullable=True)
+    metadata = Column(JSON, default=dict)
+    invited_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
+    # Relationships
+    user = relationship("User", back_populates="candidates")
+    assessment = relationship("Assessment", back_populates="candidates")
 
 # ===========================================
-# Contact & Demo Models
+# Subscription Model
 # ===========================================
 
-class ContactFormCreate(BaseModel):
-    name: str
-    email: EmailStr
-    company: Optional[str] = None
-    message: str
+class Subscription(Base):
+    __tablename__ = "subscriptions"
     
-    class Config:
-        from_attributes = True
-
-class ContactForm(ContactFormCreate):
-    id: str = Field(default_factory=generate_id)
-    status: str = "new"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    plan_id = Column(String, nullable=False)
+    stripe_subscription_id = Column(String, unique=True, nullable=True)
+    stripe_customer_id = Column(String, nullable=True)
+    status = Column(String, default="active")
+    amount = Column(Integer, nullable=True)  # in cents
+    currency = Column(String, default="usd")
+    current_period_start = Column(DateTime(timezone=True), nullable=True)
+    current_period_end = Column(DateTime(timezone=True), nullable=True)
+    cancel_at_period_end = Column(Boolean, default=False)
+    canceled_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
-
-class DemoRequestCreate(BaseModel):
-    name: str
-    email: EmailStr
-    company: str
-    size: Optional[str] = None
-    notes: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
-
-class DemoRequest(DemoRequestCreate):
-    id: str = Field(default_factory=generate_id)
-    status: str = "pending"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
+    # Relationships
+    user = relationship("User", back_populates="subscriptions")
 
 # ===========================================
-# OAuth Models
+# Contact Form Model
 # ===========================================
 
-class OAuthState(BaseModel):
-    state: str
-    redirect_uri: str
-    plan: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+class ContactForm(Base):
+    __tablename__ = "contact_forms"
     
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False)
+    company = Column(String, nullable=True)
+    message = Column(Text, nullable=False)
+    status = Column(String, default="new")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-class OAuthCallback(BaseModel):
-    code: str
-    state: str
+# ===========================================
+# Demo Request Model
+# ===========================================
+
+class DemoRequest(Base):
+    __tablename__ = "demo_requests"
     
-    class Config:
-        from_attributes = True
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False)
+    company = Column(String, nullable=False)
+    size = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    status = Column(String, default="pending")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 # ===========================================
-# Dashboard & Analytics Models
+# OAuth State Model
 # ===========================================
 
-class DashboardStats(BaseModel):
-    assessments: Dict[str, int]
-    candidates: Dict[str, int]
-    completion_rate: float
-    average_score: float
-    recent_assessments: List[Dict[str, Any]]
-    recent_candidates: List[Dict[str, Any]]
+class OAuthState(Base):
+    __tablename__ = "oauth_states"
     
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
-
-class AnalyticsData(BaseModel):
-    period: str  # day, week, month, year
-    data: List[Dict[str, Any]]
-    
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
+    id = Column(String, primary_key=True, default=generate_uuid)
+    state = Column(String, unique=True, index=True, nullable=False)
+    redirect_uri = Column(String, nullable=False)
+    plan = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 # ===========================================
-# API Response Models
-# ===========================================
-
-class SuccessResponse(BaseModel):
-    success: bool = True
-    message: str
-    data: Optional[Dict[str, Any]] = None
-    
-    class Config:
-        from_attributes = True
-
-class ErrorResponse(BaseModel):
-    success: bool = False
-    error: str
-    detail: Optional[str] = None
-    code: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
-
-class PaginatedResponse(BaseModel):
-    items: List[Any]
-    total: int
-    page: int
-    size: int
-    pages: int
-    
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
-
-# ===========================================
-# Webhook Models
-# ===========================================
-
-class StripeWebhook(BaseModel):
-    id: str
-    type: str
-    data: Dict[str, Any]
-    created: int
-    
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
-
-# ===========================================
-# File Upload Models
-# ===========================================
-
-class FileUpload(BaseModel):
-    filename: str
-    content_type: str
-    size: int
-    url: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            ObjectId: lambda oid: str(oid)
-        }
-
-# ===========================================
-# Additional Models needed for server.py
-# ===========================================
-
-# Platform Stats Model for Home page API
-class PlatformStats(BaseModel):
-    total_organizations: int
-    total_candidates: int
-    total_questions: int
-    uptime_percentage: float
-    active_assessments: int
-    active_candidates: int
-    completion_rate: float
-    
-    class Config:
-        from_attributes = True
-
 # Email Verification Token Model
-class EmailVerificationToken(BaseModel):
-    token: str
-    user_id: str
-    email: str
-    expires_at: datetime
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    class Config:
-        from_attributes = True
+# ===========================================
 
-# Password Reset Token Model
-class PasswordResetToken(BaseModel):
-    token: str
-    user_id: str
-    email: str
-    expires_at: datetime
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+class EmailVerificationToken(Base):
+    __tablename__ = "email_verification_tokens"
     
-    class Config:
-        from_attributes = True
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    token = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    user = relationship("User")
+
+# ===========================================
+# Password Reset Token Model
+# ===========================================
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    token = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    user = relationship("User")
+
+# ===========================================
+# Platform Stats Model (for caching)
+# ===========================================
+
+class PlatformStats(Base):
+    __tablename__ = "platform_stats"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    total_organizations = Column(Integer, default=0)
+    total_candidates = Column(Integer, default=0)
+    total_questions = Column(Integer, default=0)
+    uptime_percentage = Column(Float, default=100.0)
+    active_assessments = Column(Integer, default=0)
+    active_candidates = Column(Integer, default=0)
+    completion_rate = Column(Float, default=0.0)
+    calculated_at = Column(DateTime(timezone=True), server_default=func.now())
 
 # ===========================================
 # Export all models
 # ===========================================
 
 __all__ = [
-    # User
-    "UserBase", "UserCreate", "UserLogin", "UserUpdate", "User",
-    # Token
-    "Token",
-    # Assessment
-    "QuestionOption", "Question", "AssessmentSettings", "AssessmentBase",
-    "AssessmentCreate", "AssessmentUpdate", "Assessment",
-    # Candidate
-    "CandidateBase", "CandidateCreate", "CandidateUpdate", "Candidate",
-    # Organization
-    "OrganizationBase", "OrganizationUpdate", "Organization",
-    # Subscription
-    "SubscriptionCreate", "Subscription",
-    # Contact & Demo
-    "ContactFormCreate", "ContactForm", "DemoRequestCreate", "DemoRequest",
-    # OAuth
-    "OAuthState", "OAuthCallback",
-    # Dashboard & Analytics
-    "DashboardStats", "AnalyticsData", "PlatformStats",
-    # API Response
-    "SuccessResponse", "ErrorResponse", "PaginatedResponse",
-    # Webhook
-    "StripeWebhook",
-    # File Upload
-    "FileUpload",
-    # Verification & Reset Tokens
-    "EmailVerificationToken", "PasswordResetToken",
+    "Base",
+    "User",
+    "Organization", 
+    "Assessment",
+    "Question",
+    "Candidate",
+    "Subscription",
+    "ContactForm",
+    "DemoRequest",
+    "OAuthState",
+    "EmailVerificationToken",
+    "PasswordResetToken",
+    "PlatformStats",
     ]
