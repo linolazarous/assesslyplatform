@@ -1,9 +1,11 @@
+# backend/stripe_service.py
 import stripe
 import os
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timezone
 import json
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +158,11 @@ def _validate_plan(plan_id: str):
     if plan_id not in VALID_PLANS:
         raise ValueError(f"Invalid plan: {plan_id}. Valid plans are: {list(VALID_PLANS)}")
 
+
+def is_stripe_enabled() -> bool:
+    """Check if Stripe is enabled."""
+    return STRIPE_ENABLED
+
 # ---------------------------
 # Customer Management
 # ---------------------------
@@ -217,6 +224,46 @@ async def get_or_create_stripe_customer(
     except Exception as e:
         logger.error(f"Failed to create Stripe customer: {e}")
         return None
+
+
+async def update_customer_metadata(
+    customer_id: str,
+    metadata: Dict[str, Any]
+) -> bool:
+    """Update customer metadata."""
+    if not STRIPE_ENABLED:
+        return False
+    
+    try:
+        stripe.Customer.modify(
+            customer_id,
+            metadata=metadata
+        )
+        logger.info(f"Updated metadata for customer: {customer_id}")
+        return True
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error updating customer: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to update customer: {e}")
+        return False
+
+
+async def delete_customer(customer_id: str) -> bool:
+    """Delete a Stripe customer."""
+    if not STRIPE_ENABLED:
+        return False
+    
+    try:
+        stripe.Customer.delete(customer_id)
+        logger.info(f"Deleted Stripe customer: {customer_id}")
+        return True
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error deleting customer: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to delete customer: {e}")
+        return False
 
 # ---------------------------
 # Product & Price Management
@@ -379,6 +426,111 @@ async def create_subscription(
         logger.error(f"Subscription creation failed: {e}")
         return None
 
+
+async def update_subscription(
+    subscription_id: str,
+    new_plan_id: str,
+    prorate: bool = True
+) -> Optional[Dict[str, Any]]:
+    """Update subscription to a new plan."""
+    if not STRIPE_ENABLED:
+        return None
+    
+    try:
+        _validate_plan(new_plan_id)
+        
+        # Handle non-Stripe subscriptions
+        if subscription_id in ["free_plan", "enterprise_custom"]:
+            return await create_subscription(None, new_plan_id)
+        
+        # Get new price ID
+        new_price_id = await _get_or_create_price_id(new_plan_id)
+        if not new_price_id:
+            raise ValueError(f"Could not get price ID for plan: {new_plan_id}")
+        
+        # Get current subscription
+        subscription = stripe.Subscription.retrieve(subscription_id)
+        
+        # Update subscription
+        updated = stripe.Subscription.modify(
+            subscription_id,
+            items=[{
+                "id": subscription["items"]["data"][0].id,
+                "price": new_price_id,
+            }],
+            proration_behavior="create_prorations" if prorate else "none",
+            metadata={
+                "plan": new_plan_id,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
+        return {
+            "subscription_id": updated.id,
+            "status": updated.status,
+            "plan_id": new_plan_id,
+            "current_period_end": updated.current_period_end,
+            "amount": PLAN_CONFIG[new_plan_id].get("price"),
+            "currency": PLAN_CONFIG[new_plan_id].get("currency", "usd")
+        }
+        
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error updating subscription: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to update subscription: {e}")
+        return None
+
+
+async def cancel_subscription(subscription_id: str) -> bool:
+    """Cancel a subscription."""
+    if not STRIPE_ENABLED:
+        logger.warning("Stripe is not enabled, cannot cancel subscription")
+        return True  # Return True for free/enterprise plans
+    
+    try:
+        # Handle non-Stripe subscription IDs
+        if subscription_id in ["free_plan", "enterprise_custom"]:
+            return True
+        
+        # Cancel Stripe subscription
+        stripe.Subscription.modify(
+            subscription_id,
+            cancel_at_period_end=True
+        )
+        
+        logger.info(f"Cancelled subscription: {subscription_id}")
+        return True
+
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error cancelling subscription: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Cancel subscription failed: {e}")
+        return False
+
+
+async def reactivate_subscription(subscription_id: str) -> bool:
+    """Reactivate a cancelled subscription."""
+    if not STRIPE_ENABLED:
+        return False
+    
+    try:
+        stripe.Subscription.modify(
+            subscription_id,
+            cancel_at_period_end=False
+        )
+        
+        logger.info(f"Reactivated subscription: {subscription_id}")
+        return True
+        
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error reactivating subscription: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to reactivate subscription: {e}")
+        return False
+
 # ---------------------------
 # Checkout Session
 # ---------------------------
@@ -475,43 +627,36 @@ async def create_checkout_session(
             "type": "error",
             "message": f"Payment error: {str(e)}"
         }
-    except Exception as e:
+    catch Exception as e:
         logger.error(f"Checkout session creation failed: {e}")
         return {
             "type": "error",
             "message": f"Failed to create checkout session: {str(e)}"
         }
 
-# ---------------------------
-# Subscription Cancellation
-# ---------------------------
 
-async def cancel_subscription(subscription_id: str) -> bool:
-    """Cancel a subscription."""
+async def create_portal_session(customer_id: str, return_url: str) -> Optional[Dict[str, Any]]:
+    """Create a Stripe Customer Portal session for subscription management."""
     if not STRIPE_ENABLED:
-        logger.warning("Stripe is not enabled, cannot cancel subscription")
-        return True  # Return True for free/enterprise plans
+        return None
     
     try:
-        # Handle non-Stripe subscription IDs
-        if subscription_id in ["free_plan", "enterprise_custom"]:
-            return True
-        
-        # Cancel Stripe subscription
-        stripe.Subscription.modify(
-            subscription_id,
-            cancel_at_period_end=True
+        session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=return_url
         )
         
-        logger.info(f"Cancelled subscription: {subscription_id}")
-        return True
-
+        return {
+            "url": session.url,
+            "return_url": session.return_url
+        }
+        
     except stripe.error.StripeError as e:
-        logger.error(f"Stripe error cancelling subscription: {e}")
-        return False
+        logger.error(f"Stripe error creating portal session: {e}")
+        return None
     except Exception as e:
-        logger.error(f"Cancel subscription failed: {e}")
-        return False
+        logger.error(f"Failed to create portal session: {e}")
+        return None
 
 # ---------------------------
 # Webhook Handling
@@ -546,10 +691,6 @@ async def handle_webhook_event(payload: bytes, sig_header: str) -> Optional[Dict
         logger.error(f"Webhook processing error: {e}")
         return None
 
-
-# ---------------------------
-# Helper Functions for Server
-# ---------------------------
 
 async def handle_checkout_completed(event: Dict) -> None:
     """Handle checkout.session.completed event - called from server.py."""
@@ -626,6 +767,42 @@ async def handle_invoice_payment_failed(event: Dict) -> None:
     except Exception as e:
         logger.error(f"Error processing payment failed: {e}")
 
+
+async def handle_customer_created(event: Dict) -> None:
+    """Handle customer.created event."""
+    try:
+        customer = event.get("data", {}).get("object", {})
+        customer_id = customer.get("id")
+        email = customer.get("email")
+        
+        logger.info(f"Customer created: {customer_id} - {email}")
+        
+    except Exception as e:
+        logger.error(f"Error processing customer created: {e}")
+
+
+async def handle_customer_updated(event: Dict) -> None:
+    """Handle customer.updated event."""
+    try:
+        customer = event.get("data", {}).get("object", {})
+        customer_id = customer.get("id")
+        
+        logger.info(f"Customer updated: {customer_id}")
+        
+    except Exception as e:
+        logger.error(f"Error processing customer updated: {e}")
+
+
+async def handle_customer_deleted(event: Dict) -> None:
+    """Handle customer.deleted event."""
+    try:
+        customer = event.get("data", {}).get("object", {})
+        customer_id = customer.get("id")
+        
+        logger.info(f"Customer deleted: {customer_id}")
+        
+    except Exception as e:
+        logger.error(f"Error processing customer deleted: {e}")
 
 # ---------------------------
 # Additional Utility Functions
@@ -769,3 +946,289 @@ def get_available_plans() -> Dict[str, Any]:
             "stripe_price_id": STRIPE_PRICE_IDS.get(plan_id)
         }
     return plans
+
+
+async def get_invoice(invoice_id: str) -> Optional[Dict[str, Any]]:
+    """Get invoice details."""
+    if not STRIPE_ENABLED:
+        return None
+    
+    try:
+        invoice = stripe.Invoice.retrieve(invoice_id)
+        
+        return {
+            "id": invoice.id,
+            "number": invoice.number,
+            "amount_due": invoice.amount_due,
+            "amount_paid": invoice.amount_paid,
+            "status": invoice.status,
+            "pdf_url": invoice.invoice_pdf,
+            "created": invoice.created,
+            "period_start": invoice.period_start,
+            "period_end": invoice.period_end
+        }
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error getting invoice: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to get invoice: {e}")
+        return None
+
+
+async def get_customer_invoices(customer_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """Get customer's invoices."""
+    if not STRIPE_ENABLED:
+        return []
+    
+    try:
+        invoices = stripe.Invoice.list(
+            customer=customer_id,
+            limit=limit
+        )
+        
+        return [
+            {
+                "id": invoice.id,
+                "number": invoice.number,
+                "amount_due": invoice.amount_due,
+                "amount_paid": invoice.amount_paid,
+                "status": invoice.status,
+                "pdf_url": invoice.invoice_pdf,
+                "created": invoice.created,
+                "period_start": invoice.period_start,
+                "period_end": invoice.period_end
+            }
+            for invoice in invoices.data
+        ]
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error getting invoices: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Failed to get invoices: {e}")
+        return []
+
+
+async def create_refund(
+    payment_intent_id: str,
+    amount: Optional[int] = None,
+    reason: str = "requested_by_customer"
+) -> Optional[Dict[str, Any]]:
+    """Create a refund for a payment."""
+    if not STRIPE_ENABLED:
+        return None
+    
+    try:
+        params = {"payment_intent": payment_intent_id}
+        if amount:
+            params["amount"] = amount
+        if reason:
+            params["reason"] = reason
+        
+        refund = stripe.Refund.create(**params)
+        
+        return {
+            "id": refund.id,
+            "amount": refund.amount,
+            "currency": refund.currency,
+            "status": refund.status,
+            "reason": refund.reason
+        }
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error creating refund: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to create refund: {e}")
+        return None
+
+
+async def validate_coupon(coupon_code: str) -> Optional[Dict[str, Any]]:
+    """Validate a coupon code."""
+    if not STRIPE_ENABLED:
+        return None
+    
+    try:
+        coupon = stripe.Coupon.retrieve(coupon_code)
+        
+        return {
+            "id": coupon.id,
+            "valid": coupon.valid,
+            "duration": coupon.duration,
+            "percent_off": coupon.percent_off,
+            "amount_off": coupon.amount_off,
+            "currency": coupon.currency
+        }
+    except stripe.error.StripeError as e:
+        logger.warning(f"Invalid coupon code: {coupon_code} - {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to validate coupon: {e}")
+        return None
+
+
+async def create_usage_record(
+    subscription_item_id: str,
+    quantity: int,
+    timestamp: Optional[int] = None
+) -> bool:
+    """Create a usage record for metered billing."""
+    if not STRIPE_ENABLED:
+        return False
+    
+    try:
+        params = {
+            "subscription_item": subscription_item_id,
+            "quantity": quantity,
+            "action": "set"
+        }
+        
+        if timestamp:
+            params["timestamp"] = timestamp
+        
+        stripe.UsageRecord.create(**params)
+        return True
+        
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error creating usage record: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to create usage record: {e}")
+        return False
+
+
+# ---------------------------
+# Billing Helper Functions
+# ---------------------------
+
+async def calculate_prorated_amount(
+    current_plan_id: str,
+    new_plan_id: str,
+    days_remaining: int
+) -> Optional[int]:
+    """Calculate prorated amount for plan change."""
+    try:
+        current_plan = PLAN_CONFIG[current_plan_id]
+        new_plan = PLAN_CONFIG[new_plan_id]
+        
+        if current_plan["price"] == 0 or new_plan["price"] == 0:
+            return 0
+        
+        # Calculate daily rates
+        current_daily = current_plan["price"] / 30
+        new_daily = new_plan["price"] / 30
+        
+        # Calculate prorated amount
+        if new_plan["price"] > current_plan["price"]:
+            # Upgrade - charge for remaining days at new rate
+            return int(new_daily * days_remaining)
+        else:
+            # Downgrade - credit for remaining days at current rate
+            return -int(current_daily * days_remaining)
+            
+    except Exception as e:
+        logger.error(f"Failed to calculate prorated amount: {e}")
+        return None
+
+
+async def get_billing_summary(customer_id: str) -> Optional[Dict[str, Any]]:
+    """Get billing summary for a customer."""
+    if not STRIPE_ENABLED:
+        return None
+    
+    try:
+        customer = await get_customer(customer_id)
+        if not customer:
+            return None
+        
+        invoices = await get_customer_invoices(customer_id, 5)
+        
+        # Get active subscriptions
+        subscriptions = []
+        for sub_id in customer.get("subscriptions", []):
+            sub = await get_subscription(sub_id)
+            if sub:
+                subscriptions.append(sub)
+        
+        return {
+            "customer_id": customer_id,
+            "email": customer["email"],
+            "subscriptions": subscriptions,
+            "recent_invoices": invoices,
+            "total_spent": sum(inv.get("amount_paid", 0) for inv in invoices) / 100
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get billing summary: {e}")
+        return None
+
+
+async def send_billing_notification(
+    customer_id: str,
+    event_type: str,
+    data: Dict[str, Any]
+) -> bool:
+    """Send billing notification (placeholder for integration with email service)."""
+    logger.info(f"Billing notification: {event_type} for customer {customer_id}")
+    # This would integrate with your email service
+    return True
+
+
+# ---------------------------
+# Export
+# ---------------------------
+
+__all__ = [
+    # Configuration & Validation
+    "validate_stripe_config",
+    "is_stripe_enabled",
+    
+    # Customer Management
+    "get_or_create_stripe_customer",
+    "update_customer_metadata",
+    "delete_customer",
+    "get_customer",
+    
+    # Subscription Management
+    "create_subscription",
+    "update_subscription",
+    "cancel_subscription",
+    "reactivate_subscription",
+    "get_subscription",
+    
+    # Checkout & Portal
+    "create_checkout_session",
+    "create_portal_session",
+    
+    # Webhook Handling
+    "handle_webhook_event",
+    "handle_checkout_completed",
+    "handle_subscription_updated",
+    "handle_subscription_deleted",
+    "handle_invoice_payment_succeeded",
+    "handle_invoice_payment_failed",
+    "handle_customer_created",
+    "handle_customer_updated",
+    "handle_customer_deleted",
+    
+    # Payment & Billing
+    "create_payment_intent",
+    "create_refund",
+    "get_invoice",
+    "get_customer_invoices",
+    "validate_coupon",
+    "create_usage_record",
+    
+    # Plan Management
+    "get_plan_limits",
+    "get_plan_details",
+    "get_available_plans",
+    
+    # Billing Helpers
+    "calculate_prorated_amount",
+    "get_billing_summary",
+    "send_billing_notification",
+    
+    # Constants
+    "STRIPE_ENABLED",
+    "PLAN_CONFIG",
+    "VALID_PLANS",
+        ]
