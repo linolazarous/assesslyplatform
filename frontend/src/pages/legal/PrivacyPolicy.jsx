@@ -1,7 +1,9 @@
+// frontend/src/pages/legal/PrivacyPolicy.jsx
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, Lock, FileText, Calendar, Mail, Building, ExternalLink, ArrowLeft } from 'lucide-react';
 import Navigation from '../../components/Navigation';
+import Footer from '../../components/Footer';
 
 const PrivacyPolicy = () => {
   const lastUpdated = 'January 1, 2025';
@@ -231,53 +233,8 @@ const PrivacyPolicy = () => {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="mt-8 text-center">
-          <div className="flex flex-wrap justify-center gap-4 mb-6">
-            <Link 
-              to="/terms" 
-              className="px-4 py-2 bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 rounded-lg transition-all duration-200 font-medium"
-            >
-              Terms of Service
-            </Link>
-            <Link 
-              to="/security" 
-              className="px-4 py-2 bg-gradient-to-r from-blue-100 to-blue-200 hover:from-blue-200 hover:to-blue-300 text-blue-700 rounded-lg transition-all duration-200 font-medium"
-            >
-              Security Overview
-            </Link>
-            <Link 
-              to="/gdpr-compliance" 
-              className="px-4 py-2 bg-gradient-to-r from-purple-100 to-purple-200 hover:from-purple-200 hover:to-purple-300 text-purple-700 rounded-lg transition-all duration-200 font-medium"
-            >
-              GDPR Compliance
-            </Link>
-            <Link 
-              to="/soc-2" 
-              className="px-4 py-2 bg-gradient-to-r from-teal-100 to-teal-200 hover:from-teal-200 hover:to-teal-300 text-teal-700 rounded-lg transition-all duration-200 font-medium"
-            >
-              SOC-2 Information
-            </Link>
-          </div>
-          
-          <div className="pt-6 border-t border-gray-200">
-            <p className="text-gray-600 text-sm mb-2">
-              Copyright © {currentYear} Assessly Platform. All rights reserved.
-            </p>
-            <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
-              <span>Built with React</span>
-              <span>•</span>
-              <span>UI by Shadcn UI</span>
-              <span>•</span>
-              <span>Icons from Lucide</span>
-              <span>•</span>
-              <span>Powered by FastAPI</span>
-            </div>
-            <p className="text-gray-400 text-xs mt-3">
-              Made with ❤️ by the Assessly Team
-            </p>
-          </div>
-        </div>
+        {/* Imported Footer Component */}
+        <Footer />
       </div>
     </div>
   );
