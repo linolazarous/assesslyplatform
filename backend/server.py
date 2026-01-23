@@ -21,15 +21,21 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, validator
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
+# server.py - Update imports to separate schemas from models
 from models import (
-    User, UserCreate, UserLogin, UserUpdate, Token,
-    ContactForm, ContactFormCreate,
-    DemoRequest, DemoRequestCreate,
-    Subscription, SubscriptionCreate, SubscriptionUpdate,
-    Organization, OrganizationUpdate,
-    Assessment, AssessmentCreate, AssessmentUpdate,
-    Candidate, CandidateCreate, CandidateUpdate,
-    Question, QuestionUpdate, AssessmentSettings, AssessmentSettingsUpdate,
+    User, Assessment, Candidate, Subscription, Organization,
+    Question, ContactForm, DemoRequest, OAuthState,
+    EmailVerificationToken, PasswordResetToken, PlatformStats,
+    Base  # SQLAlchemy Base
+)
+
+from schemas import (
+    UserCreate, UserLogin, UserUpdate, Token,
+    ContactFormCreate, DemoRequestCreate,
+    SubscriptionCreate, SubscriptionUpdate,
+    OrganizationUpdate, AssessmentCreate, AssessmentUpdate,
+    CandidateCreate, CandidateUpdate, QuestionUpdate,
+    AssessmentSettings, AssessmentSettingsUpdate,
     DashboardStats, SuccessResponse, ErrorResponse, PaginatedResponse,
     PaymentIntent, PaymentIntentCreate, BillingHistory,
     Plan, TwoFactorSetup, SessionInfo, ResetPasswordRequest,
