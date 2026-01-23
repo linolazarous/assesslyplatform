@@ -1,0 +1,25 @@
+{
+  "name": "Assessly Platform",
+  "short_name": "Assessly",
+  "description": "Enterprise assessment and analytics platform",
+  "theme_color": "#0B1F33",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "/images/logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
