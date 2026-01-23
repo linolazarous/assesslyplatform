@@ -11,9 +11,11 @@ const config = {
     ACCESS_TOKEN_KEY: 'access_token',
     REFRESH_TOKEN_KEY: 'refresh_token',
     USER_KEY: 'user',
+    SESSION_KEY: 'session_id', // NEW: Session ID storage key
     
     // API Endpoints - UPDATED: Added /api prefix to match backend
     ENDPOINTS: {
+      // Authentication
       LOGIN: '/api/auth/login',
       REGISTER: '/api/auth/register',
       LOGOUT: '/api/auth/logout',
@@ -23,6 +25,18 @@ const config = {
       FORGOT_PASSWORD: '/api/auth/forgot-password',
       RESET_PASSWORD: '/api/auth/reset-password',
       RESEND_VERIFICATION: '/api/auth/resend-verification',
+      
+      // NEW: Two-Factor Authentication
+      SETUP_2FA: '/api/auth/2fa/setup',
+      VERIFY_2FA: '/api/auth/2fa/verify',
+      DISABLE_2FA: '/api/auth/2fa/disable',
+      VERIFY_2FA_LOGIN: '/api/auth/2fa/login',
+      
+      // NEW: Session Management
+      GET_SESSIONS: '/api/auth/sessions',
+      TERMINATE_SESSION: '/api/auth/sessions/:sessionId',
+      TERMINATE_ALL_SESSIONS: '/api/auth/sessions/terminate-all',
+      
       // Social auth redirects - these are for frontend navigation
       GOOGLE: '/api/auth/google',
       GITHUB: '/api/auth/github'
@@ -48,6 +62,9 @@ const config = {
       REGISTER: '/register',
       FORGOT_PASSWORD: '/forgot-password',
       RESET_PASSWORD: '/reset-password',
+      VERIFY_EMAIL: '/verify-email/:token',
+      TWO_FACTOR_SETUP: '/settings/security/2fa',
+      TWO_FACTOR_VERIFY: '/verify-2fa',
       
       // Dashboard
       DASHBOARD: '/dashboard',
@@ -56,10 +73,13 @@ const config = {
       ASSESSMENTS: '/assessments',
       ASSESSMENT_DETAIL: '/assessments/:id',
       CREATE_ASSESSMENT: '/assessments/new',
+      ASSESSMENT_QUESTIONS: '/assessments/:id/questions',
+      ASSESSMENT_SETTINGS: '/assessments/:id/settings',
       
       // Candidates
       CANDIDATES: '/candidates',
       CANDIDATE_DETAIL: '/candidates/:id',
+      CANDIDATE_RESULTS: '/candidates/:id/results',
       
       // Organization
       ORGANIZATION: '/organization',
@@ -69,6 +89,7 @@ const config = {
       PROFILE: '/settings/profile',
       BILLING: '/settings/billing',
       SECURITY: '/settings/security',
+      SESSIONS: '/settings/security/sessions',
       
       // Public pages
       HOME: '/',
@@ -83,11 +104,18 @@ const config = {
   FEATURES: {
     EMAIL_VERIFICATION: import.meta.env.VITE_ENABLE_EMAIL_VERIFICATION === 'true',
     SOCIAL_LOGIN: import.meta.env.VITE_ENABLE_SOCIAL_LOGIN === 'true',
-    TWO_FACTOR_AUTH: import.meta.env.VITE_ENABLE_2FA === 'false', // Default to false
+    TWO_FACTOR_AUTH: import.meta.env.VITE_ENABLE_2FA === 'true',
     FREE_TIER: true,
     BASIC_TIER: true,
     PROFESSIONAL_TIER: true,
-    ENTERPRISE_TIER: true
+    ENTERPRISE_TIER: true,
+    
+    // NEW: Feature toggles for new endpoints
+    ENABLE_SESSION_MANAGEMENT: true,
+    ENABLE_ASSESSMENT_PUBLISH: true,
+    ENABLE_ASSESSMENT_DUPLICATE: true,
+    ENABLE_CANDIDATE_RESEND: true,
+    ENABLE_CANDIDATE_RESULTS: true
   },
   
   // External Services
@@ -108,7 +136,18 @@ const config = {
         VERIFY_EMAIL: '/api/auth/verify-email',
         FORGOT_PASSWORD: '/api/auth/forgot-password',
         RESET_PASSWORD: '/api/auth/reset-password',
-        RESEND_VERIFICATION: '/api/auth/resend-verification'
+        RESEND_VERIFICATION: '/api/auth/resend-verification',
+        
+        // NEW: Two-Factor Authentication
+        SETUP_2FA: '/api/auth/2fa/setup',
+        VERIFY_2FA: '/api/auth/2fa/verify',
+        DISABLE_2FA: '/api/auth/2fa/disable',
+        VERIFY_2FA_LOGIN: '/api/auth/2fa/login',
+        
+        // NEW: Session Management
+        GET_SESSIONS: '/api/auth/sessions',
+        TERMINATE_SESSION: '/api/auth/sessions/:sessionId',
+        TERMINATE_ALL_SESSIONS: '/api/auth/sessions/terminate-all'
       },
       
       // Assessments
@@ -116,14 +155,19 @@ const config = {
         BASE: '/api/assessments',
         DETAIL: '/api/assessments/:id',
         QUESTIONS: '/api/assessments/:id/questions',
+        QUESTION_DETAIL: '/api/assessments/:assessmentId/questions/:questionId',
         SETTINGS: '/api/assessments/:id/settings',
-        QUESTION_DETAIL: '/api/assessments/:assessmentId/questions/:questionId'
+        PUBLISH: '/api/assessments/:id/publish',
+        DUPLICATE: '/api/assessments/:id/duplicate'
       },
       
       // Candidates
       CANDIDATES: {
         BASE: '/api/candidates',
-        DETAIL: '/api/candidates/:id'
+        DETAIL: '/api/candidates/:id',
+        RESEND_INVITATION: '/api/candidates/:id/resend',
+        RESULTS: '/api/candidates/:id/results',
+        NOTIFY_RESULTS: '/api/candidates/:id/results/notify'
       },
       
       // Organization
@@ -147,8 +191,8 @@ const config = {
         CHECKOUT: '/api/subscriptions/checkout',
         ME: '/api/subscriptions/me',
         CANCEL: '/api/subscriptions/cancel',
-        PLANS: '/api/plans',
-        UPGRADE: '/api/subscriptions/upgrade' // Note: This doesn't exist in backend
+        UPGRADE: '/api/subscriptions/upgrade',
+        PLANS: '/api/plans'
       },
       
       // Payments
@@ -166,6 +210,14 @@ const config = {
       PUBLIC: {
         CONTACT: '/api/contact',
         DEMO: '/api/demo',
+        HEALTH: '/api/health',
+        STATUS: '/api/status'
+      },
+      
+      // System endpoints
+      SYSTEM: {
+        ROOT: '/api/',
+        STATUS: '/api/status',
         HEALTH: '/api/health'
       }
     }
@@ -189,7 +241,12 @@ const config = {
       limits: {
         candidates: 50,
         assessments: 5,
-        questions: 100
+        questions: 100,
+        canPublishAssessments: false,
+        canDuplicateAssessments: false,
+        canExportResults: false,
+        hasAPIAccess: false,
+        maxSessions: 3
       }
     },
     BASIC: {
@@ -204,12 +261,18 @@ const config = {
         'Advanced assessment types',
         'Priority support',
         'Basic analytics',
-        'API access'
+        'API access',
+        'Session management'
       ],
       limits: {
         candidates: 500,
         assessments: 50,
-        questions: 5000
+        questions: 5000,
+        canPublishAssessments: true,
+        canDuplicateAssessments: true,
+        canExportResults: true,
+        hasAPIAccess: true,
+        maxSessions: 5
       }
     },
     PROFESSIONAL: {
@@ -225,12 +288,20 @@ const config = {
         'Dedicated support',
         'Advanced analytics',
         'AI-powered insights',
-        'Custom branding'
+        'Custom branding',
+        'Two-factor authentication',
+        'Advanced session management'
       ],
       limits: {
         candidates: 'unlimited',
         assessments: 'unlimited',
-        questions: 'unlimited'
+        questions: 'unlimited',
+        canPublishAssessments: true,
+        canDuplicateAssessments: true,
+        canExportResults: true,
+        hasAPIAccess: true,
+        maxSessions: 10,
+        twoFactorAuth: true
       }
     },
     ENTERPRISE: {
@@ -246,12 +317,21 @@ const config = {
         'Dedicated account manager',
         'On-premise deployment',
         'Custom development',
-        'Advanced security features'
+        'Advanced security features',
+        'Unlimited sessions',
+        'SSO integration'
       ],
       limits: {
         candidates: 'unlimited',
         assessments: 'unlimited',
-        questions: 'unlimited'
+        questions: 'unlimited',
+        canPublishAssessments: true,
+        canDuplicateAssessments: true,
+        canExportResults: true,
+        hasAPIAccess: true,
+        maxSessions: 'unlimited',
+        twoFactorAuth: true,
+        ssoEnabled: true
       }
     }
   },
@@ -270,6 +350,16 @@ const config = {
     DEFAULT_LIMIT: 20,
     DEFAULT_PAGE: 1,
     MAX_LIMIT: 100
+  },
+  
+  // Session Configuration
+  SESSION: {
+    MAX_SESSIONS_FREE: 3,
+    MAX_SESSIONS_BASIC: 5,
+    MAX_SESSIONS_PRO: 10,
+    SESSION_TIMEOUT_MINUTES: 30 * 24 * 60, // 30 days
+    INACTIVITY_TIMEOUT_MINUTES: 60, // 1 hour
+    REFRESH_THRESHOLD_SECONDS: 300 // 5 minutes
   },
   
   // Assessment Configuration
@@ -301,7 +391,16 @@ const config = {
       COMPLETED: 'completed',
       EXPIRED: 'expired',
       REJECTED: 'rejected'
-    }
+    },
+    INVITATION_EXPIRY_DAYS: 30
+  },
+  
+  // Two-Factor Authentication Configuration
+  TWO_FACTOR: {
+    TOTP_STEP: 30, // Time step in seconds
+    TOKEN_LENGTH: 6,
+    BACKUP_CODE_COUNT: 10,
+    BACKUP_CODE_LENGTH: 16
   }
 };
 
@@ -394,16 +493,48 @@ export const removeUser = () => {
   }
 };
 
+// NEW: Session ID functions
+export const getSessionId = () => {
+  try {
+    return localStorage.getItem(config.AUTH.SESSION_KEY);
+  } catch (error) {
+    console.error('Error getting session ID:', error);
+    return null;
+  }
+};
+
+export const setSessionId = (sessionId) => {
+  try {
+    if (!sessionId) {
+      console.warn('Attempting to set empty session ID');
+      return;
+    }
+    localStorage.setItem(config.AUTH.SESSION_KEY, sessionId);
+  } catch (error) {
+    console.error('Error setting session ID:', error);
+  }
+};
+
+export const removeSessionId = () => {
+  try {
+    localStorage.removeItem(config.AUTH.SESSION_KEY);
+  } catch (error) {
+    console.error('Error removing session ID:', error);
+  }
+};
+
 export const clearAuthData = () => {
   try {
     removeAuthToken();
     removeRefreshToken();
     removeUser();
+    removeSessionId();
     
     // Clear any other auth-related data
     localStorage.removeItem('auth_redirect');
     localStorage.removeItem('last_login_time');
     localStorage.removeItem('session_start');
+    localStorage.removeItem('two_factor_temp_token');
   } catch (error) {
     console.error('Error clearing auth data:', error);
   }
@@ -421,14 +552,13 @@ export const isAuthenticated = () => {
       
       if (isExpired) {
         console.warn('Token has expired');
-        // Optionally try to refresh the token here
         return false;
       }
       
       return true;
     } catch (parseError) {
       console.warn('Unable to parse token payload, assuming valid');
-      return true; // If we can't parse, assume valid but log warning
+      return true;
     }
   } catch (error) {
     console.error('Error checking authentication:', error);
@@ -456,9 +586,14 @@ export const decodeToken = (token) => {
   }
 };
 
-// UPDATED: Helper to get full API URL with /api prefix if needed
+/**
+ * Get authentication headers for API requests
+ * @param {object} additionalHeaders - Additional headers to include
+ * @returns {object} - Headers object with token and session ID
+ */
 export const getAuthHeaders = (additionalHeaders = {}) => {
   const token = getAuthToken();
+  const sessionId = getSessionId();
   const headers = {
     'Content-Type': 'application/json',
     ...additionalHeaders
@@ -468,42 +603,49 @@ export const getAuthHeaders = (additionalHeaders = {}) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
   
+  if (sessionId) {
+    headers['X-Session-ID'] = sessionId;
+  }
+  
   return headers;
 };
 
-// UPDATED: Get full URL for API endpoints
+/**
+ * Get full URL for API endpoints
+ * @param {string} endpoint - API endpoint
+ * @returns {string} - Full URL
+ */
 export const getFullUrl = (endpoint) => {
-  // If endpoint already includes the full URL, return it
   if (endpoint.startsWith('http')) {
     return endpoint;
   }
   
-  // Remove duplicate /api prefix if present
   const cleanEndpoint = endpoint.replace(/^\/api\/api\//, '/api/');
-  
-  // Add base URL
   return `${config.API_BASE_URL}${cleanEndpoint}`;
 };
 
-// Helper to get API endpoint from config
-export const getApiEndpoint = (service, endpointKey, params = {}) => {
+/**
+ * Get API endpoint from config with parameters replaced
+ * @param {string} servicePath - Service path (e.g., 'AUTH.LOGIN')
+ * @param {object} params - Parameters to replace in endpoint
+ * @returns {string} - Formatted endpoint
+ */
+export const getApiEndpoint = (servicePath, params = {}) => {
   try {
-    // Navigate through config.SERVICES.API structure
-    const endpointPath = endpointKey.split('.');
+    const pathParts = servicePath.split('.');
     let endpointObj = config.SERVICES.API;
     
-    for (const path of endpointPath) {
-      if (endpointObj[path]) {
-        endpointObj = endpointObj[path];
+    for (const part of pathParts) {
+      if (endpointObj[part]) {
+        endpointObj = endpointObj[part];
       } else {
-        console.error(`Endpoint not found: ${endpointKey}`);
+        console.error(`Endpoint not found: ${servicePath}`);
         return '';
       }
     }
     
     let endpoint = endpointObj;
     
-    // Replace parameters in endpoint template
     if (typeof endpoint === 'string') {
       Object.keys(params).forEach(key => {
         endpoint = endpoint.replace(`:${key}`, params[key]);
@@ -512,11 +654,17 @@ export const getApiEndpoint = (service, endpointKey, params = {}) => {
     
     return endpoint;
   } catch (error) {
-    console.error(`Error getting API endpoint ${endpointKey}:`, error);
+    console.error(`Error getting API endpoint ${servicePath}:`, error);
     return '';
   }
 };
 
+/**
+ * Get application route with parameters replaced
+ * @param {string} routeKey - Route key from config.APP.ROUTES
+ * @param {object} params - Parameters to replace in route
+ * @returns {string} - Formatted route
+ */
 export const getRoute = (routeKey, params = {}) => {
   if (!config.APP.ROUTES[routeKey]) {
     console.error(`Route key "${routeKey}" not found in config.APP.ROUTES`);
@@ -525,7 +673,6 @@ export const getRoute = (routeKey, params = {}) => {
   
   let route = config.APP.ROUTES[routeKey];
   
-  // Replace route parameters
   Object.keys(params).forEach(key => {
     route = route.replace(`:${key}`, params[key]);
   });
@@ -533,8 +680,12 @@ export const getRoute = (routeKey, params = {}) => {
   return route;
 };
 
+/**
+ * Get plan details by plan ID
+ * @param {string} planId - Plan ID
+ * @returns {object} - Plan details
+ */
 export const getPlanDetails = (planId) => {
-  // Handle case-insensitive lookup
   const planKeys = Object.keys(config.PLANS);
   const foundKey = planKeys.find(key => 
     key.toLowerCase() === planId.toLowerCase() || 
@@ -544,6 +695,12 @@ export const getPlanDetails = (planId) => {
   return foundKey ? config.PLANS[foundKey] : config.PLANS.FREE;
 };
 
+/**
+ * Format currency amount
+ * @param {number|string} amount - Amount to format
+ * @param {string} currency - Currency code
+ * @returns {string} - Formatted currency
+ */
 export const formatCurrency = (amount, currency = 'usd') => {
   if (amount === 'Custom' || amount === 0) {
     return amount === 0 ? 'Free' : 'Custom';
@@ -580,6 +737,15 @@ export const isTokenExpired = (token) => {
   if (!decoded || !decoded.exp) return true;
   
   return decoded.exp * 1000 < Date.now();
+};
+
+/**
+ * Check if feature is enabled
+ * @param {string} feature - Feature name
+ * @returns {boolean}
+ */
+export const isFeatureEnabled = (feature) => {
+  return config.FEATURES[feature] === true;
 };
 
 /**
@@ -621,7 +787,37 @@ export const validatePassword = (password) => {
   return { isValid: true, message: 'Password is valid' };
 };
 
-// Development helpers
+/**
+ * Validate 2FA token
+ * @param {string} token - 2FA token
+ * @returns {boolean} - True if token is valid format
+ */
+export const isValid2FAToken = (token) => {
+  return /^\d{6}$/.test(token);
+};
+
+/**
+ * Generate backup codes
+ * @param {number} count - Number of codes to generate
+ * @param {number} length - Length of each code
+ * @returns {string[]} - Array of backup codes
+ */
+export const generateBackupCodes = (count = 10, length = 16) => {
+  const codes = [];
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  
+  for (let i = 0; i < count; i++) {
+    let code = '';
+    for (let j = 0; j < length; j++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    codes.push(code);
+  }
+  
+  return codes;
+};
+
+// Environment helpers
 export const isDevelopment = () => {
   return import.meta.env.MODE === 'development';
 };
@@ -657,7 +853,9 @@ export const getEnvironmentConfig = () => {
       isDevelopment: false,
       apiUrl: config.API_BASE_URL,
       logLevel: 'error',
-      enableDebug: false
+      enableDebug: false,
+      enableAnalytics: true,
+      enableErrorReporting: true
     };
   } else if (isStaging()) {
     return {
@@ -666,7 +864,9 @@ export const getEnvironmentConfig = () => {
       isStaging: true,
       apiUrl: config.API_BASE_URL,
       logLevel: 'warn',
-      enableDebug: true
+      enableDebug: true,
+      enableAnalytics: true,
+      enableErrorReporting: true
     };
   } else {
     // Development
@@ -675,7 +875,9 @@ export const getEnvironmentConfig = () => {
       isDevelopment: true,
       apiUrl: config.API_BASE_URL,
       logLevel: 'debug',
-      enableDebug: true
+      enableDebug: true,
+      enableAnalytics: false,
+      enableErrorReporting: false
     };
   }
 };
@@ -725,6 +927,37 @@ export const safeLocalStorageRemove = (key) => {
     console.error(`Error removing from localStorage key "${key}":`, error);
     return false;
   }
+};
+
+/**
+ * Get maximum sessions allowed for current user plan
+ * @param {string} planId - User's plan ID
+ * @returns {number} - Maximum sessions allowed
+ */
+export const getMaxSessions = (planId) => {
+  const plan = getPlanDetails(planId);
+  return plan.limits.maxSessions || config.SESSION.MAX_SESSIONS_FREE;
+};
+
+/**
+ * Get user permissions based on subscription plan
+ * @param {string} planId - User's plan ID
+ * @returns {object} - User permissions
+ */
+export const getUserPermissions = (planId) => {
+  const plan = getPlanDetails(planId);
+  return {
+    canPublishAssessments: plan.limits.canPublishAssessments,
+    canDuplicateAssessments: plan.limits.canDuplicateAssessments,
+    canExportResults: plan.limits.canExportResults,
+    hasAPIAccess: plan.limits.hasAPIAccess,
+    twoFactorAuth: plan.limits.twoFactorAuth || false,
+    ssoEnabled: plan.limits.ssoEnabled || false,
+    maxSessions: plan.limits.maxSessions,
+    maxAssessments: plan.limits.assessments,
+    maxCandidates: plan.limits.candidates,
+    maxQuestions: plan.limits.questions
+  };
 };
 
 // Initialize logging in development
