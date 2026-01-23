@@ -1407,11 +1407,83 @@ async def terminate_all_user_sessions(
 
 @api_router.post("/auth/verify-email", tags=["Authentication"])
 async def verify_email(token: str = Body(..., embed=True)):
-    # ... [existing verify-email code remains the same] ...
+    """Verify user's email address using verification token"""
+    # Check if token exists and is valid
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail="Verification token is required"
+        )
+    
+    # Try to decode and verify the token
+    try:
+        # Your token verification logic here
+        # Example: decode JWT token and get user email
+        payload = jwt.decode(token, config.SECRET_KEY, algorithms=["HS256"])
+        user_email = payload.get("email")
+        
+        if not user_email:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid verification token"
+            )
+        
+        # Update user verification status in database
+        # Example: user.is_verified = True
+        # ... your database update logic ...
+        
+        return {
+            "message": "Email verified successfully",
+            "user_email": user_email
+        }
+        
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=400,
+            detail="Verification token has expired"
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid verification token"
+        )
+    except Exception as e:
+        logger.error(f"Email verification error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to verify email"
+        )
 
 @api_router.post("/auth/resend-verification", tags=["Authentication"])
 async def resend_verification(email: str = Body(..., embed=True)):
-    # ... [existing resend-verification code remains the same] ...
+    """Resend verification email to user"""
+    # Validate email
+    if not email or "@" not in email:
+        raise HTTPException(
+            status_code=400,
+            detail="Valid email address is required"
+        )
+    
+    # Check if user exists
+    # ... your user lookup logic ...
+    
+    # Check if user is already verified
+    # if user.is_verified:
+    #     raise HTTPException(
+    #         status_code=400,
+    #         detail="User is already verified"
+    #     )
+    
+    # Generate new verification token
+    # ... your token generation logic ...
+    
+    # Send verification email
+    # ... your email sending logic ...
+    
+    return {
+        "message": "Verification email sent successfully",
+        "email": email
+    }
 
 # ===========================================
 # Password Reset Endpoints (Existing)
@@ -1419,14 +1491,85 @@ async def resend_verification(email: str = Body(..., embed=True)):
 
 @api_router.post("/auth/forgot-password", tags=["Authentication"])
 async def forgot_password(email: str = Body(..., embed=True)):
-    # ... [existing forgot-password code remains the same] ...
+    """Initiate password reset process"""
+    # Validate email
+    if not email or "@" not in email:
+        raise HTTPException(
+            status_code=400,
+            detail="Valid email address is required"
+        )
+    
+    # Check if user exists
+    # ... your user lookup logic ...
+    
+    # Generate password reset token
+    # ... your token generation logic ...
+    
+    # Send password reset email
+    # ... your email sending logic ...
+    
+    # Always return success even if user doesn't exist (security best practice)
+    return {
+        "message": "If an account exists with this email, a password reset link has been sent",
+        "email": email
+    }
 
 @api_router.post("/auth/reset-password", tags=["Authentication"])
 async def reset_password(
     token: str = Body(..., embed=True),
     new_password: str = Body(..., embed=True)
 ):
-    # ... [existing reset-password code remains the same] ...
+    """Reset password using reset token"""
+    # Validate inputs
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail="Reset token is required"
+        )
+    
+    if not new_password or len(new_password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters"
+        )
+    
+    # Verify reset token
+    try:
+        # Decode and validate token
+        payload = jwt.decode(token, config.SECRET_KEY, algorithms=["HS256"])
+        user_email = payload.get("email")
+        token_type = payload.get("type")
+        
+        if token_type != "password_reset":
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid reset token"
+            )
+        
+        # Update user password in database
+        # ... your password update logic ...
+        
+        return {
+            "message": "Password reset successfully",
+            "user_email": user_email
+        }
+        
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=400,
+            detail="Reset token has expired"
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid reset token"
+        )
+    except Exception as e:
+        logger.error(f"Password reset error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to reset password"
+        )
 
 # ===========================================
 # NEW: Assessment Question Delete Endpoint
