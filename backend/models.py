@@ -1,12 +1,16 @@
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, JSON, ForeignKey, Float, Enum
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
+# backend/models.py
+"""
+MongoDB Models for Assessly Platform
+
+Note: Since we're using MongoDB, these are Pydantic models that define
+the structure of documents in each collection. They help with validation
+and serialization.
+"""
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 import uuid
-import enum
-
-Base = declarative_base()
+from bson import ObjectId
 
 # ===========================================
 # Helper Functions
@@ -16,132 +20,68 @@ def generate_uuid():
     """Generate a UUID string."""
     return str(uuid.uuid4())
 
-# ===========================================
-# Enum Definitions
-# ===========================================
+class PyObjectId(str):
+    """Custom type for MongoDB ObjectId."""
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
 
-class UserRole(str, enum.Enum):
-    USER = "user"
-    ADMIN = "admin"
-    SUPER_ADMIN = "super_admin"
-
-class PlanType(str, enum.Enum):
-    FREE = "free"
-    PRO = "pro"
-    ENTERPRISE = "enterprise"
-
-class AssessmentType(str, enum.Enum):
-    MULTIPLE_CHOICE = "multiple_choice"
-    CODING = "coding"
-    MIXED = "mixed"
-    CUSTOM = "custom"
-
-class AssessmentStatus(str, enum.Enum):
-    DRAFT = "draft"
-    PUBLISHED = "published"
-    ARCHIVED = "archived"
-
-class CandidateStatus(str, enum.Enum):
-    INVITED = "invited"
-    STARTED = "started"
-    COMPLETED = "completed"
-    EXPIRED = "expired"
-
-class QuestionType(str, enum.Enum):
-    MULTIPLE_CHOICE = "multiple_choice"
-    TEXT = "text"
-    CODE = "code"
-    FILE_UPLOAD = "file_upload"
-
-class SubscriptionStatus(str, enum.Enum):
-    ACTIVE = "active"
-    CANCELED = "canceled"
-    PAST_DUE = "past_due"
-    INCOMPLETE = "incomplete"
+    @classmethod
+    def validate(cls, v):
+        if not ObjectId.is_valid(v):
+            raise ValueError("Invalid ObjectId")
+        return str(v)
 
 # ===========================================
-# User Model
+# MongoDB Collection Models
 # ===========================================
 
-class User(Base):
-    __tablename__ = "users"
+class UserModel(BaseModel):
+    """MongoDB User document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    email: str = Field(..., description="User email")
+    name: str = Field(..., description="User full name")
+    organization: str = Field(default="Personal", description="Organization name")
+    job_title: Optional[str] = Field(None, description="Job title")
+    phone: Optional[str] = Field(None, description="Phone number")
+    hashed_password: Optional[str] = Field(None, description="Hashed password")
+    google_id: Optional[str] = Field(None, description="Google OAuth ID")
+    github_id: Optional[str] = Field(None, description="GitHub OAuth ID")
+    stripe_customer_id: Optional[str] = Field(None, description="Stripe customer ID")
+    avatar: Optional[str] = Field(None, description="Profile avatar URL")
+    plan: str = Field(default="free", description="Subscription plan")
+    is_verified: bool = Field(default=False, description="Email verification status")
+    is_active: bool = Field(default=True, description="Account active status")
+    role: str = Field(default="user", description="User role")
+    notifications_enabled: bool = Field(default=True, description="Notifications enabled")
+    email_notifications: bool = Field(default=True, description="Email notifications enabled")
+    two_factor_enabled: bool = Field(default=False, description="2FA enabled")
+    two_factor_secret: Optional[str] = Field(None, description="2FA secret")
+    two_factor_backup_codes: List[str] = Field(default_factory=list, description="2FA backup codes")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+    last_login: Optional[datetime] = Field(None, description="Last login timestamp")
+    password_changed_at: Optional[datetime] = Field(None, description="Password change timestamp")
     
-    id = Column(String, primary_key=True, default=generate_uuid)
-    email = Column(String, unique=True, index=True, nullable=False)
-    name = Column(String, nullable=False)
-    organization = Column(String, default="Personal")
-    job_title = Column(String, nullable=True)
-    phone = Column(String, nullable=True)
-    hashed_password = Column(String, nullable=True)  # Nullable for OAuth users
-    google_id = Column(String, unique=True, nullable=True)
-    github_id = Column(String, unique=True, nullable=True)
-    stripe_customer_id = Column(String, nullable=True)
-    avatar = Column(String, nullable=True)
-    plan = Column(String, default="free")
-    is_verified = Column(Boolean, default=False)
-    is_active = Column(Boolean, default=True)
-    role = Column(String, default="user")
-    notifications_enabled = Column(Boolean, default=True)
-    email_notifications = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    last_login = Column(DateTime(timezone=True), nullable=True)
-    
-    # Relationships
-    assessments = relationship("Assessment", back_populates="user", cascade="all, delete-orphan")
-    organizations = relationship("Organization", back_populates="owner", cascade="all, delete-orphan")
-    subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
-    candidates = relationship("Candidate", back_populates="user", cascade="all, delete-orphan")
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
 
-# ===========================================
-# Organization Model
-# ===========================================
-
-class Organization(Base):
-    __tablename__ = "organizations"
-    
-    id = Column(String, primary_key=True, default=generate_uuid)
-    owner_id = Column(String, ForeignKey("users.id"), nullable=False)
-    name = Column(String, nullable=False)
-    slug = Column(String, unique=True, index=True, nullable=False)
-    website = Column(String, nullable=True)
-    industry = Column(String, nullable=True)
-    size = Column(String, nullable=True)
-    settings = Column(JSON, default=dict)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
-    # Relationships
-    owner = relationship("User", back_populates="organizations")
-    assessments = relationship("Assessment", back_populates="organization", cascade="all, delete-orphan")
-
-# ===========================================
-# Assessment Model
-# ===========================================
-
-class Assessment(Base):
-    __tablename__ = "assessments"
-    
-    id = Column(String, primary_key=True, default=generate_uuid)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
-    title = Column(String, nullable=False)
-    description = Column(Text, nullable=True)
-    assessment_type = Column(String, default="multiple_choice")
-    duration_minutes = Column(Integer, default=30)
-    category = Column(String, default="General")
-    tags = Column(JSON, default=list)
-    status = Column(String, default="draft")
-    candidate_count = Column(Integer, default=0)
-    completion_rate = Column(Float, default=0.0)
-    average_time = Column(Float, default=0.0)
-    average_score = Column(Float, default=0.0)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    published_at = Column(DateTime(timezone=True), nullable=True)
-    
-    # JSON fields for settings and questions
-    settings = Column(JSON, default={
+class AssessmentModel(BaseModel):
+    """MongoDB Assessment document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    user_id: str = Field(..., description="Owner user ID")
+    organization_id: Optional[str] = Field(None, description="Organization ID")
+    title: str = Field(..., description="Assessment title")
+    description: Optional[str] = Field(None, description="Assessment description")
+    assessment_type: str = Field(default="multiple_choice", description="Assessment type")
+    duration_minutes: int = Field(default=30, description="Duration in minutes")
+    category: str = Field(default="General", description="Category")
+    tags: List[str] = Field(default_factory=list, description="Tags")
+    settings: Dict[str, Any] = Field(default_factory=lambda: {
         "shuffle_questions": False,
         "show_score": True,
         "allow_retake": False,
@@ -154,204 +94,295 @@ class Assessment(Base):
         "show_correct_answers": False,
         "show_explanations": False,
         "security_level": "basic"
-    })
-    questions = Column(JSON, default=list)
+    }, description="Assessment settings")
+    questions: List[Dict[str, Any]] = Field(default_factory=list, description="Questions list")
+    status: str = Field(default="draft", description="Status: draft, published, archived")
+    is_published: bool = Field(default=False, description="Published status")
+    public_slug: Optional[str] = Field(None, description="Public URL slug")
+    public_url: Optional[str] = Field(None, description="Public URL")
+    candidate_count: int = Field(default=0, description="Total candidates")
+    completion_rate: float = Field(default=0.0, description="Completion rate percentage")
+    average_time: float = Field(default=0.0, description="Average completion time in seconds")
+    average_score: float = Field(default=0.0, description="Average score percentage")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+    published_at: Optional[datetime] = Field(None, description="Publication timestamp")
     
-    # Relationships
-    user = relationship("User", back_populates="assessments")
-    organization = relationship("Organization", back_populates="assessments")
-    candidates = relationship("Candidate", back_populates="assessment", cascade="all, delete-orphan")
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
 
-# ===========================================
-# Question Model (for separate question management if needed)
-# ===========================================
-
-class Question(Base):
-    __tablename__ = "questions"
+class CandidateModel(BaseModel):
+    """MongoDB Candidate document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    user_id: str = Field(..., description="Owner user ID")
+    assessment_id: str = Field(..., description="Assessment ID")
+    email: str = Field(..., description="Candidate email")
+    name: Optional[str] = Field(None, description="Candidate name")
+    invitation_token: str = Field(default_factory=generate_uuid, description="Invitation token")
+    status: str = Field(default="invited", description="Status: invited, started, completed, expired")
+    score: Optional[float] = Field(None, description="Score percentage")
+    time_spent: Optional[int] = Field(None, description="Time spent in seconds")
+    answers: List[Dict[str, Any]] = Field(default_factory=list, description="Candidate answers")
+    feedback: Optional[str] = Field(None, description="Feedback")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    invited_at: datetime = Field(default_factory=datetime.utcnow, description="Invitation timestamp")
+    started_at: Optional[datetime] = Field(None, description="Start timestamp")
+    completed_at: Optional[datetime] = Field(None, description="Completion timestamp")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     
-    id = Column(String, primary_key=True, default=generate_uuid)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    text = Column(Text, nullable=False)
-    question_type = Column(String, default="multiple_choice")
-    options = Column(JSON, default=list)  # List of QuestionOption dicts
-    correct_answer = Column(Text, nullable=True)
-    explanation = Column(Text, nullable=True)
-    points = Column(Integer, default=1)
-    order = Column(Integer, default=0)
-    time_limit = Column(Integer, nullable=True)  # seconds
-    category = Column(String, nullable=True)
-    tags = Column(JSON, default=list)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
+
+class CandidateResultsModel(BaseModel):
+    """MongoDB Candidate Results document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    candidate_id: str = Field(..., description="Candidate ID")
+    assessment_id: str = Field(..., description="Assessment ID")
+    score: float = Field(..., description="Score")
+    total_questions: int = Field(..., description="Total questions")
+    correct_answers: int = Field(..., description="Correct answers count")
+    time_spent: int = Field(..., description="Time spent in seconds")
+    answers: List[Dict[str, Any]] = Field(default_factory=list, description="Detailed answers")
+    started_at: Optional[datetime] = Field(None, description="Start timestamp")
+    completed_at: Optional[datetime] = Field(None, description="Completion timestamp")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     
-    # Relationships
-    user = relationship("User")
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
 
-# ===========================================
-# Candidate Model
-# ===========================================
-
-class Candidate(Base):
-    __tablename__ = "candidates"
+class OrganizationModel(BaseModel):
+    """MongoDB Organization document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    owner_id: str = Field(..., description="Owner user ID")
+    name: str = Field(..., description="Organization name")
+    slug: str = Field(..., description="URL slug")
+    website: Optional[str] = Field(None, description="Website URL")
+    industry: Optional[str] = Field(None, description="Industry")
+    size: Optional[str] = Field(None, description="Organization size")
+    settings: Dict[str, Any] = Field(default_factory=dict, description="Organization settings")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     
-    id = Column(String, primary_key=True, default=generate_uuid)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    assessment_id = Column(String, ForeignKey("assessments.id"), nullable=False)
-    email = Column(String, nullable=False)
-    name = Column(String, nullable=True)
-    invitation_token = Column(String, unique=True, default=generate_uuid)
-    status = Column(String, default="invited")
-    score = Column(Float, nullable=True)
-    time_spent = Column(Integer, nullable=True)  # seconds
-    answers = Column(JSON, default=list)
-    feedback = Column(Text, nullable=True)
-    metadata = Column(JSON, default=dict)
-    invited_at = Column(DateTime(timezone=True), server_default=func.now())
-    started_at = Column(DateTime(timezone=True), nullable=True)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
+
+class SubscriptionModel(BaseModel):
+    """MongoDB Subscription document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    user_id: str = Field(..., description="User ID")
+    plan_id: str = Field(..., description="Plan ID")
+    stripe_subscription_id: Optional[str] = Field(None, description="Stripe subscription ID")
+    stripe_customer_id: Optional[str] = Field(None, description="Stripe customer ID")
+    status: str = Field(default="active", description="Status: active, canceled, past_due, incomplete")
+    amount: Optional[int] = Field(None, description="Amount in cents")
+    currency: str = Field(default="usd", description="Currency")
+    current_period_start: Optional[datetime] = Field(None, description="Current period start")
+    current_period_end: Optional[datetime] = Field(None, description="Current period end")
+    cancel_at_period_end: bool = Field(default=False, description="Cancel at period end")
+    canceled_at: Optional[datetime] = Field(None, description="Cancelation timestamp")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     
-    # Relationships
-    user = relationship("User", back_populates="candidates")
-    assessment = relationship("Assessment", back_populates="candidates")
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
 
-# ===========================================
-# Subscription Model
-# ===========================================
-
-class Subscription(Base):
-    __tablename__ = "subscriptions"
+class ContactFormModel(BaseModel):
+    """MongoDB Contact Form document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    name: str = Field(..., description="Contact name")
+    email: str = Field(..., description="Contact email")
+    company: Optional[str] = Field(None, description="Company name")
+    message: str = Field(..., description="Message content")
+    status: str = Field(default="new", description="Status: new, reviewed, responded")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     
-    id = Column(String, primary_key=True, default=generate_uuid)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    plan_id = Column(String, nullable=False)
-    stripe_subscription_id = Column(String, unique=True, nullable=True)
-    stripe_customer_id = Column(String, nullable=True)
-    status = Column(String, default="active")
-    amount = Column(Integer, nullable=True)  # in cents
-    currency = Column(String, default="usd")
-    current_period_start = Column(DateTime(timezone=True), nullable=True)
-    current_period_end = Column(DateTime(timezone=True), nullable=True)
-    cancel_at_period_end = Column(Boolean, default=False)
-    canceled_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
+
+class DemoRequestModel(BaseModel):
+    """MongoDB Demo Request document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    name: str = Field(..., description="Requester name")
+    email: str = Field(..., description="Requester email")
+    company: str = Field(..., description="Company name")
+    size: Optional[str] = Field(None, description="Company size")
+    notes: Optional[str] = Field(None, description="Additional notes")
+    status: str = Field(default="pending", description="Status: pending, scheduled, completed")
+    scheduled_at: Optional[datetime] = Field(None, description="Scheduled demo time")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     
-    # Relationships
-    user = relationship("User", back_populates="subscriptions")
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
 
-# ===========================================
-# Contact Form Model
-# ===========================================
-
-class ContactForm(Base):
-    __tablename__ = "contact_forms"
+class OAuthStateModel(BaseModel):
+    """MongoDB OAuth State document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    state: str = Field(..., description="OAuth state parameter")
+    redirect_uri: str = Field(..., description="Redirect URI")
+    plan: Optional[str] = Field(None, description="Selected plan")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     
-    id = Column(String, primary_key=True, default=generate_uuid)
-    name = Column(String, nullable=False)
-    email = Column(String, nullable=False)
-    company = Column(String, nullable=True)
-    message = Column(Text, nullable=False)
-    status = Column(String, default="new")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
 
-# ===========================================
-# Demo Request Model
-# ===========================================
-
-class DemoRequest(Base):
-    __tablename__ = "demo_requests"
+class EmailVerificationTokenModel(BaseModel):
+    """MongoDB Email Verification Token document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    user_id: str = Field(..., description="User ID")
+    token: str = Field(..., description="Verification token")
+    email: str = Field(..., description="Email address")
+    expires_at: datetime = Field(..., description="Expiration timestamp")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     
-    id = Column(String, primary_key=True, default=generate_uuid)
-    name = Column(String, nullable=False)
-    email = Column(String, nullable=False)
-    company = Column(String, nullable=False)
-    size = Column(String, nullable=True)
-    notes = Column(Text, nullable=True)
-    status = Column(String, default="pending")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
 
-# ===========================================
-# OAuth State Model
-# ===========================================
-
-class OAuthState(Base):
-    __tablename__ = "oauth_states"
+class PasswordResetTokenModel(BaseModel):
+    """MongoDB Password Reset Token document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    user_id: str = Field(..., description="User ID")
+    token: str = Field(..., description="Reset token")
+    email: str = Field(..., description="Email address")
+    expires_at: datetime = Field(..., description="Expiration timestamp")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     
-    id = Column(String, primary_key=True, default=generate_uuid)
-    state = Column(String, unique=True, index=True, nullable=False)
-    redirect_uri = Column(String, nullable=False)
-    plan = Column(String, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
 
-# ===========================================
-# Email Verification Token Model
-# ===========================================
-
-class EmailVerificationToken(Base):
-    __tablename__ = "email_verification_tokens"
+class UserSessionModel(BaseModel):
+    """MongoDB User Session document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    session_id: str = Field(..., description="Session ID")
+    user_id: str = Field(..., description="User ID")
+    user_agent: Optional[str] = Field(None, description="User agent")
+    ip_address: Optional[str] = Field(None, description="IP address")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    last_activity: datetime = Field(default_factory=datetime.utcnow, description="Last activity timestamp")
+    expires_at: datetime = Field(..., description="Expiration timestamp")
     
-    id = Column(String, primary_key=True, default=generate_uuid)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    token = Column(String, unique=True, index=True, nullable=False)
-    email = Column(String, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationships
-    user = relationship("User")
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
 
-# ===========================================
-# Password Reset Token Model
-# ===========================================
-
-class PasswordResetToken(Base):
-    __tablename__ = "password_reset_tokens"
+class TwoFactorSecretModel(BaseModel):
+    """MongoDB 2FA Secret document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    user_id: str = Field(..., description="User ID")
+    secret: str = Field(..., description="2FA secret")
+    backup_codes: List[str] = Field(default_factory=list, description="Backup codes")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     
-    id = Column(String, primary_key=True, default=generate_uuid)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    token = Column(String, unique=True, index=True, nullable=False)
-    email = Column(String, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationships
-    user = relationship("User")
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
 
-# ===========================================
-# Platform Stats Model (for caching)
-# ===========================================
-
-class PlatformStats(Base):
-    __tablename__ = "platform_stats"
+class APILogModel(BaseModel):
+    """MongoDB API Log document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    request_id: str = Field(..., description="Request ID")
+    user_id: Optional[str] = Field(None, description="User ID")
+    method: str = Field(..., description="HTTP method")
+    endpoint: str = Field(..., description="API endpoint")
+    query_params: Optional[str] = Field(None, description="Query parameters")
+    user_agent: Optional[str] = Field(None, description="User agent")
+    ip_address: Optional[str] = Field(None, description="IP address")
+    status_code: Optional[int] = Field(None, description="HTTP status code")
+    response_time_ms: Optional[float] = Field(None, description="Response time in ms")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    completed_at: Optional[datetime] = Field(None, description="Completion timestamp")
     
-    id = Column(String, primary_key=True, default=generate_uuid)
-    total_organizations = Column(Integer, default=0)
-    total_candidates = Column(Integer, default=0)
-    total_questions = Column(Integer, default=0)
-    uptime_percentage = Column(Float, default=100.0)
-    active_assessments = Column(Integer, default=0)
-    active_candidates = Column(Integer, default=0)
-    completion_rate = Column(Float, default=0.0)
-    calculated_at = Column(DateTime(timezone=True), server_default=func.now())
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
+
+class PlatformStatsModel(BaseModel):
+    """MongoDB Platform Stats document model."""
+    id: str = Field(default_factory=generate_uuid, alias="_id")
+    total_organizations: int = Field(default=0, description="Total organizations")
+    total_candidates: int = Field(default=0, description="Total candidates")
+    total_questions: int = Field(default=0, description="Total questions")
+    uptime_percentage: float = Field(default=100.0, description="Uptime percentage")
+    active_assessments: int = Field(default=0, description="Active assessments")
+    active_candidates: int = Field(default=0, description="Active candidates")
+    completion_rate: float = Field(default=0.0, description="Completion rate")
+    calculated_at: datetime = Field(default_factory=datetime.utcnow, description="Calculation timestamp")
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str, datetime: lambda dt: dt.isoformat()},
+        extra="ignore"
+    )
 
 # ===========================================
 # Export all models
 # ===========================================
 
 __all__ = [
-    "Base",
-    "User",
-    "Organization", 
-    "Assessment",
-    "Question",
-    "Candidate",
-    "Subscription",
-    "ContactForm",
-    "DemoRequest",
-    "OAuthState",
-    "EmailVerificationToken",
-    "PasswordResetToken",
-    "PlatformStats",
+    # Document models
+    "UserModel", 
+    "AssessmentModel", 
+    "CandidateModel", 
+    "CandidateResultsModel",
+    "OrganizationModel", 
+    "SubscriptionModel",
+    "ContactFormModel", 
+    "DemoRequestModel",
+    "OAuthStateModel",
+    "EmailVerificationTokenModel", 
+    "PasswordResetTokenModel",
+    "UserSessionModel", 
+    "TwoFactorSecretModel", 
+    "APILogModel",
+    "PlatformStatsModel",
     ]
