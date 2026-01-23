@@ -1,11 +1,11 @@
 // frontend/src/utils/auth.js
 import axios from 'axios';
-import { authAPI } from '../services/api';
+import { authAPI, apiUtils } from '../services/api';
 import config, { 
   getAuthToken, setAuthToken, getRefreshToken, setRefreshToken, 
   setUser, getUser, clearAuthData, isAuthenticated, 
-  decodeToken, isTokenExpired, getTokenLifetime  // Added isTokenExpired and getTokenLifetime
-} from '../config.js'; // All functions now imported from config.js
+  decodeToken, isTokenExpired, getTokenLifetime, setSessionId, getSessionId, clearSessionId
+} from '../config.js';
 
 // Create axios instance with interceptors
 const api = axios.create({
@@ -13,16 +13,23 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 second timeout for production
+  timeout: 30000,
 });
 
-// Request interceptor to add token
+// Request interceptor to add token and session ID
 api.interceptors.request.use(
   (requestConfig) => {
     const token = getAuthToken();
+    const sessionId = getSessionId();
+    
     if (token) {
       requestConfig.headers.Authorization = `Bearer ${token}`;
     }
+    
+    if (sessionId) {
+      requestConfig.headers['X-Session-ID'] = sessionId;
+    }
+    
     return requestConfig;
   },
   (error) => {
@@ -32,7 +39,13 @@ api.interceptors.request.use(
 
 // Response interceptor to handle errors and token refresh
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Store session ID from response if present
+    if (response.data?.session_id) {
+      setSessionId(response.data.session_id);
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
 
@@ -53,12 +66,13 @@ api.interceptors.response.use(
           
           // Retry original request
           originalRequest.headers.Authorization = `Bearer ${result.access_token}`;
-          return api(originalRequest); // Use the same axios instance
+          return api(originalRequest);
         }
       } catch (refreshError) {
         console.error('Token refresh failed:', refreshError);
         // Refresh failed, logout user
         clearAuthData();
+        clearSessionId();
         
         // Only redirect if not already on login page
         if (!window.location.pathname.includes('/login')) {
@@ -79,6 +93,14 @@ api.interceptors.response.use(
           break;
         case 403:
           console.error('Forbidden:', errorData);
+          // Handle 2FA required specifically
+          if (errorData?.detail?.includes('Two-factor authentication required')) {
+            return Promise.reject({
+              ...error,
+              requires2FA: true,
+              message: 'Two-factor authentication required'
+            });
+          }
           break;
         case 404:
           console.error('Resource not found:', error.response.config.url);
@@ -111,15 +133,21 @@ api.interceptors.response.use(
 // Auth utilities
 
 /**
- * Login with email and password
+ * Enhanced login with 2FA support
  * @param {string} email - User email
  * @param {string} password - User password
- * @returns {Promise<object>} - User data and tokens
+ * @returns {Promise<object>} - Login result with 2FA info if required
  */
 export const login = async (email, password) => {
   try {
-    // Use the authAPI service
-    const result = await authAPI.login({ email, password });
+    // Use the enhanced 2FA login handler
+    const result = await apiUtils.handle2FALogin({ email, password });
+    
+    // Store session ID if present
+    if (result.session_id) {
+      setSessionId(result.session_id);
+    }
+    
     return result;
   } catch (error) {
     // Format error for consistent error handling
@@ -158,17 +186,197 @@ export const login = async (email, password) => {
 };
 
 /**
+ * Login with 2FA verification
+ * @param {string} token - 2FA token
+ * @param {string} tempToken - Temporary token from initial login
+ * @returns {Promise<object>} - Final login result
+ */
+export const loginWith2FA = async (token, tempToken) => {
+  try {
+    // Set temporary token for the request
+    const originalToken = getAuthToken();
+    setAuthToken(tempToken);
+    
+    // Verify 2FA token
+    const result = await authAPI.verify2FALogin(token);
+    
+    // Restore original token if verification failed
+    if (!result.access_token) {
+      setAuthToken(originalToken);
+    }
+    
+    // Store session ID if present
+    if (result.session_id) {
+      setSessionId(result.session_id);
+    }
+    
+    return result;
+  } catch (error) {
+    let errorMessage = 'Two-factor authentication failed';
+    
+    if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail;
+    }
+    
+    const authError = new Error(errorMessage);
+    authError.isAuthError = true;
+    authError.status = error.response?.status;
+    authError.is2FAError = true;
+    
+    throw authError;
+  }
+};
+
+/**
+ * Setup two-factor authentication
+ * @returns {Promise<object>} - 2FA setup data (secret, QR code, backup codes)
+ */
+export const setup2FA = async () => {
+  try {
+    return await authAPI.setup2FA();
+  } catch (error) {
+    let errorMessage = 'Failed to setup two-factor authentication';
+    
+    if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail;
+    }
+    
+    const authError = new Error(errorMessage);
+    authError.isAuthError = true;
+    authError.status = error.response?.status;
+    
+    throw authError;
+  }
+};
+
+/**
+ * Verify and enable 2FA setup
+ * @param {string} token - 2FA verification token
+ * @param {string} method - 2FA method (default: 'totp')
+ * @returns {Promise<object>} - Success response
+ */
+export const verify2FASetup = async (token, method = 'totp') => {
+  try {
+    return await authAPI.verify2FASetup(token, method);
+  } catch (error) {
+    let errorMessage = 'Failed to verify two-factor authentication';
+    
+    if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail;
+    }
+    
+    const authError = new Error(errorMessage);
+    authError.isAuthError = true;
+    authError.status = error.response?.status;
+    
+    throw authError;
+  }
+};
+
+/**
+ * Disable two-factor authentication
+ * @param {string} token - 2FA token or backup code
+ * @returns {Promise<object>} - Success response
+ */
+export const disable2FA = async (token) => {
+  try {
+    return await authAPI.disable2FA(token);
+  } catch (error) {
+    let errorMessage = 'Failed to disable two-factor authentication';
+    
+    if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail;
+    }
+    
+    const authError = new Error(errorMessage);
+    authError.isAuthError = true;
+    authError.status = error.response?.status;
+    
+    throw authError;
+  }
+};
+
+/**
+ * Get active user sessions
+ * @returns {Promise<Array>} - List of active sessions
+ */
+export const getSessions = async () => {
+  try {
+    return await authAPI.getSessions();
+  } catch (error) {
+    console.error('Error fetching sessions:', error);
+    
+    let errorMessage = 'Failed to fetch sessions';
+    if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail;
+    }
+    
+    throw new Error(errorMessage);
+  }
+};
+
+/**
+ * Terminate a specific session
+ * @param {string} sessionId - Session ID to terminate
+ * @returns {Promise<object>} - Success response
+ */
+export const terminateSession = async (sessionId) => {
+  try {
+    return await authAPI.terminateSession(sessionId);
+  } catch (error) {
+    let errorMessage = 'Failed to terminate session';
+    
+    if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail;
+    }
+    
+    const authError = new Error(errorMessage);
+    authError.isAuthError = true;
+    authError.status = error.response?.status;
+    
+    throw authError;
+  }
+};
+
+/**
+ * Terminate all other sessions (except current)
+ * @returns {Promise<object>} - Success response
+ */
+export const terminateAllOtherSessions = async () => {
+  try {
+    const currentSessionId = getSessionId();
+    return await authAPI.terminateAllSessions(currentSessionId);
+  } catch (error) {
+    let errorMessage = 'Failed to terminate sessions';
+    
+    if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail;
+    }
+    
+    const authError = new Error(errorMessage);
+    authError.isAuthError = true;
+    authError.status = error.response?.status;
+    
+    throw authError;
+  }
+};
+
+/**
  * Register a new user
  * @param {object} userData - User registration data
  * @returns {Promise<object>} - User data and tokens
  */
 export const register = async (userData) => {
   try {
-    // Use the authAPI service
     const result = await authAPI.register(userData);
+    
+    // Store session ID if present
+    if (result.session_id) {
+      setSessionId(result.session_id);
+    }
+    
     return result;
   } catch (error) {
-    // Format error for consistent error handling
     let errorMessage = 'Registration failed';
     let errorDetails = {};
     let fieldErrors = {};
@@ -176,12 +384,9 @@ export const register = async (userData) => {
     if (error.response) {
       const errorData = error.response.data;
       
-      // Handle backend validation errors
       if (errorData?.detail && typeof errorData.detail === 'object') {
-        // Map backend field names to frontend field names
         Object.entries(errorData.detail).forEach(([field, messages]) => {
           if (Array.isArray(messages)) {
-            // Convert snake_case to camelCase for frontend
             const frontendField = field.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
             fieldErrors[frontendField] = messages[0];
           }
@@ -192,7 +397,6 @@ export const register = async (userData) => {
       else if (errorData?.detail) {
         errorMessage = errorData.detail;
         
-        // Check for duplicate email
         if (errorData.detail.includes('already registered') || 
             errorData.detail.includes('already exists')) {
           errorMessage = 'An account with this email already exists. Please sign in instead.';
@@ -209,7 +413,6 @@ export const register = async (userData) => {
       errorMessage = 'Network error. Please check your connection.';
     }
     
-    // Create a consistent error object
     const authError = new Error(errorMessage);
     authError.details = errorDetails;
     authError.fieldErrors = fieldErrors;
@@ -226,14 +429,13 @@ export const register = async (userData) => {
  */
 export const logout = async () => {
   try {
-    // Use the authAPI service
-    await authAPI.logout();
+    const sessionId = getSessionId();
+    await authAPI.logout(sessionId);
   } catch (error) {
-    // Silently fail if logout endpoint has issues
     console.log('Logout endpoint error:', error.message);
   } finally {
-    // Always clear local auth data
     clearAuthData();
+    clearSessionId();
   }
   
   return { success: true, message: "Logged out successfully" };
@@ -245,18 +447,15 @@ export const logout = async () => {
  */
 export const getCurrentUser = async () => {
   try {
-    // Use the authAPI service
     const result = await authAPI.getCurrentUser();
     return result;
   } catch (error) {
     console.error('Error fetching current user:', error);
     
-    // Return null if unauthorized (user is not logged in)
     if (error.response?.status === 401) {
       return null;
     }
     
-    // For other errors, check if we have cached user data
     const cachedUser = getUser();
     if (cachedUser) {
       return cachedUser;
@@ -276,6 +475,29 @@ export const verifyEmail = async (token) => {
     return await authAPI.verifyEmail(token);
   } catch (error) {
     let errorMessage = 'Email verification failed';
+    
+    if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail;
+    }
+    
+    const authError = new Error(errorMessage);
+    authError.isAuthError = true;
+    authError.status = error.response?.status;
+    
+    throw authError;
+  }
+};
+
+/**
+ * Resend email verification
+ * @param {string} email - User email
+ * @returns {Promise<object>}
+ */
+export const resendVerification = async (email) => {
+  try {
+    return await authAPI.resendVerification(email);
+  } catch (error) {
+    let errorMessage = 'Failed to resend verification email';
     
     if (error.response?.data?.detail) {
       errorMessage = error.response.data.detail;
@@ -346,6 +568,7 @@ export const refreshToken = async () => {
   } catch (error) {
     console.error('Token refresh error:', error);
     clearAuthData();
+    clearSessionId();
     throw error;
   }
 };
@@ -359,12 +582,28 @@ export const checkAuth = () => {
 };
 
 /**
+ * Check if user has 2FA enabled
+ * @returns {Promise<boolean>}
+ */
+export const check2FAEnabled = async () => {
+  try {
+    const user = await getCurrentUser();
+    return user?.two_factor_enabled || false;
+  } catch (error) {
+    console.error('Error checking 2FA status:', error);
+    return false;
+  }
+};
+
+/**
  * Get authentication headers for API requests
  * @param {object} additionalHeaders - Additional headers to include
  * @returns {object} - Headers object
  */
 export const getAuthHeaders = (additionalHeaders = {}) => {
   const token = getAuthToken();
+  const sessionId = getSessionId();
+  
   const headers = {
     'Content-Type': 'application/json',
     ...additionalHeaders
@@ -374,6 +613,10 @@ export const getAuthHeaders = (additionalHeaders = {}) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
   
+  if (sessionId) {
+    headers['X-Session-ID'] = sessionId;
+  }
+  
   return headers;
 };
 
@@ -381,19 +624,17 @@ export const getAuthHeaders = (additionalHeaders = {}) => {
  * Set up automatic token refresh
  * @param {number} refreshThreshold - Refresh token when remaining lifetime is below this (in seconds)
  */
-export const setupTokenRefresh = (refreshThreshold = 300) => { // 5 minutes
+export const setupTokenRefresh = (refreshThreshold = 300) => {
   const token = getAuthToken();
   if (!token) return;
   
   const lifetime = getTokenLifetime(token);
   
   if (lifetime < refreshThreshold) {
-    // Token will expire soon, refresh it
     refreshToken().catch(error => {
       console.error('Automatic token refresh failed:', error);
     });
   } else {
-    // Schedule refresh when token is about to expire
     const refreshTime = (lifetime - refreshThreshold) * 1000;
     setTimeout(() => {
       refreshToken().catch(error => {
@@ -423,7 +664,7 @@ export const initAuth = async () => {
 };
 
 /**
- * Direct API call utility (bypasses authAPI for custom endpoints)
+ * Direct API call utility
  * @param {string} method - HTTP method
  * @param {string} endpoint - API endpoint
  * @param {object} data - Request data
@@ -459,7 +700,6 @@ export const uploadFile = async (endpoint, file, onProgress = null, additionalDa
   const formData = new FormData();
   formData.append('file', file);
   
-  // Append additional data
   Object.entries(additionalData).forEach(([key, value]) => {
     formData.append(key, value);
   });
@@ -504,6 +744,62 @@ export const validateSession = async () => {
   }
 };
 
+/**
+ * Get current session ID
+ * @returns {string|null}
+ */
+export const getCurrentSessionId = () => {
+  return getSessionId();
+};
+
+/**
+ * Get user permissions and capabilities
+ * @returns {Promise<object>} - User permissions
+ */
+export const getUserPermissions = async () => {
+  try {
+    const user = await getCurrentUser();
+    
+    if (!user) {
+      return { authenticated: false, permissions: {} };
+    }
+    
+    // Get subscription info
+    const subscriptionResponse = await apiCall('GET', '/api/subscriptions/me');
+    const subscription = subscriptionResponse?.data || { plan: 'free' };
+    
+    // Define permissions based on subscription plan
+    const permissions = {
+      authenticated: true,
+      user: user,
+      subscription: subscription,
+      capabilities: {
+        // Assessment limits
+        maxAssessments: subscription.plan === 'free' ? 5 : 
+                        subscription.plan === 'basic' ? 50 : 
+                        Infinity,
+        maxCandidates: subscription.plan === 'free' ? 50 : 
+                       subscription.plan === 'basic' ? 500 : 
+                       Infinity,
+        // Features
+        canPublishAssessments: subscription.plan !== 'free',
+        canCustomizeBranding: subscription.plan === 'professional' || subscription.plan === 'enterprise',
+        canExportResults: subscription.plan !== 'free',
+        hasAdvancedAnalytics: subscription.plan === 'professional' || subscription.plan === 'enterprise',
+        hasAPIAccess: subscription.plan !== 'free',
+        // Security
+        twoFactorEnabled: user.two_factor_enabled || false,
+        emailVerified: user.is_verified || false
+      }
+    };
+    
+    return permissions;
+  } catch (error) {
+    console.error('Error fetching user permissions:', error);
+    return { authenticated: false, permissions: {} };
+  }
+};
+
 // Export all utilities
 export { 
   isAuthenticated, 
@@ -516,7 +812,10 @@ export {
   setUser,
   decodeToken,
   isTokenExpired,
-  getTokenLifetime
+  getTokenLifetime,
+  getSessionId,
+  setSessionId,
+  clearSessionId
 };
 
 // Default export for direct API usage
