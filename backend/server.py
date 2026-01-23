@@ -51,7 +51,7 @@ from schemas import (
     Plan, TwoFactorSetup, SessionInfo, ResetPasswordRequest,
     AssessmentPublishRequest, AssessmentDuplicateRequest,
     CandidateResendInvite, CandidateResults,
-    TwoFactorVerify, APIStatus  # Added these
+    TwoFactorVerify, APIStatus
 )
 from auth_utils import (
     verify_password,
