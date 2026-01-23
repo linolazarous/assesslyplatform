@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import jwt
 import hashlib
 from urllib.parse import quote
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -25,22 +26,18 @@ EMAIL_ENABLED = bool(RESEND_API_KEY)
 if not EMAIL_ENABLED:
     logger.warning("RESEND_API_KEY is not set - Email service will be disabled")
 
-
-def _init_resend():
-    """Initialize Resend API."""
-    if not EMAIL_ENABLED:
-        return False
-    
+# Initialize Resend if API key is available
+if EMAIL_ENABLED:
     try:
         resend.api_key = RESEND_API_KEY
-        return True
+        logger.info("Resend email service initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize Resend: {e}")
-        return False
+        EMAIL_ENABLED = False
 
 
 # ---------------------------
-# Internal Helper
+# Internal Helper Functions
 # ---------------------------
 def _send_email(
     to: List[str],
@@ -51,16 +48,13 @@ def _send_email(
     cc: Optional[List[str]] = None,
     bcc: Optional[List[str]] = None,
     attachments: Optional[List[Dict]] = None
-) -> bool:
+) -> Dict[str, Any]:
     """Send an email using Resend."""
     if not EMAIL_ENABLED:
         logger.warning("Email service is disabled, skipping email send")
-        return False
-    
+        return {"success": False, "message": "Email service is disabled"}
+
     try:
-        if not _init_resend():
-            return False
-        
         params = {
             "from": from_email or FROM_EMAIL,
             "to": to,
@@ -79,11 +73,22 @@ def _send_email(
         
         result = resend.Emails.send(params)
         logger.info(f"Email sent successfully: {subject} to {to}")
-        return True
+        return {
+            "success": True,
+            "message": "Email sent successfully",
+            "data": result,
+            "to": to,
+            "subject": subject
+        }
         
+    except resend.ResendError as e:
+        error_msg = f"Resend API error: {str(e)}"
+        logger.error(error_msg)
+        return {"success": False, "message": error_msg, "error": str(e)}
     except Exception as e:
-        logger.error(f"Failed to send email: {e}")
-        return False
+        error_msg = f"Failed to send email: {str(e)}"
+        logger.error(error_msg)
+        return {"success": False, "message": error_msg, "error": str(e)}
 
 
 def _generate_email_token(data: Dict[str, Any], expires_hours: int = 24) -> str:
@@ -93,7 +98,6 @@ def _generate_email_token(data: Dict[str, Any], expires_hours: int = 24) -> str:
         payload["exp"] = datetime.utcnow() + timedelta(hours=expires_hours)
         payload["iat"] = datetime.utcnow()
         
-        # Use a secret key for email tokens
         secret_key = os.getenv("EMAIL_SECRET_KEY", "email-secret-key-change-in-production")
         
         return jwt.encode(payload, secret_key, algorithm="HS256")
@@ -170,12 +174,287 @@ def _get_email_template(template_name: str, **kwargs) -> str:
     </div>
 </body>
 </html>""",
-        # Add more templates here...
+        
+        "assessment_published": """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assessment Published: {assessment_title}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .success-icon {{ font-size: 48px; text-align: center; margin: 20px 0; }}
+        .details-box {{ background: white; border: 1px solid #e1e4e8; border-radius: 8px; padding: 20px; margin: 20px 0; }}
+        .action-button {{ display: inline-block; background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }}
+        .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #666; font-size: 12px; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Assessment Published Successfully!</h1>
+            <p>Your assessment is now live</p>
+        </div>
+        <div class="content">
+            <div class="success-icon">
+                🎉
+            </div>
+            
+            <p>Great news! Your assessment has been published successfully.</p>
+            
+            <div class="details-box">
+                <h3 style="margin-top: 0;">Assessment Details</h3>
+                <p><strong>Title:</strong> {assessment_title}</p>
+                <p><strong>Published At:</strong> {published_at}</p>
+                {candidate_count_html}
+                <p><strong>Status:</strong> <span style="color: #00b09b; font-weight: bold;">✅ Live & Active</span></p>
+            </div>
+            
+            <p><strong>Next Steps:</strong></p>
+            <ul>
+                <li>Share the assessment link with candidates</li>
+                <li>Monitor candidate submissions in real-time</li>
+                <li>Review results as they come in</li>
+                <li>Download reports for analysis</li>
+            </ul>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{FRONTEND_URL}/dashboard/assessments" class="action-button">
+                    View Assessment Dashboard
+                </a>
+            </div>
+            
+            <div class="footer">
+                <p>This is an automated notification from Assessly Platform</p>
+                <p>You can manage notification settings in your dashboard</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>""",
+        
+        "assessment_created": """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Assessment Created: {assessment_title}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .info-box {{ background: white; border: 1px solid #e1e4e8; border-radius: 8px; padding: 20px; margin: 20px 0; }}
+        .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #666; font-size: 12px; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>New Assessment Created</h1>
+            <p>Ready for configuration</p>
+        </div>
+        <div class="content">
+            <p>A new assessment has been created and is ready for setup.</p>
+            
+            <div class="info-box">
+                <h3 style="margin-top: 0;">Assessment Information</h3>
+                <p><strong>Title:</strong> {assessment_title}</p>
+                <p><strong>Created By:</strong> {created_by}</p>
+                <p><strong>Created At:</strong> {created_at}</p>
+                <p><strong>Status:</strong> <span style="color: #4facfe; font-weight: bold;">🔄 Draft</span></p>
+            </div>
+            
+            <p><strong>Next Steps:</strong></p>
+            <ol>
+                <li>Add questions to the assessment</li>
+                <li>Configure settings and time limits</li>
+                <li>Preview the assessment</li>
+                <li>Publish when ready</li>
+            </ol>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{FRONTEND_URL}/dashboard/assessments/edit" 
+                   style="background: #4facfe; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                    Edit Assessment
+                </a>
+            </div>
+            
+            <div class="footer">
+                <p>This is an automated notification from Assessly Platform</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>""",
+        
+        "welcome": """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Assessly Platform, {name}!</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 40px; border-radius: 0 0 8px 8px; }}
+        .welcome-text {{ font-size: 18px; margin-bottom: 30px; }}
+        .feature {{ background: white; border: 1px solid #e1e4e8; border-radius: 8px; padding: 20px; margin-bottom: 15px; display: flex; align-items: center; }}
+        .feature-icon {{ font-size: 24px; margin-right: 15px; }}
+        .action-button {{ display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: 600; margin: 20px 0; }}
+        .dashboard-link {{ text-align: center; margin: 30px 0; }}
+        .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #666; font-size: 12px; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎉 Welcome to Assessly Platform!</h1>
+            <p>We're excited to have you on board</p>
+        </div>
+        <div class="content">
+            <div class="welcome-text">
+                <p>Hi <strong>{name}</strong>,</p>
+                <p>Your organization <strong>{organization}</strong> is now set up and ready to use!</p>
+                <p>Here's what you can do right away:</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">📝</div>
+                <div>
+                    <h3 style="margin: 0 0 5px 0;">Create Your First Assessment</h3>
+                    <p style="margin: 0;">Design custom assessments with various question types</p>
+                </div>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">👥</div>
+                <div>
+                    <h3 style="margin: 0 0 5px 0;">Invite Candidates</h3>
+                    <p style="margin: 0;">Share assessment links with candidates via email or direct link</p>
+                </div>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">📊</div>
+                <div>
+                    <h3 style="margin: 0 0 5px 0;">Track Progress</h3>
+                    <p style="margin: 0;">Monitor candidate performance with real-time analytics</p>
+                </div>
+            </div>
+            
+            <div class="dashboard-link">
+                <a href="{FRONTEND_URL}/dashboard" class="action-button">
+                    Go to Your Dashboard →
+                </a>
+            </div>
+            
+            <div style="margin: 30px 0; padding: 20px; background: #e8f4fd; border-radius: 8px;">
+                <h3 style="margin-top: 0;">Need Help?</h3>
+                <p>Check out our <a href="{FRONTEND_URL}/docs">documentation</a> or contact our support team:</p>
+                <ul>
+                    <li>📧 Email: <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a></li>
+                    <li>💬 Chat: Available in your dashboard</li>
+                    <li>📚 Guides: <a href="{FRONTEND_URL}/guides">Getting Started Guide</a></li>
+                </ul>
+            </div>
+            
+            <div class="footer">
+                <p>© {year} Assessly Platform. All rights reserved.</p>
+                <p>This is an automated message, please do not reply to this email.</p>
+                <p><a href="{FRONTEND_URL}/unsubscribe?email={email}">Unsubscribe</a> | <a href="{FRONTEND_URL}/privacy">Privacy Policy</a></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>""",
+        
+        "password_reset": """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Your Password - Assessly Platform</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .reset-button {{ display: inline-block; background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: 600; margin: 20px 0; }}
+        .center {{ text-align: center; }}
+        .expiry {{ color: #666; font-size: 14px; margin-top: 20px; }}
+        .code-box {{ background: #f5f5f5; border: 1px dashed #ccc; padding: 15px; margin: 20px 0; font-family: monospace; word-break: break-all; }}
+        .warning {{ background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; padding: 15px; margin: 20px 0; }}
+        .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #666; font-size: 12px; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Reset Your Password</h1>
+            <p>Secure your account</p>
+        </div>
+        <div class="content">
+            <p>Hi <strong>{name}</strong>,</p>
+            <p>We received a request to reset the password for your Assessly Platform account.</p>
+            
+            <div class="center">
+                <a href="{reset_link}" class="reset-button">
+                    Reset Password
+                </a>
+            </div>
+            
+            <div class="warning">
+                <p><strong>⚠️ Security Notice:</strong></p>
+                <p>If you didn't request this password reset, please ignore this email. Your account remains secure.</p>
+            </div>
+            
+            <p class="expiry">
+                <strong>Link expires in:</strong> 1 hour
+            </p>
+            
+            <p>If the button above doesn't work, you can copy and paste this link into your browser:</p>
+            <div class="code-box">
+                {reset_link}
+            </div>
+            
+            <div class="footer">
+                <p>This password reset request was initiated for {email}</p>
+                <p>© {year} Assessly Platform. All rights reserved.</p>
+                <p><a href="{FRONTEND_URL}/security">Learn about our security practices</a></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
     }
     
     template = templates.get(template_name, "")
     if template:
-        return template.format(**kwargs)
+        # Add common variables
+        kwargs["FRONTEND_URL"] = FRONTEND_URL
+        kwargs["year"] = datetime.now().year
+        kwargs["SUPPORT_EMAIL"] = SUPPORT_EMAIL
+        
+        # Handle conditional HTML for assessment published template
+        if template_name == "assessment_published" and "candidate_count" in kwargs:
+            candidate_count = kwargs.get("candidate_count")
+            if candidate_count is not None:
+                kwargs["candidate_count_html"] = f'<p><strong>Candidates Expected:</strong> {candidate_count}</p>'
+            else:
+                kwargs["candidate_count_html"] = ""
+        
+        # Replace placeholders
+        for key, value in kwargs.items():
+            placeholder = f"{{{key}}}"
+            template = template.replace(placeholder, str(value))
+        
+        return template
+    
     return ""
 
 
@@ -187,10 +466,9 @@ async def send_contact_notification(
     email: str,
     company: Optional[str],
     message: str
-) -> bool:
+) -> Dict[str, Any]:
     """Send notification for contact form submission."""
     subject = f"New Contact Form Submission from {name}"
-    current_year = datetime.now().year
     
     html = f"""<!DOCTYPE html>
 <html>
@@ -251,7 +529,7 @@ async def send_demo_request_notification(
     company: str,
     size: Optional[str],
     notes: Optional[str]
-) -> bool:
+) -> Dict[str, Any]:
     """Send notification for demo request."""
     subject = f"New Demo Request: {company}"
     
@@ -329,9 +607,9 @@ async def send_demo_confirmation(
     email: str,
     company: str,
     scheduled_time: Optional[str] = None
-) -> bool:
+) -> Dict[str, Any]:
     """Send confirmation email for demo request."""
-    subject = f"Demo Request Confirmation - Assessly Platform"
+    subject = "Demo Request Confirmation - Assessly Platform"
     
     html = f"""<!DOCTYPE html>
 <html>
@@ -400,7 +678,7 @@ async def send_demo_confirmation(
 </html>"""
     
     return _send_email([email], subject, html, reply_to=SUPPORT_EMAIL)
-
+    
 
 # ---------------------------
 # User Registration & Onboarding
@@ -1106,6 +1384,146 @@ async def send_assessment_completed_notification(
     return _send_email([admin_email], subject, html)
 
 
+async def send_assessment_published_notification(
+    admin_email: str,
+    assessment_title: str,
+    published_at: str,
+    candidate_count: Optional[int] = None
+) -> bool:
+    """Send notification when an assessment is published."""
+    subject = f"Assessment Published: {assessment_title}"
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{subject}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .success-icon {{ font-size: 48px; text-align: center; margin: 20px 0; }}
+        .details-box {{ background: white; border: 1px solid #e1e4e8; border-radius: 8px; padding: 20px; margin: 20px 0; }}
+        .action-button {{ display: inline-block; background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }}
+        .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #666; font-size: 12px; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Assessment Published Successfully!</h1>
+            <p>Your assessment is now live</p>
+        </div>
+        <div class="content">
+            <div class="success-icon">
+                🎉
+            </div>
+            
+            <p>Great news! Your assessment has been published successfully.</p>
+            
+            <div class="details-box">
+                <h3 style="margin-top: 0;">Assessment Details</h3>
+                <p><strong>Title:</strong> {assessment_title}</p>
+                <p><strong>Published At:</strong> {published_at}</p>
+                {f'<p><strong>Candidates Expected:</strong> {candidate_count}</p>' if candidate_count else ''}
+                <p><strong>Status:</strong> <span style="color: #00b09b; font-weight: bold;">✅ Live & Active</span></p>
+            </div>
+            
+            <p><strong>Next Steps:</strong></p>
+            <ul>
+                <li>Share the assessment link with candidates</li>
+                <li>Monitor candidate submissions in real-time</li>
+                <li>Review results as they come in</li>
+                <li>Download reports for analysis</li>
+            </ul>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{FRONTEND_URL}/dashboard/assessments" class="action-button">
+                    View Assessment Dashboard
+                </a>
+            </div>
+            
+            <div class="footer">
+                <p>This is an automated notification from Assessly Platform</p>
+                <p>You can manage notification settings in your dashboard</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
+    
+    return _send_email([admin_email], subject, html)
+
+
+async def send_assessment_created_notification(
+    admin_email: str,
+    assessment_title: str,
+    created_by: str,
+    created_at: str
+) -> bool:
+    """Send notification when a new assessment is created."""
+    subject = f"New Assessment Created: {assessment_title}"
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{subject}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .info-box {{ background: white; border: 1px solid #e1e4e8; border-radius: 8px; padding: 20px; margin: 20px 0; }}
+        .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #666; font-size: 12px; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>New Assessment Created</h1>
+            <p>Ready for configuration</p>
+        </div>
+        <div class="content">
+            <p>A new assessment has been created and is ready for setup.</p>
+            
+            <div class="info-box">
+                <h3 style="margin-top: 0;">Assessment Information</h3>
+                <p><strong>Title:</strong> {assessment_title}</p>
+                <p><strong>Created By:</strong> {created_by}</p>
+                <p><strong>Created At:</strong> {created_at}</p>
+                <p><strong>Status:</strong> <span style="color: #4facfe; font-weight: bold;">🔄 Draft</span></p>
+            </div>
+            
+            <p><strong>Next Steps:</strong></p>
+            <ol>
+                <li>Add questions to the assessment</li>
+                <li>Configure settings and time limits</li>
+                <li>Preview the assessment</li>
+                <li>Publish when ready</li>
+            </ol>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{FRONTEND_URL}/dashboard/assessments/edit" 
+                   style="background: #4facfe; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                    Edit Assessment
+                </a>
+            </div>
+            
+            <div class="footer">
+                <p>This is an automated notification from Assessly Platform</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
+    
+    return _send_email([admin_email], subject, html)
+
+
 async def send_assessment_results_to_candidate(
     candidate_name: str,
     candidate_email: str,
@@ -1116,6 +1534,15 @@ async def send_assessment_results_to_candidate(
 ) -> bool:
     """Send assessment results to candidate."""
     subject = f"Your Assessment Results: {assessment_title}"
+    
+    # Determine score color
+    score_color = ""
+    if score >= 70:
+        score_color = "linear-gradient(135deg, #00b09b 0%, #96c93d 100%)"
+    elif score >= 50:
+        score_color = "linear-gradient(135deg, #ffa726 0%, #ff9800 100%)"
+    else:
+        score_color = "linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%)"
     
     html = f"""<!DOCTYPE html>
 <html>
@@ -1128,7 +1555,7 @@ async def send_assessment_results_to_candidate(
         .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
         .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
         .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }}
-        .score-circle {{ width: 120px; height: 120px; border-radius: 50%; background: {'linear-gradient(135deg, #00b09b 0%, #96c93d 100%)' if score >= 70 else 'linear-gradient(135deg, #ffa726 0%, #ff9800 100%)' if score >= 50 else 'linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%)'}; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 20px auto; }}
+        .score-circle {{ width: 120px; height: 120px; border-radius: 50%; background: {score_color}; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 20px auto; }}
         .score-number {{ font-size: 36px; font-weight: bold; }}
         .score-label {{ font-size: 14px; }}
         .feedback {{ background: white; border: 1px solid #e1e4e8; border-radius: 8px; padding: 20px; margin: 20px 0; }}
@@ -1703,7 +2130,6 @@ async def send_test_email(to_email: str) -> bool:
 
 async def validate_email_address(email: str) -> bool:
     """Simple email validation (basic format check)."""
-    import re
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return bool(re.match(pattern, email))
 
@@ -1716,6 +2142,19 @@ def get_email_stats() -> Dict[str, Any]:
         "from_email": FROM_EMAIL,
         "support_email": SUPPORT_EMAIL,
         "info_email": INFO_EMAIL
+    }
+
+
+def get_email_status() -> Dict[str, Any]:
+    """Get email service status and configuration."""
+    return {
+        "enabled": EMAIL_ENABLED,
+        "provider": "Resend",
+        "from_email": FROM_EMAIL,
+        "support_email": SUPPORT_EMAIL,
+        "info_email": INFO_EMAIL,
+        "frontend_url": FRONTEND_URL,
+        "has_api_key": bool(RESEND_API_KEY)
     }
 
 
@@ -1756,7 +2195,6 @@ async def send_bulk_emails(
                 results["failed_emails"].append(email)
         
         # Small delay between batches to avoid rate limiting
-        import asyncio
         await asyncio.sleep(1)
     
     return results
@@ -1772,6 +2210,7 @@ __all__ = [
     "send_test_email",
     "validate_email_address",
     "get_email_stats",
+    "get_email_status",
     "send_bulk_emails",
     
     # Contact & Demo
@@ -1798,6 +2237,8 @@ __all__ = [
     "send_assessment_reminder",
     "send_assessment_completed_notification",
     "send_assessment_results_to_candidate",
+    "send_assessment_published_notification",
+    "send_assessment_created_notification",
     
     # Billing & Subscription
     "send_subscription_confirmation",
