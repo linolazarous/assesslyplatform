@@ -103,7 +103,7 @@ const Footer = () => {
             <h4 className="text-white font-semibold mb-4">Quick Links</h4>
             <ul className="space-y-2">
               <li>
-                <a href="https://docs.assesslyplatform.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors flex items-center">
+                <a href="https://docs.assesslyplatformfrontend.onrender.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors flex items-center">
                   Documentation
                   <ExternalLink className="ml-2 h-3 w-3" />
                 </a>
