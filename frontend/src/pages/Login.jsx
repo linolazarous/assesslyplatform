@@ -704,8 +704,6 @@ Back to Home
   </div>  
 </div>  
 
-
-
 );
 
 };
