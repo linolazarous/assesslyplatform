@@ -41,9 +41,6 @@ pyotp==2.9.0
 qrcode[pil]==7.4.2
 Pillow==10.2.0
 
-# CORS middleware
-fastapi-cors==0.1.0
-
 # Rate limiting
 slowapi==0.1.9
 
