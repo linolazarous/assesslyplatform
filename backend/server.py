@@ -1454,25 +1454,47 @@ async def verify_2fa_login(
 # Session Management Endpoints
 # ===========================================
 
+from datetime import datetime
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Path, Header, status
+from models.user import User
+from models.response import SuccessResponse
+from models.session import SessionInfo
+from core.auth.dependencies import get_current_user
+from core.auth.session_manager import terminate_session, terminate_all_sessions
+import logging
+
+logger = logging.getLogger(__name__)
+
 @api_router.get("/auth/sessions", response_model=List[SessionInfo], tags=["Security"])
-async def get_user_sessions(current_user: User = Depends(get_current_user)):
+async def get_user_sessions(
+    current_user: User = Depends(get_current_user),
+    current_session_id: Optional[str] = Header(None, alias="X-Session-ID")
+):
     """Get all active sessions for current user."""
     try:
+        # Get all active sessions for the user
         sessions = await db_manager.db.user_sessions.find({
             "user_id": current_user.id,
             "expires_at": {"$gt": datetime.utcnow()}
-        }).sort("last_activity", -1).to_list(length=20)
+        }).sort("last_activity", -1).to_list(length=50)
         
         session_list = []
         for session in sessions:
+            # Check if this is the current session
+            is_current = (current_session_id is not None and 
+                         session.get("session_id") == current_session_id)
+            
             session_list.append(SessionInfo(
                 session_id=session["session_id"],
-                user_agent=session.get("user_agent"),
-                ip_address=session.get("ip_address"),
+                user_agent=session.get("user_agent", "Unknown"),
+                ip_address=session.get("ip_address", "Unknown"),
                 created_at=session["created_at"],
                 last_activity=session["last_activity"],
                 expires_at=session["expires_at"],
-                is_current=False  # Would need current session ID to determine
+                is_current=is_current,
+                device_info=session.get("device_info", {}),
+                location=session.get("location")
             ))
         
         return session_list
@@ -1486,20 +1508,36 @@ async def get_user_sessions(current_user: User = Depends(get_current_user)):
 
 @api_router.delete("/auth/sessions/{session_id}", tags=["Security"])
 async def terminate_user_session(
-    session_id: str = Path(..., description="Session ID to terminate"),
+    session_id: str = Path(..., min_length=32, max_length=64, 
+                          description="Session ID to terminate"),
     current_user: User = Depends(get_current_user)
 ):
-    """Terminate a specific session."""
+    """Terminate a specific session by ID."""
     try:
+        # Prevent user from terminating their own current session if not intended
+        # (Add additional logic here if needed)
+        
         success = await terminate_session(session_id, current_user.id)
         
         if not success:
-            raise HTTPException(status_code=404, detail="Session not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail="Session not found or you don't have permission to terminate it"
+            )
         
-        return SuccessResponse(message="Session terminated successfully")
+        return SuccessResponse(
+            message="Session terminated successfully",
+            data={"session_id": session_id}
+        )
         
     except HTTPException:
         raise
+    except ValueError as e:
+        logger.error(f"Invalid session termination request: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
     except Exception as e:
         logger.error(f"Terminate session error: {e}", exc_info=True)
         raise HTTPException(
@@ -1510,15 +1548,24 @@ async def terminate_user_session(
 @api_router.post("/auth/sessions/terminate-all", tags=["Security"])
 async def terminate_all_user_sessions(
     current_user: User = Depends(get_current_user),
-    session_id: Optional[str] = Header(None, alias="X-Session-ID")
+    current_session_id: Optional[str] = Header(None, alias="X-Session-ID")
 ):
     """Terminate all sessions except current one."""
     try:
-        terminated_count = await terminate_all_sessions(current_user.id, session_id)
+        if not current_session_id:
+            logger.warning(f"Attempt to terminate all sessions without current session ID for user {current_user.id}")
+        
+        terminated_count = await terminate_all_sessions(
+            user_id=current_user.id, 
+            exclude_session_id=current_session_id
+        )
         
         return SuccessResponse(
             message=f"Terminated {terminated_count} session(s)",
-            data={"terminated_count": terminated_count}
+            data={
+                "terminated_count": terminated_count,
+                "current_session_preserved": current_session_id is not None
+            }
         )
         
     except Exception as e:
@@ -1528,6 +1575,33 @@ async def terminate_all_user_sessions(
             detail="Failed to terminate sessions"
         )
 
+@api_router.post("/auth/sessions/terminate-other", tags=["Security"])
+async def terminate_other_user_sessions(
+    current_user: User = Depends(get_current_user),
+    current_session_id: str = Header(..., alias="X-Session-ID")
+):
+    """Terminate all other sessions except the current one."""
+    try:
+        terminated_count = await terminate_all_sessions(
+            user_id=current_user.id, 
+            exclude_session_id=current_session_id
+        )
+        
+        return SuccessResponse(
+            message=f"Terminated {terminated_count} other session(s)",
+            data={
+                "terminated_count": terminated_count,
+                "current_session_id": current_session_id
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Terminate other sessions error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to terminate other sessions"
+        )
+                  
 # ===========================================
 # Email Verification Endpoints
 # ===========================================
