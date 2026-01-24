@@ -21,26 +21,28 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, validator
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
+# Import database models with clear names
 from models import (
-    UserModel as User,  # Alias for compatibility
-    AssessmentModel as Assessment,
-    CandidateModel as Candidate,
-    SubscriptionModel as Subscription,
-    OrganizationModel as Organization,
-    ContactFormModel as ContactForm,
-    DemoRequestModel as DemoRequest,
-    OAuthStateModel as OAuthState,
-    EmailVerificationTokenModel as EmailVerificationToken,
-    PasswordResetTokenModel as PasswordResetToken,
-    PlatformStatsModel as PlatformStats,
+    UserModel,
+    AssessmentModel,
+    CandidateModel,
+    SubscriptionModel,
+    OrganizationModel,
+    ContactFormModel,
+    DemoRequestModel,
+    OAuthStateModel,
+    EmailVerificationTokenModel,
+    PasswordResetTokenModel,
+    PlatformStatsModel,
     UserSessionModel,
     TwoFactorSecretModel,
     APILogModel,
     CandidateResultsModel
 )
 
+# Import API schemas
 from schemas import (
-    UserCreate, UserLogin, UserUpdate, Token,
+    User, UserCreate, UserLogin, UserUpdate, Token,  # User is from schemas!
     ContactFormCreate, DemoRequestCreate,
     SubscriptionCreate, SubscriptionUpdate,
     OrganizationUpdate, AssessmentCreate, AssessmentUpdate,
@@ -53,6 +55,7 @@ from schemas import (
     CandidateResendInvite, CandidateResults,
     TwoFactorVerify, APIStatus
 )
+
 from auth_utils import (
     verify_password,
     get_password_hash,
