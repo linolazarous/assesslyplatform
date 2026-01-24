@@ -1347,10 +1347,15 @@ async def verify_2fa_login(
 @api_router.get(
     "/auth/sessions",
     response_model=List[SessionInfo],
-    tags=["Security"]
+    tags=["Security"],
 )
 async def get_user_sessions(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    current_session_id: Optional[str] = Header(
+        None,
+        alias="X-Session-ID",
+        description="Current session ID",
+    ),
 ):
     """Get all active sessions for the current user."""
     try:
@@ -1358,7 +1363,7 @@ async def get_user_sessions(
             await db_manager.db.user_sessions.find(
                 {
                     "user_id": current_user.id,
-                    "expires_at": {"$gt": datetime.utcnow()}
+                    "expires_at": {"$gt": datetime.utcnow()},
                 }
             )
             .sort("last_activity", -1)
@@ -1373,12 +1378,12 @@ async def get_user_sessions(
                 created_at=session["created_at"],
                 last_activity=session["last_activity"],
                 expires_at=session["expires_at"],
-                is_current=False  # Can be resolved later with current session ID
+                is_current=session["session_id"] == current_session_id,
             )
             for session in sessions
         ]
 
-    except Exception as e:
+    except Exception:
         logger.error("Get sessions error", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1388,7 +1393,8 @@ async def get_user_sessions(
 
 @api_router.delete(
     "/auth/sessions/{session_id}",
-    tags=["Security"]
+    response_model=SuccessResponse,
+    tags=["Security"],
 )
 async def terminate_user_session(
     session_id: str = Path(..., description="Session ID to terminate"),
@@ -1418,7 +1424,8 @@ async def terminate_user_session(
 
 @api_router.post(
     "/auth/sessions/terminate-all",
-    tags=["Security"]
+    response_model=SuccessResponse,
+    tags=["Security"],
 )
 async def terminate_all_user_sessions(
     current_user: User = Depends(get_current_user),
@@ -1445,7 +1452,7 @@ async def terminate_all_user_sessions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to terminate sessions",
-            )
+        )
         
 # ===========================================
 # Email Verification Endpoints (Existing)
