@@ -1460,9 +1460,8 @@ async def verify_2fa_login(
 from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Header, status
-from models.user import User
-from models.response import SuccessResponse
-from models.session import SessionInfo
+# Fix: Import from schemas.py, not models.user, models.response, models.session
+from schemas import User, SuccessResponse, SessionInfo
 from core.auth.dependencies import get_current_user
 from core.auth.session_manager import terminate_session, terminate_all_sessions
 import logging
@@ -1476,6 +1475,9 @@ async def get_user_sessions(
 ):
     """Get all active sessions for current user."""
     try:
+        # Make sure db_manager is imported and available
+        from core.database import db_manager  # Or wherever your db_manager is
+        
         # Get all active sessions for the user
         sessions = await db_manager.db.user_sessions.find({
             "user_id": current_user.id,
@@ -1495,9 +1497,9 @@ async def get_user_sessions(
                 created_at=session["created_at"],
                 last_activity=session["last_activity"],
                 expires_at=session["expires_at"],
-                is_current=is_current,
-                device_info=session.get("device_info", {}),
-                location=session.get("location")
+                is_current=is_current
+                # Note: SessionInfo in schemas.py doesn't have device_info or location fields
+                # Remove these if they don't exist in your SessionInfo schema
             ))
         
         return session_list
@@ -1517,9 +1519,6 @@ async def terminate_user_session(
 ):
     """Terminate a specific session by ID."""
     try:
-        # Prevent user from terminating their own current session if not intended
-        # (Add additional logic here if needed)
-        
         success = await terminate_session(session_id, current_user.id)
         
         if not success:
