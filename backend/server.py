@@ -1365,8 +1365,8 @@ async def disable_2fa(
 
 @api_router.post("/auth/2fa/login", response_model=Token, tags=["Security"])
 async def verify_2fa_login(
-    verification: TwoFactorVerify = Body(...),
-    request: Request
+    request: Request,  # FIXED: Non-default parameter comes first
+    verification: TwoFactorVerify = Body(...)
 ):
     """Verify 2FA token after initial login."""
     try:
@@ -1448,6 +1448,7 @@ async def verify_2fa_login(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Two-factor authentication failed"
         )
+        
 
 # ===========================================
 # Session Management Endpoints
