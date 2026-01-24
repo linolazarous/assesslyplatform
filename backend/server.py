@@ -932,7 +932,10 @@ async def api_status():
 # ===========================================
 
 @api_router.post("/auth/register", response_model=Token, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
-async def register(user_create: UserCreate = Body(...), request: Request):
+async def register(
+    request: Request,  # FIXED: Non-default parameter comes first
+    user_create: UserCreate = Body(...)
+):
     """Register a new user."""
     try:
         # Check if user already exists
@@ -1041,7 +1044,10 @@ async def register(user_create: UserCreate = Body(...), request: Request):
         )
 
 @api_router.post("/auth/login", response_model=Token, tags=["Authentication"])
-async def login(credentials: UserLogin = Body(...), request: Request):
+async def login(
+    request: Request,  # FIXED: Non-default parameter comes first
+    credentials: UserLogin = Body(...)
+):
     """Authenticate user and return tokens."""
     try:
         user_data = await db_manager.db.users.find_one({"email": credentials.email})
@@ -1154,8 +1160,8 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 @api_router.post("/auth/logout", tags=["Authentication"])
 async def logout(
-    session_id: Optional[str] = Header(None, alias="X-Session-ID"),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    session_id: Optional[str] = Header(None, alias="X-Session-ID")
 ):
     """Logout user and terminate session."""
     try:
@@ -1179,6 +1185,7 @@ async def logout(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to logout"
         )
+        
 
 # ===========================================
 # Two-Factor Authentication Endpoints
