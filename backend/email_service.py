@@ -2,6 +2,7 @@
 import os
 import logging
 import secrets
+import asyncio
 from typing import Optional, List, Dict, Any, Tuple
 import resend
 from datetime import datetime, timedelta
@@ -1602,6 +1603,478 @@ async def send_assessment_results_to_candidate(
 
 
 # ---------------------------
+# NEW: Two-Factor Authentication Email
+# ---------------------------
+async def send_2fa_setup_email(
+    name: str,
+    email: str,
+    secret: str
+) -> Dict[str, Any]:
+    """Send 2FA setup email with secret key."""
+    subject = "Two-Factor Authentication Setup - Assessly Platform"
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{subject}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .secret-box {{ background: white; border: 2px solid #ff9800; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center; font-family: monospace; font-size: 18px; letter-spacing: 2px; }}
+        .warning {{ background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin: 20px 0; }}
+        .steps {{ background: #e8f4fd; border-radius: 8px; padding: 20px; margin: 20px 0; }}
+        .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #666; font-size: 12px; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Two-Factor Authentication Setup</h1>
+            <p>Secure your account</p>
+        </div>
+        <div class="content">
+            <p>Hi <strong>{name}</strong>,</p>
+            <p>You've initiated setup for two-factor authentication (2FA) on your Assessly Platform account.</p>
+            
+            <div class="secret-box">
+                <strong>Secret Key:</strong><br>
+                {secret}
+            </div>
+            
+            <div class="warning">
+                <p><strong>⚠️ Important Security Notice:</strong></p>
+                <p>This secret key is sensitive. Keep it secure and don't share it with anyone.</p>
+                <p>If you didn't request 2FA setup, please contact support immediately.</p>
+            </div>
+            
+            <div class="steps">
+                <h3 style="margin-top: 0;">Setup Instructions:</h3>
+                <ol>
+                    <li>Open your authenticator app (Google Authenticator, Authy, etc.)</li>
+                    <li>Tap "Add Account" or "+" button</li>
+                    <li>Choose "Enter a setup key"</li>
+                    <li>Enter the secret key above</li>
+                    <li>Save the account as "Assessly Platform"</li>
+                    <li>Enter the 6-digit code from the app to complete setup</li>
+                </ol>
+            </div>
+            
+            <p><strong>Need help?</strong></p>
+            <ul>
+                <li>📚 <a href="{FRONTEND_URL}/docs/2fa-setup">2FA Setup Guide</a></li>
+                <li>📧 Email: <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a></li>
+                <li>💬 Chat: Available in your dashboard</li>
+            </ul>
+            
+            <div class="footer">
+                <p>This is a security email from Assessly Platform</p>
+                <p>© {datetime.now().year} Assessly Platform. All rights reserved.</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
+    
+    return _send_email([email], subject, html)
+
+
+# ---------------------------
+# NEW: Candidate Invitation (Alternative version for server.py)
+# ---------------------------
+async def send_candidate_invitation(
+    candidate_name: str,
+    candidate_email: str,
+    assessment_name: str,
+    inviter_name: str,
+    assessment_url: str,
+    custom_message: Optional[str] = None,
+    expiry_days: int = 7,
+    duration_minutes: Optional[int] = None
+) -> Dict[str, Any]:
+    """Send assessment invitation to candidate (alternative version with different parameters)."""
+    subject = f"Assessment Invitation: {assessment_name}"
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{subject}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .invite-button {{ display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: 600; margin: 20px 0; }}
+        .center {{ text-align: center; }}
+        .inviter {{ background: white; border: 1px solid #e1e4e8; border-radius: 8px; padding: 20px; margin: 20px 0; }}
+        .custom-message {{ background: #e8f4fd; border-left: 4px solid #4facfe; padding: 15px; margin: 20px 0; }}
+        .expiry {{ color: #666; font-size: 14px; margin-top: 20px; }}
+        .requirements {{ background: #f9f9f9; border: 1px solid #e1e4e8; border-radius: 8px; padding: 15px; margin: 20px 0; }}
+        .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #666; font-size: 12px; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Assessment Invitation</h1>
+            <p>{assessment_name}</p>
+        </div>
+        <div class="content">
+            <p>Hi <strong>{candidate_name}</strong>,</p>
+            <p>You've been invited to take an assessment.</p>
+            
+            <div class="inviter">
+                <p><strong>Invited by:</strong> {inviter_name}</p>
+                <p><strong>Assessment:</strong> {assessment_name}</p>
+            </div>
+            
+            {f'<div class="custom-message"><p><strong>Message from {inviter_name}:</strong></p><p>{custom_message}</p></div>' if custom_message else ''}
+            
+            <div class="center">
+                <a href="{assessment_url}" class="invite-button">
+                    Start Assessment
+                </a>
+            </div>
+            
+            <div class="requirements">
+                <p><strong>What you'll need:</strong></p>
+                <ul>
+                    <li>A stable internet connection</li>
+                    <li>A modern web browser (Chrome, Firefox, Safari, or Edge)</li>
+                    <li>Approximately {duration_minutes or 30} minutes of uninterrupted time</li>
+                    <li>Focus and attention to detail</li>
+                </ul>
+            </div>
+            
+            <p><strong>Instructions:</strong></p>
+            <ul>
+                <li>Click the "Start Assessment" button above</li>
+                <li>Complete all questions in order</li>
+                <li>You cannot pause once started</li>
+                <li>Submit when you've finished all questions</li>
+                <li>Results will be shared with {inviter_name}</li>
+            </ul>
+            
+            <p class="expiry">
+                <strong>⏰ Invitation expires in:</strong> {expiry_days} days
+            </p>
+            
+            <p><strong>Having trouble?</strong> If the button doesn't work, copy and paste this link into your browser:</p>
+            <p style="background: #f5f5f5; padding: 10px; border-radius: 4px; word-break: break-all;">
+                {assessment_url}
+            </p>
+            
+            <div class="footer">
+                <p>This invitation was sent via Assessly Platform</p>
+                <p>If you have questions, please contact {inviter_name} directly</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
+    
+    return _send_email([candidate_email], subject, html)
+
+
+# ---------------------------
+# NEW: Candidate Results Notification
+# ---------------------------
+async def send_candidate_results_notification(
+    candidate_name: str,
+    candidate_email: str,
+    assessment_name: str,
+    score: float,
+    score_percentage: float,
+    total_questions: int,
+    correct_answers: int,
+    feedback: Optional[str] = None
+) -> Dict[str, Any]:
+    """Send assessment results notification to candidate."""
+    subject = f"Your Assessment Results: {assessment_name}"
+    
+    # Determine performance message
+    if score_percentage >= 85:
+        performance = "Excellent! 🎉"
+        performance_color = "#00b09b"
+    elif score_percentage >= 70:
+        performance = "Good job! 👍"
+        performance_color = "#4facfe"
+    elif score_percentage >= 50:
+        performance = "Fair performance 📊"
+        performance_color = "#ffa726"
+    else:
+        performance = "Needs improvement 📚"
+        performance_color = "#ff5252"
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{subject}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .results-box {{ background: white; border: 1px solid #e1e4e8; border-radius: 8px; padding: 20px; margin: 20px 0; }}
+        .score-display {{ text-align: center; margin: 20px 0; }}
+        .score-circle {{ width: 120px; height: 120px; border-radius: 50%; background: conic-gradient({performance_color} 0% {score_percentage}%, #f0f0f0 {score_percentage}% 100%); margin: 0 auto; position: relative; }}
+        .score-number {{ position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 28px; font-weight: bold; color: #333; }}
+        .performance {{ text-align: center; margin: 10px 0; color: {performance_color}; font-weight: bold; }}
+        .stats {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px 0; }}
+        .stat-item {{ background: #f5f5f5; border-radius: 8px; padding: 15px; text-align: center; }}
+        .stat-value {{ font-size: 24px; font-weight: bold; color: #333; }}
+        .stat-label {{ font-size: 14px; color: #666; }}
+        .feedback-box {{ background: #e8f4fd; border-left: 4px solid #4facfe; padding: 15px; margin: 20px 0; }}
+        .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #666; font-size: 12px; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Assessment Results</h1>
+            <p>{assessment_name}</p>
+        </div>
+        <div class="content">
+            <p>Hi <strong>{candidate_name}</strong>,</p>
+            <p>Thank you for completing the assessment. Here are your results:</p>
+            
+            <div class="results-box">
+                <div class="score-display">
+                    <div class="score-circle">
+                        <div class="score-number">{score_percentage:.1f}%</div>
+                    </div>
+                    <div class="performance">{performance}</div>
+                </div>
+                
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="stat-value">{score:.1f}</div>
+                        <div class="stat-label">Raw Score</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">{correct_answers}/{total_questions}</div>
+                        <div class="stat-label">Correct Answers</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">{score_percentage:.1f}%</div>
+                        <div class="stat-label">Percentage</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">{assessment_name}</div>
+                        <div class="stat-label">Assessment</div>
+                    </div>
+                </div>
+            </div>
+            
+            {f'<div class="feedback-box"><h3 style="margin-top: 0;">Feedback:</h3><p>{feedback}</p></div>' if feedback else ''}
+            
+            <p><strong>What's next?</strong></p>
+            <ul>
+                <li>The assessment administrator may contact you with further information</li>
+                <li>Your results have been recorded and shared with the hiring team</li>
+                <li>You may be contacted for next steps in the process</li>
+            </ul>
+            
+            <div class="footer">
+                <p>This is an automated results notification from Assessly Platform</p>
+                <p>If you have any questions about your results, please contact the assessment administrator</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
+    
+    return _send_email([candidate_email], subject, html)
+
+
+# ---------------------------
+# NEW: Assessment Published Notification (Alternative version for server.py)
+# ---------------------------
+async def send_assessment_published_notification(
+    user_name: str,
+    user_email: str,
+    assessment_title: str,
+    public_url: str
+) -> Dict[str, Any]:
+    """Send notification when an assessment is published."""
+    subject = f"Your Assessment is Live: {assessment_title}"
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{subject}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .success-icon {{ font-size: 48px; text-align: center; margin: 20px 0; }}
+        .details-box {{ background: white; border: 1px solid #e1e4e8; border-radius: 8px; padding: 20px; margin: 20px 0; }}
+        .action-button {{ display: inline-block; background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }}
+        .share-box {{ background: #e8f4fd; border-radius: 8px; padding: 20px; margin: 20px 0; }}
+        .url-box {{ background: #f5f5f5; border: 1px solid #e1e4e8; border-radius: 6px; padding: 10px; margin: 10px 0; word-break: break-all; font-family: monospace; }}
+        .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #666; font-size: 12px; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Assessment Published! 🎉</h1>
+            <p>Your assessment is now live and ready for candidates</p>
+        </div>
+        <div class="content">
+            <div class="success-icon">
+                ✅
+            </div>
+            
+            <p>Hi <strong>{user_name}</strong>,</p>
+            <p>Great news! Your assessment <strong>"{assessment_title}"</strong> has been successfully published.</p>
+            
+            <div class="details-box">
+                <h3 style="margin-top: 0;">Assessment Details</h3>
+                <p><strong>Title:</strong> {assessment_title}</p>
+                <p><strong>Published At:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+                <p><strong>Status:</strong> <span style="color: #00b09b; font-weight: bold;">✅ Live & Active</span></p>
+            </div>
+            
+            <div class="share-box">
+                <h3 style="margin-top: 0;">Share with Candidates</h3>
+                <p>Use this link to invite candidates to your assessment:</p>
+                <div class="url-box">{public_url}</div>
+                <p>You can also:</p>
+                <ul>
+                    <li>Copy the link above and share it via email</li>
+                    <li>Generate individual invitation links for each candidate</li>
+                    <li>Monitor progress from your dashboard</li>
+                </ul>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{FRONTEND_URL}/dashboard/assessments" class="action-button">
+                    View Assessment Dashboard
+                </a>
+                <a href="{public_url}" class="action-button" style="background: #667eea; margin-left: 10px;">
+                    Preview Assessment
+                </a>
+            </div>
+            
+            <p><strong>Next Steps:</strong></p>
+            <ul>
+                <li>Share the assessment link with candidates</li>
+                <li>Monitor submissions in real-time</li>
+                <li>Review results as they come in</li>
+                <li>Download reports for analysis</li>
+            </ul>
+            
+            <div class="footer">
+                <p>This is an automated notification from Assessly Platform</p>
+                <p>You can manage notification settings in your dashboard</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
+    
+    return _send_email([user_email], subject, html)
+
+
+# ---------------------------
+# NEW: Bulk Invitations
+# ---------------------------
+async def send_bulk_invitations(
+    candidates: List[Dict[str, str]],
+    assessment_title: str,
+    invitation_link: str,
+    expiry_days: int = 7,
+    instructions: Optional[str] = None,
+    duration_minutes: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Send assessment invitations to multiple candidates in bulk.
+    
+    Args:
+        candidates: List of dictionaries with 'name' and 'email' keys
+        assessment_title: Title of the assessment
+        invitation_link: Link to access the assessment
+        expiry_days: Number of days before invitation expires
+        instructions: Additional instructions for candidates
+        duration_minutes: Estimated duration in minutes
+    
+    Returns:
+        Dictionary with results of bulk send operation
+    """
+    if not EMAIL_ENABLED:
+        return {
+            "success": False,
+            "message": "Email service is disabled",
+            "total": len(candidates),
+            "sent": 0,
+            "failed": len(candidates),
+            "failed_candidates": candidates
+        }
+    
+    results = {
+        "total": len(candidates),
+        "sent": 0,
+        "failed": 0,
+        "failed_candidates": []
+    }
+    
+    for candidate in candidates:
+        try:
+            name = candidate.get("name", "Candidate")
+            email = candidate.get("email")
+            
+            if not email:
+                results["failed"] += 1
+                results["failed_candidates"].append({"name": name, "email": email, "error": "No email provided"})
+                continue
+            
+            # Use the original send_assessment_invitation function
+            success = await send_assessment_invitation(
+                candidate_name=name,
+                candidate_email=email,
+                assessment_title=assessment_title,
+                invitation_link=invitation_link,
+                expiry_days=expiry_days,
+                instructions=instructions,
+                duration_minutes=duration_minutes
+            )
+            
+            if success:
+                results["sent"] += 1
+            else:
+                results["failed"] += 1
+                results["failed_candidates"].append({"name": name, "email": email, "error": "Email send failed"})
+        
+        except Exception as e:
+            logger.error(f"Failed to send invitation to {candidate.get('email')}: {e}")
+            results["failed"] += 1
+            results["failed_candidates"].append({
+                "name": candidate.get("name"),
+                "email": candidate.get("email"),
+                "error": str(e)
+            })
+        
+        # Small delay to avoid rate limiting
+        await asyncio.sleep(0.1)
+    
+    results["success"] = results["failed"] == 0
+    results["message"] = f"Sent {results['sent']} out of {results['total']} invitations"
+    
+    return results
+
+
+# ---------------------------
 # Billing & Subscription Emails
 # ---------------------------
 async def send_subscription_confirmation(
@@ -2240,6 +2713,12 @@ __all__ = [
     "send_assessment_published_notification",
     "send_assessment_created_notification",
     
+    # NEW Functions for server.py compatibility
+    "send_candidate_invitation",
+    "send_candidate_results_notification",
+    "send_bulk_invitations",
+    "send_2fa_setup_email",
+    
     # Billing & Subscription
     "send_subscription_confirmation",
     "send_payment_receipt",
@@ -2258,4 +2737,4 @@ __all__ = [
     "SUPPORT_EMAIL",
     "INFO_EMAIL",
     "FRONTEND_URL",
-]
+    ]
