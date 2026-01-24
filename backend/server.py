@@ -1454,13 +1454,56 @@ async def verify_2fa_login(
         
 
 # ===========================================
+# Security Models (NEW for server.py)
+# ===========================================
+
+class TwoFactorVerify(BaseModel):
+    token: str
+    method: str = "totp"
+
+class TwoFactorSetup(BaseModel):
+    secret: str
+    qr_code_url: str
+    backup_codes: List[str] = []
+    message: Optional[str] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class SessionInfo(BaseModel):
+    session_id: str
+    user_agent: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: datetime
+    last_activity: datetime
+    expires_at: datetime
+    is_current: bool = False
+    device_info: Optional[Dict[str, Any]] = None  # Added device_info field
+    location: Optional[str] = None  # Added location field
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class SessionTerminate(BaseModel):
+    session_id: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+    
+    @validator('new_password')
+    def password_strength(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters')
+        return v
+        
+
+# ===========================================
 # Session Management Endpoints
 # ===========================================
 
 from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Header, status
-# Fix: Import from schemas.py, not models.user, models.response, models.session
+# Fix: Import from schemas.py
 from schemas import User, SuccessResponse, SessionInfo
 from core.auth.dependencies import get_current_user
 from core.auth.session_manager import terminate_session, terminate_all_sessions
@@ -1490,6 +1533,17 @@ async def get_user_sessions(
             is_current = (current_session_id is not None and 
                          session.get("session_id") == current_session_id)
             
+            # Extract device_info and location from session metadata if available
+            device_info = session.get("device_info", {})
+            location = session.get("location")
+            
+            # If device_info is not already a dict, parse it
+            if isinstance(device_info, str):
+                try:
+                    device_info = json.loads(device_info)
+                except:
+                    device_info = {"raw": device_info}
+            
             session_list.append(SessionInfo(
                 session_id=session["session_id"],
                 user_agent=session.get("user_agent", "Unknown"),
@@ -1497,9 +1551,9 @@ async def get_user_sessions(
                 created_at=session["created_at"],
                 last_activity=session["last_activity"],
                 expires_at=session["expires_at"],
-                is_current=is_current
-                # Note: SessionInfo in schemas.py doesn't have device_info or location fields
-                # Remove these if they don't exist in your SessionInfo schema
+                is_current=is_current,
+                device_info=device_info,
+                location=location
             ))
         
         return session_list
@@ -1602,7 +1656,8 @@ async def terminate_other_user_sessions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to terminate other sessions"
-        )
+                               )
+        
                   
 # ===========================================
 # Email Verification Endpoints
