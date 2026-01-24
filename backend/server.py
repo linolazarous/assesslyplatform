@@ -1376,7 +1376,7 @@ async def get_user_sessions(current_user: User = Depends(get_current_user)):
 
 @api_router.delete("/auth/sessions/{session_id}", tags=["Security"])
 async def terminate_user_session(
-    session_id: str,
+    session_id: str = Path(..., description="Session ID to terminate"),  # FIXED: Added Path annotation
     current_user: User = Depends(get_current_user)
 ):
     """Terminate a specific session."""
@@ -1417,7 +1417,7 @@ async def terminate_all_user_sessions(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to terminate sessions"
         )
-
+        
 # ===========================================
 # Email Verification Endpoints (Existing)
 # ===========================================
