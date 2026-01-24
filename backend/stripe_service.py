@@ -627,7 +627,7 @@ async def create_checkout_session(
             "type": "error",
             "message": f"Payment error: {str(e)}"
         }
-    catch Exception as e:
+    except Exception as e:  # Fixed: Changed 'catch' to 'except'
         logger.error(f"Checkout session creation failed: {e}")
         return {
             "type": "error",
@@ -1094,6 +1094,62 @@ async def create_usage_record(
         logger.error(f"Failed to create usage record: {e}")
         return False
 
+# ---------------------------
+# NEW: Functions referenced in server.py that were missing
+# ---------------------------
+
+async def get_subscription_details(subscription_id: str) -> Optional[Dict[str, Any]]:
+    """Get subscription details - alias for get_subscription."""
+    return await get_subscription(subscription_id)
+
+
+async def get_invoice_history(customer_id: str, limit: int = 10, offset: int = 0) -> Dict[str, Any]:
+    """Get invoice history for a customer with pagination."""
+    if not STRIPE_ENABLED:
+        return {"invoices": [], "total": 0}
+    
+    try:
+        # Note: Stripe's list method doesn't support offset directly
+        # We'll fetch all and handle pagination in memory for simplicity
+        # In production, you might want to use Stripe's starting_after parameter
+        invoices = stripe.Invoice.list(
+            customer=customer_id,
+            limit=100  # Fetch up to 100 invoices
+        )
+        
+        all_invoices = [
+            {
+                "id": invoice.id,
+                "number": invoice.number,
+                "amount": invoice.amount_due / 100,  # Convert cents to dollars
+                "currency": invoice.currency,
+                "status": invoice.status,
+                "created": datetime.fromtimestamp(invoice.created, timezone.utc),
+                "period_start": datetime.fromtimestamp(invoice.period_start, timezone.utc) if invoice.period_start else None,
+                "period_end": datetime.fromtimestamp(invoice.period_end, timezone.utc) if invoice.period_end else None,
+                "description": f"Invoice #{invoice.number}",
+                "invoice_pdf": invoice.invoice_pdf,
+                "receipt_url": invoice.hosted_invoice_url
+            }
+            for invoice in invoices.data
+        ]
+        
+        # Apply pagination
+        total = len(all_invoices)
+        paginated_invoices = all_invoices[offset:offset + limit]
+        
+        return {
+            "invoices": paginated_invoices,
+            "total": total
+        }
+        
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error getting invoice history: {e}")
+        return {"invoices": [], "total": 0}
+    except Exception as e:
+        logger.error(f"Failed to get invoice history: {e}")
+        return {"invoices": [], "total": 0}
+
 
 # ---------------------------
 # Billing Helper Functions
@@ -1193,6 +1249,7 @@ __all__ = [
     "cancel_subscription",
     "reactivate_subscription",
     "get_subscription",
+    "get_subscription_details",  # NEW: Added this function
     
     # Checkout & Portal
     "create_checkout_session",
@@ -1214,6 +1271,7 @@ __all__ = [
     "create_refund",
     "get_invoice",
     "get_customer_invoices",
+    "get_invoice_history",  # NEW: Added this function
     "validate_coupon",
     "create_usage_record",
     
@@ -1231,4 +1289,4 @@ __all__ = [
     "STRIPE_ENABLED",
     "PLAN_CONFIG",
     "VALID_PLANS",
-        ]
+    ]
