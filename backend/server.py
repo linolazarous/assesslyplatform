@@ -1341,83 +1341,111 @@ async def verify_2fa_login(
         )
 
 # ===========================================
-# NEW: Session Management Endpoints
+# Session Management Endpoints
 # ===========================================
 
-@api_router.get("/auth/sessions", response_model=List[SessionInfo], tags=["Security"])
-async def get_user_sessions(current_user: User = Depends(get_current_user)):
-    """Get all active sessions for current user."""
+@api_router.get(
+    "/auth/sessions",
+    response_model=List[SessionInfo],
+    tags=["Security"]
+)
+async def get_user_sessions(
+    current_user: User = Depends(get_current_user)
+):
+    """Get all active sessions for the current user."""
     try:
-        sessions = await db_manager.db.user_sessions.find({
-            "user_id": current_user.id,
-            "expires_at": {"$gt": datetime.utcnow()}
-        }).sort("last_activity", -1).to_list(length=20)
-        
-        session_list = []
-        for session in sessions:
-            session_list.append(SessionInfo(
+        sessions = (
+            await db_manager.db.user_sessions.find(
+                {
+                    "user_id": current_user.id,
+                    "expires_at": {"$gt": datetime.utcnow()}
+                }
+            )
+            .sort("last_activity", -1)
+            .to_list(length=20)
+        )
+
+        return [
+            SessionInfo(
                 session_id=session["session_id"],
                 user_agent=session.get("user_agent"),
                 ip_address=session.get("ip_address"),
                 created_at=session["created_at"],
                 last_activity=session["last_activity"],
                 expires_at=session["expires_at"],
-                is_current=False  # Would need current session ID to determine
-            ))
-        
-        return session_list
-        
+                is_current=False  # Can be resolved later with current session ID
+            )
+            for session in sessions
+        ]
+
     except Exception as e:
-        logger.error(f"Get sessions error: {e}", exc_info=True)
+        logger.error("Get sessions error", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve sessions"
+            detail="Failed to retrieve sessions",
         )
 
-# FIX: Add Path() annotation to session_id
-@api_router.delete("/auth/sessions/{session_id}", tags=["Security"])
+
+@api_router.delete(
+    "/auth/sessions/{session_id}",
+    tags=["Security"]
+)
 async def terminate_user_session(
-    session_id: str = Path(...),  # FIXED: Explicitly mark as Path parameter
-    current_user: User = Depends(get_current_user)
+    session_id: str = Path(..., description="Session ID to terminate"),
+    current_user: User = Depends(get_current_user),
 ):
     """Terminate a specific session."""
     try:
         success = await terminate_session(session_id, current_user.id)
-        
+
         if not success:
-            raise HTTPException(status_code=404, detail="Session not found")
-        
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found",
+            )
+
         return SuccessResponse(message="Session terminated successfully")
-        
+
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Terminate session error: {e}", exc_info=True)
+    except Exception:
+        logger.error("Terminate session error", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to terminate session"
+            detail="Failed to terminate session",
         )
 
-@api_router.post("/auth/sessions/terminate-all", tags=["Security"])
+
+@api_router.post(
+    "/auth/sessions/terminate-all",
+    tags=["Security"]
+)
 async def terminate_all_user_sessions(
     current_user: User = Depends(get_current_user),
-    session_id: Optional[str] = Header(None, alias="X-Session-ID")
+    current_session_id: Optional[str] = Header(
+        None,
+        alias="X-Session-ID",
+        description="Current session ID to exclude from termination",
+    ),
 ):
-    """Terminate all sessions except current one."""
+    """Terminate all sessions except the current one."""
     try:
-        terminated_count = await terminate_all_sessions(current_user.id, session_id)
-        
+        terminated_count = await terminate_all_sessions(
+            current_user.id,
+            current_session_id,
+        )
+
         return SuccessResponse(
             message=f"Terminated {terminated_count} session(s)",
-            data={"terminated_count": terminated_count}
+            data={"terminated_count": terminated_count},
         )
-        
-    except Exception as e:
-        logger.error(f"Terminate all sessions error: {e}", exc_info=True)
+
+    except Exception:
+        logger.error("Terminate all sessions error", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to terminate sessions"
-        )
+            detail="Failed to terminate sessions",
+            )
         
 # ===========================================
 # Email Verification Endpoints (Existing)
