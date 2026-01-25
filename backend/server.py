@@ -1623,6 +1623,157 @@ async def terminate_all_user_sessions(
 @api_router.post("/auth/sessions/terminate-other", tags=["Security"])
 async def terminate_other_user_sessions(
     current_user: User = Depends(get_current_user),
+    current_session_id: Optional[str] = Header(None, alias="X-Session-ID")
+):
+    """Terminate all other sessions except the current one."""
+    try:
+        terminated_count = await terminate_all_sessions(
+            user_id=current_user.id, 
+            exclude_session_id=current_session_id
+        )
+        
+        return SuccessResponse(
+            message=f"Terminated {terminated_count} other session(s)",
+            data={
+                "terminated_count": terminated_count,
+                "current_session_id": current_session_id
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Terminate other sessions error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to terminate other sessions"
+        )
+        
+
+
+
+# ===========================================
+# Session Management Endpoints
+# ===========================================
+
+@api_router.get("/auth/sessions", response_model=List[SessionInfo], tags=["Security"])
+async def get_user_sessions(
+    current_user: User = Depends(get_current_user),
+    current_session_id: Optional[str] = Header(None, alias="X-Session-ID")
+):
+    """Get all active sessions for current user."""
+    try:
+        # Get all active sessions for the user
+        sessions = await db_manager.db.user_sessions.find({
+            "user_id": current_user.id,
+            "expires_at": {"$gt": datetime.utcnow()}
+        }).sort("last_activity", -1).to_list(length=50)
+        
+        session_list = []
+        for session in sessions:
+            # Check if this is the current session
+            is_current = (current_session_id is not None and 
+                         session.get("session_id") == current_session_id)
+            
+            # Extract device_info and location from session metadata if available
+            device_info = session.get("device_info", {})
+            location = session.get("location")
+            
+            # If device_info is not already a dict, parse it
+            if isinstance(device_info, str):
+                try:
+                    device_info = json.loads(device_info)
+                except:
+                    device_info = {"raw": device_info}
+            
+            session_list.append(SessionInfo(
+                session_id=session["session_id"],
+                user_agent=session.get("user_agent", "Unknown"),
+                ip_address=session.get("ip_address", "Unknown"),
+                created_at=session["created_at"],
+                last_activity=session["last_activity"],
+                expires_at=session["expires_at"],
+                is_current=is_current,
+                device_info=device_info,
+                location=location
+            ))
+        
+        return session_list
+        
+    except Exception as e:
+        logger.error(f"Get sessions error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve sessions"
+        )
+
+@api_router.delete("/auth/sessions/{session_id}", tags=["Security"])
+async def terminate_user_session(
+    session_id: str = Path(..., min_length=32, max_length=64, 
+                          description="Session ID to terminate"),
+    current_user: User = Depends(get_current_user)
+):
+    """Terminate a specific session by ID."""
+    try:
+        success = await terminate_session(session_id, current_user.id)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail="Session not found or you don't have permission to terminate it"
+            )
+        
+        return SuccessResponse(
+            message="Session terminated successfully",
+            data={"session_id": session_id}
+        )
+        
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.error(f"Invalid session termination request: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Terminate session error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to terminate session"
+        )
+
+@api_router.post("/auth/sessions/terminate-all", tags=["Security"])
+async def terminate_all_user_sessions(
+    current_user: User = Depends(get_current_user),
+    current_session_id: Optional[str] = Header(None, alias="X-Session-ID")
+):
+    """Terminate all sessions except current one."""
+    try:
+        if not current_session_id:
+            logger.warning(f"Attempt to terminate all sessions without current session ID for user {current_user.id}")
+        
+        terminated_count = await terminate_all_sessions(
+            user_id=current_user.id, 
+            exclude_session_id=current_session_id
+        )
+        
+        return SuccessResponse(
+            message=f"Terminated {terminated_count} session(s)",
+            data={
+                "terminated_count": terminated_count,
+                "current_session_preserved": current_session_id is not None
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Terminate all sessions error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to terminate sessions"
+        )
+
+@api_router.post("/auth/sessions/terminate-other", tags=["Security"])
+async def terminate_other_user_sessions(
+    current_user: User = Depends(get_current_user),
     current_session_id: str = Header(..., alias="X-Session-ID")
 ):
     """Terminate all other sessions except the current one."""
