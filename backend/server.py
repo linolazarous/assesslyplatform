@@ -42,7 +42,7 @@ from models import (
 
 # Import API schemas
 from schemas import (
-    User, UserCreate, UserLogin, UserUpdate, Token,  # User is from schemas!
+    User, UserCreate, UserLogin, UserUpdate, Token,
     ContactFormCreate, DemoRequestCreate,
     SubscriptionCreate, SubscriptionUpdate,
     OrganizationUpdate, AssessmentCreate, AssessmentUpdate,
@@ -64,7 +64,8 @@ from auth_utils import (
     create_refresh_token,
     verify_refresh_token,
     create_2fa_secret,
-    verify_2fa_token
+    verify_2fa_token,
+    generate_2fa_qr_code
 )
 from email_service import (
     send_contact_notification,
@@ -936,7 +937,7 @@ async def api_status():
 
 @api_router.post("/auth/register", response_model=Token, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
 async def register(
-    request: Request,  # FIXED: Non-default parameter comes first
+    request: Request,
     user_create: UserCreate = Body(...)
 ):
     """Register a new user."""
@@ -1048,7 +1049,7 @@ async def register(
 
 @api_router.post("/auth/login", response_model=Token, tags=["Authentication"])
 async def login(
-    request: Request,  # FIXED: Non-default parameter comes first
+    request: Request,
     credentials: UserLogin = Body(...)
 ):
     """Authenticate user and return tokens."""
@@ -1213,32 +1214,34 @@ async def setup_2fa(current_user: User = Depends(get_current_user)):
             )
         
         # Generate 2FA secret
-        secret = create_2fa_secret()
+        secret_data = create_2fa_secret()
+        secret = secret_data["secret"]
+        backup_codes = secret_data["backup_codes"]
         
         # Store secret temporarily (will be verified before enabling)
         await db_manager.db.two_factor_secrets.update_one(
             {"user_id": current_user.id},
             {"$set": {
-                "secret": secret.base32,
-                "backup_codes": secret.backup_codes,
+                "secret": secret,
+                "backup_codes": backup_codes,
                 "created_at": datetime.utcnow()
             }},
             upsert=True
         )
         
         # Generate QR code URL
-        qr_code_url = secret.qr_code_url(f"Assessly:{current_user.email}")
+        qr_code_url = generate_2fa_qr_code(secret, current_user.email)
         
         # Send setup email
         try:
-            await send_2fa_setup_email(current_user.name, current_user.email, secret.base32)
+            await send_2fa_setup_email(current_user.name, current_user.email, secret)
         except Exception as e:
             logger.error(f"Failed to send 2FA setup email: {e}")
         
         return TwoFactorSetup(
-            secret=secret.base32,
+            secret=secret,
             qr_code_url=qr_code_url,
-            backup_codes=secret.backup_codes,
+            backup_codes=backup_codes,
             message="Scan QR code with authenticator app"
         )
         
@@ -1368,7 +1371,7 @@ async def disable_2fa(
 
 @api_router.post("/auth/2fa/login", response_model=Token, tags=["Security"])
 async def verify_2fa_login(
-    request: Request,  # FIXED: Non-default parameter comes first
+    request: Request,
     verification: TwoFactorVerify = Body(...)
 ):
     """Verify 2FA token after initial login."""
@@ -1500,17 +1503,6 @@ class ResetPasswordRequest(BaseModel):
 # Session Management Endpoints
 # ===========================================
 
-from datetime import datetime
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Path, Header, status
-# Fix: Import from schemas.py
-from schemas import User, SuccessResponse, SessionInfo
-from core.auth.dependencies import get_current_user
-from core.auth.session_manager import terminate_session, terminate_all_sessions
-import logging
-
-logger = logging.getLogger(__name__)
-
 @api_router.get("/auth/sessions", response_model=List[SessionInfo], tags=["Security"])
 async def get_user_sessions(
     current_user: User = Depends(get_current_user),
@@ -1518,9 +1510,6 @@ async def get_user_sessions(
 ):
     """Get all active sessions for current user."""
     try:
-        # Make sure db_manager is imported and available
-        from core.database import db_manager  # Or wherever your db_manager is
-        
         # Get all active sessions for the user
         sessions = await db_manager.db.user_sessions.find({
             "user_id": current_user.id,
@@ -3572,6 +3561,179 @@ async def stripe_webhook(request: Request):
         )
 
 # ===========================================
+# Webhook Handlers (Placeholders)
+# ===========================================
+
+async def handle_checkout_completed(event):
+    """Handle checkout.session.completed webhook event."""
+    try:
+        session = event.get("data", {}).get("object", {})
+        customer_id = session.get("customer")
+        subscription_id = session.get("subscription")
+        user_id = session.get("metadata", {}).get("user_id")
+        
+        if not user_id or not subscription_id:
+            return
+        
+        # Update user's subscription in database
+        subscription_data = {
+            "stripe_subscription_id": subscription_id,
+            "stripe_customer_id": customer_id,
+            "status": "active",
+            "updated_at": datetime.utcnow()
+        }
+        
+        await db_manager.db.subscriptions.update_one(
+            {"user_id": user_id},
+            {"$set": subscription_data},
+            upsert=True
+        )
+        
+        # Update user plan
+        plan_id = session.get("metadata", {}).get("plan_id", "basic")
+        await db_manager.db.users.update_one(
+            {"id": user_id},
+            {"$set": {"plan": plan_id, "updated_at": datetime.utcnow()}}
+        )
+        
+        logger.info(f"Checkout completed for user {user_id}, subscription {subscription_id}")
+        
+    except Exception as e:
+        logger.error(f"Error handling checkout completed: {e}")
+
+async def handle_subscription_updated(event):
+    """Handle customer.subscription.updated webhook event."""
+    try:
+        subscription = event.get("data", {}).get("object", {})
+        subscription_id = subscription.get("id")
+        status = subscription.get("status")
+        
+        if subscription_id and status:
+            await db_manager.db.subscriptions.update_one(
+                {"stripe_subscription_id": subscription_id},
+                {"$set": {"status": status, "updated_at": datetime.utcnow()}}
+            )
+            logger.info(f"Subscription {subscription_id} updated to status {status}")
+            
+    except Exception as e:
+        logger.error(f"Error handling subscription updated: {e}")
+
+async def handle_subscription_deleted(event):
+    """Handle customer.subscription.deleted webhook event."""
+    try:
+        subscription = event.get("data", {}).get("object", {})
+        subscription_id = subscription.get("id")
+        
+        if subscription_id:
+            await db_manager.db.subscriptions.update_one(
+                {"stripe_subscription_id": subscription_id},
+                {"$set": {"status": "cancelled", "cancelled_at": datetime.utcnow(), "updated_at": datetime.utcnow()}}
+            )
+            
+            # Find user and downgrade to free plan
+            subscription_data = await db_manager.db.subscriptions.find_one(
+                {"stripe_subscription_id": subscription_id}
+            )
+            if subscription_data and subscription_data.get("user_id"):
+                await db_manager.db.users.update_one(
+                    {"id": subscription_data["user_id"]},
+                    {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
+                )
+            
+            logger.info(f"Subscription {subscription_id} deleted")
+            
+    except Exception as e:
+        logger.error(f"Error handling subscription deleted: {e}")
+
+async def handle_invoice_payment_succeeded(event):
+    """Handle invoice.payment_succeeded webhook event."""
+    try:
+        invoice = event.get("data", {}).get("object", {})
+        subscription_id = invoice.get("subscription")
+        amount_paid = invoice.get("amount_paid", 0) / 100  # Convert from cents
+        
+        if subscription_id:
+            await db_manager.db.subscriptions.update_one(
+                {"stripe_subscription_id": subscription_id},
+                {"$set": {"last_payment_at": datetime.utcnow(), "last_payment_amount": amount_paid, "updated_at": datetime.utcnow()}}
+            )
+            logger.info(f"Invoice payment succeeded for subscription {subscription_id}: ${amount_paid}")
+            
+    except Exception as e:
+        logger.error(f"Error handling invoice payment succeeded: {e}")
+
+async def handle_invoice_payment_failed(event):
+    """Handle invoice.payment_failed webhook event."""
+    try:
+        invoice = event.get("data", {}).get("object", {})
+        subscription_id = invoice.get("subscription")
+        
+        if subscription_id:
+            await db_manager.db.subscriptions.update_one(
+                {"stripe_subscription_id": subscription_id},
+                {"$set": {"status": "past_due", "updated_at": datetime.utcnow()}}
+            )
+            logger.warning(f"Invoice payment failed for subscription {subscription_id}")
+            
+    except Exception as e:
+        logger.error(f"Error handling invoice payment failed: {e}")
+
+async def handle_customer_created(event):
+    """Handle customer.created webhook event."""
+    try:
+        customer = event.get("data", {}).get("object", {})
+        customer_id = customer.get("id")
+        email = customer.get("email")
+        
+        if email and customer_id:
+            await db_manager.db.users.update_one(
+                {"email": email},
+                {"$set": {"stripe_customer_id": customer_id, "updated_at": datetime.utcnow()}}
+            )
+            logger.info(f"Stripe customer created: {customer_id} for user {email}")
+            
+    except Exception as e:
+        logger.error(f"Error handling customer created: {e}")
+
+async def handle_customer_updated(event):
+    """Handle customer.updated webhook event."""
+    try:
+        customer = event.get("data", {}).get("object", {})
+        customer_id = customer.get("id")
+        email = customer.get("email")
+        name = customer.get("name")
+        
+        if email and customer_id:
+            update_data = {"updated_at": datetime.utcnow()}
+            if name:
+                update_data["name"] = name
+            
+            await db_manager.db.users.update_one(
+                {"stripe_customer_id": customer_id},
+                {"$set": update_data}
+            )
+            logger.info(f"Stripe customer updated: {customer_id}")
+            
+    except Exception as e:
+        logger.error(f"Error handling customer updated: {e}")
+
+async def handle_customer_deleted(event):
+    """Handle customer.deleted webhook event."""
+    try:
+        customer = event.get("data", {}).get("object", {})
+        customer_id = customer.get("id")
+        
+        if customer_id:
+            await db_manager.db.users.update_one(
+                {"stripe_customer_id": customer_id},
+                {"$set": {"stripe_customer_id": None, "updated_at": datetime.utcnow()}}
+            )
+            logger.info(f"Stripe customer deleted: {customer_id}")
+            
+    except Exception as e:
+        logger.error(f"Error handling customer deleted: {e}")
+
+# ===========================================
 # Root Redirect
 # ===========================================
 
@@ -3641,4 +3803,4 @@ if __name__ == "__main__":
         access_log=False if config.is_production else True,
         timeout_keep_alive=30,
         workers=4 if config.is_production else 1
-    )
+        )
