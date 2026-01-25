@@ -10,18 +10,21 @@ import httpx
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from bson import ObjectId
+
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Query, Body, Header, Path
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
-from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.trustedhost
+from fastapi.exceptions import RequestValidationError
+
+# TrustedHostMiddleware from Starlette
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+
 from pydantic import BaseModel, Field, validator, ConfigDict
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+
 
 # Import database models with clear names
 from models import (
