@@ -3176,10 +3176,10 @@ async def get_billing_history_endpoint(
 # User Management Endpoints
 # ===========================================
 
-@api_router.put("/users/me", response_model=User, tags=["User Management"])
+@api_router.put("/users/me", response_model="User", tags=["User Management"])
 async def update_user_profile(
-    user_update: UserUpdate = Body(...),
-    current_user: User = Depends(get_current_user)
+    user_update: "UserUpdate" = Body(...),
+    current_user: "User" = Depends(get_current_user)
 ):
     """Update current user's profile."""
     try:
@@ -3205,10 +3205,11 @@ async def update_user_profile(
             detail="Failed to update user profile"
         )
 
+
 @api_router.put("/users/me/password", tags=["User Management"])
 async def update_user_password_endpoint(
     payload: dict = Body(...),
-    current_user: User = Depends(get_current_user)
+    current_user: "User" = Depends(get_current_user)
 ):
     """Update current user's password."""
     try:
@@ -3276,9 +3277,10 @@ async def update_user_password_endpoint(
             detail="Failed to update password"
         )
 
-@api_router.get("/organizations/me", response_model=Organization, tags=["User Management"])
+
+@api_router.get("/organizations/me", response_model="OrganizationModel", tags=["User Management"])
 async def get_user_organization(
-    current_user: User = Depends(get_current_user)
+    current_user: "User" = Depends(get_current_user)
 ):
     """Get current user's organization."""
     try:
@@ -3290,7 +3292,7 @@ async def get_user_organization(
         if not org_data:
             raise HTTPException(status_code=404, detail="Organization not found")
         
-        return Organization(**org_data)
+        return OrganizationModel(**org_data)
         
     except HTTPException:
         raise
@@ -3301,10 +3303,11 @@ async def get_user_organization(
             detail="Failed to retrieve organization"
         )
 
-@api_router.put("/organizations/me", response_model=Organization, tags=["User Management"])
+
+@api_router.put("/organizations/me", response_model="OrganizationModel", tags=["User Management"])
 async def update_user_organization(
-    org_update: OrganizationUpdate = Body(...),
-    current_user: User = Depends(get_current_user)
+    org_update: "OrganizationUpdate" = Body(...),
+    current_user: "User" = Depends(get_current_user)
 ):
     """Update current user's organization."""
     try:
@@ -3337,7 +3340,7 @@ async def update_user_organization(
         
         logger.info(f"Organization updated: {current_user.organization_id}")
         
-        return Organization(**updated_org)
+        return OrganizationModel(**updated_org)
         
     except HTTPException:
         raise
@@ -3346,51 +3349,6 @@ async def update_user_organization(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update organization"
-        )
-
-@api_router.get("/dashboard/stats", response_model=DashboardStats, tags=["User Management"])
-async def get_dashboard_stats(
-    current_user: User = Depends(get_current_user)
-):
-    """Get dashboard statistics for current user."""
-    try:
-        # Get counts
-        assessment_count = await db_manager.db.assessments.count_documents({"user_id": current_user.id})
-        candidate_count = await db_manager.db.candidates.count_documents({"user_id": current_user.id})
-        
-        # Get completed candidates count
-        completed_candidates = await db_manager.db.candidates.count_documents({
-            "user_id": current_user.id,
-            "status": "completed"
-        })
-        
-        # Calculate completion rate
-        completion_rate = (completed_candidates / candidate_count * 100) if candidate_count > 0 else 0
-        
-        # Get recent assessments
-        recent_assessments = await db_manager.db.assessments.find(
-            {"user_id": current_user.id}
-        ).sort("updated_at", -1).limit(5).to_list(length=5)
-        
-        # Get recent candidates
-        recent_candidates = await db_manager.db.candidates.find(
-            {"user_id": current_user.id}
-        ).sort("updated_at", -1).limit(10).to_list(length=10)
-        
-        return DashboardStats(
-            assessment_count=assessment_count,
-            candidate_count=candidate_count,
-            completed_candidates=completed_candidates,
-            completion_rate=completion_rate,
-            recent_assessments=recent_assessments,
-            recent_candidates=recent_candidates
-        )
-        
-    except Exception as e:
-        logger.error(f"Get dashboard stats error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve dashboard statistics"
         )
 
 # ===========================================
