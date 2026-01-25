@@ -1895,7 +1895,11 @@ async def reset_password(
 # Assessment Endpoints
 # ===========================================
 
-@api_router.get("/assessments", response_model=List[Assessment], tags=["Assessments"])
+@api_router.get(
+    "/assessments",
+    response_model=List["Assessment"],
+    tags=["Assessments"]
+)
 async def get_assessments(
     current_user: User = Depends(get_current_user),
     skip: int = Query(0, ge=0),
@@ -1907,11 +1911,12 @@ async def get_assessments(
         query = {"user_id": current_user.id}
         if status:
             query["status"] = status
-        
-        assessments = await db_manager.db.assessments.find(query).skip(skip).limit(limit).to_list(length=limit)
-        
+
+        assessments = await db_manager.db.assessments.find(query)\
+            .skip(skip).limit(limit).to_list(length=limit)
+
         return [Assessment(**assessment) for assessment in assessments]
-        
+
     except Exception as e:
         logger.error(f"Get assessments error: {e}", exc_info=True)
         raise HTTPException(
@@ -1919,23 +1924,32 @@ async def get_assessments(
             detail="Failed to retrieve assessments"
         )
 
-@api_router.post("/assessments", response_model=Assessment, status_code=status.HTTP_201_CREATED, tags=["Assessments"])
+
+@api_router.post(
+    "/assessments",
+    response_model="Assessment",
+    status_code=status.HTTP_201_CREATED,
+    tags=["Assessments"]
+)
 async def create_assessment(
     assessment_create: AssessmentCreate = Body(...),
     current_user: User = Depends(get_current_user)
 ):
     """Create a new assessment."""
     try:
-        # Check assessment limit based on user's plan
         user_data = await db_manager.db.users.find_one({"id": current_user.id})
         plan = user_data.get("plan", "free")
-        
+
         if plan == "free":
-            assessment_count = await db_manager.db.assessments.count_documents({"user_id": current_user.id})
-            if assessment_count >= 5:
-                raise HTTPException(status_code=400, detail="Free plan limit reached (5 assessments)")
-        
-        # Create assessment
+            count = await db_manager.db.assessments.count_documents(
+                {"user_id": current_user.id}
+            )
+            if count >= 5:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Free plan limit reached (5 assessments)"
+                )
+
         assessment_id = str(uuid.uuid4())
         assessment_data = {
             "id": assessment_id,
@@ -1945,7 +1959,8 @@ async def create_assessment(
             "description": assessment_create.description,
             "status": "draft",
             "is_published": False,
-            "settings": assessment_create.settings.dict() if assessment_create.settings else {},
+            "settings": assessment_create.settings.dict()
+            if assessment_create.settings else {},
             "questions": [],
             "candidate_count": 0,
             "completion_rate": 0.0,
@@ -1954,13 +1969,11 @@ async def create_assessment(
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
-        
+
         await db_manager.db.assessments.insert_one(assessment_data)
-        
-        logger.info(f"Assessment created: {assessment_id} by user {current_user.id}")
-        
+
         return Assessment(**assessment_data)
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1970,111 +1983,58 @@ async def create_assessment(
             detail="Failed to create assessment"
         )
 
-@api_router.get("/assessments/{assessment_id}", response_model=Assessment, tags=["Assessments"])
+
+@api_router.get(
+    "/assessments/{assessment_id}",
+    response_model="Assessment",
+    tags=["Assessments"]
+)
 async def get_assessment(
     assessment_id: str = Path(..., description="Assessment ID"),
     current_user: User = Depends(get_current_user)
 ):
     """Get a specific assessment."""
-    try:
-        assessment_data = await db_manager.db.assessments.find_one({
-            "id": assessment_id,
-            "user_id": current_user.id
-        })
-        
-        if not assessment_data:
-            raise HTTPException(status_code=404, detail="Assessment not found")
-        
-        return Assessment(**assessment_data)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Get assessment error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve assessment"
-        )
+    assessment_data = await db_manager.db.assessments.find_one({
+        "id": assessment_id,
+        "user_id": current_user.id
+    })
 
-@api_router.put("/assessments/{assessment_id}", response_model=Assessment, tags=["Assessments"])
+    if not assessment_data:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    return Assessment(**assessment_data)
+
+
+@api_router.put(
+    "/assessments/{assessment_id}",
+    response_model="Assessment",
+    tags=["Assessments"]
+)
 async def update_assessment(
     assessment_id: str = Path(..., description="Assessment ID"),
     assessment_update: AssessmentUpdate = Body(...),
     current_user: User = Depends(get_current_user)
 ):
     """Update an assessment."""
-    try:
-        # Check if assessment exists and belongs to user
-        assessment_data = await db_manager.db.assessments.find_one({
-            "id": assessment_id,
-            "user_id": current_user.id
-        })
-        
-        if not assessment_data:
-            raise HTTPException(status_code=404, detail="Assessment not found")
-        
-        # Update assessment
-        update_data = assessment_update.dict(exclude_unset=True)
-        update_data["updated_at"] = datetime.utcnow()
-        
-        await db_manager.db.assessments.update_one(
-            {"id": assessment_id},
-            {"$set": update_data}
-        )
-        
-        # Get updated assessment
-        updated_assessment = await db_manager.db.assessments.find_one({"id": assessment_id})
-        
-        logger.info(f"Assessment updated: {assessment_id}")
-        
-        return Assessment(**updated_assessment)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Update assessment error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update assessment"
-        )
+    assessment_data = await db_manager.db.assessments.find_one({
+        "id": assessment_id,
+        "user_id": current_user.id
+    })
 
-@api_router.delete("/assessments/{assessment_id}", tags=["Assessments"])
-async def delete_assessment(
-    assessment_id: str = Path(..., description="Assessment ID"),
-    current_user: User = Depends(get_current_user)
-):
-    """Delete an assessment."""
-    try:
-        # Check if assessment exists and belongs to user
-        assessment_data = await db_manager.db.assessments.find_one({
-            "id": assessment_id,
-            "user_id": current_user.id
-        })
-        
-        if not assessment_data:
-            raise HTTPException(status_code=404, detail="Assessment not found")
-        
-        # Delete assessment
-        await db_manager.db.assessments.delete_one({"id": assessment_id})
-        
-        # Delete associated candidates
-        await db_manager.db.candidates.delete_many({"assessment_id": assessment_id})
-        
-        # Delete associated results
-        await db_manager.db.candidate_results.delete_many({"assessment_id": assessment_id})
-        
-        logger.info(f"Assessment deleted: {assessment_id}")
-        
-        return SuccessResponse(message="Assessment deleted successfully")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Delete assessment error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete assessment"
-        )
+    if not assessment_data:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    update_data = assessment_update.dict(exclude_unset=True)
+    update_data["updated_at"] = datetime.utcnow()
+
+    await db_manager.db.assessments.update_one(
+        {"id": assessment_id},
+        {"$set": update_data}
+    )
+
+    updated = await db_manager.db.assessments.find_one({"id": assessment_id})
+    return Assessment(**updated)
+    
 
 # ===========================================
 # Assessment Question Delete Endpoint
