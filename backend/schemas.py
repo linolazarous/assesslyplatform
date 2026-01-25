@@ -77,6 +77,8 @@ class User(UserBase):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: Optional[datetime] = None
+    organization_id: Optional[str] = None  # ADDED: Organization reference
+    two_factor_enabled: bool = False  # ADDED: 2FA status
     
     model_config = ConfigDict(
         from_attributes=True,
@@ -542,10 +544,10 @@ class ResetPasswordRequest(BaseModel):
 # ===========================================
 
 class DashboardStats(BaseModel):
-    assessments: Dict[str, int] = {}
-    candidates: Dict[str, int] = {}
+    assessment_count: int = 0
+    candidate_count: int = 0
+    completed_candidates: int = 0
     completion_rate: float = 0.0
-    average_score: float = 0.0
     recent_assessments: List[Dict[str, Any]] = []
     recent_candidates: List[Dict[str, Any]] = []
     
@@ -685,6 +687,51 @@ class PasswordResetToken(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 # ===========================================
+# 2FA Secret Storage Model (NEW)
+# ===========================================
+
+class TwoFactorSecret(BaseModel):
+    """Model for storing 2FA secrets"""
+    user_id: str
+    secret: str
+    backup_codes: List[str] = []
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={
+            datetime: lambda dt: dt.isoformat(),
+            ObjectId: lambda oid: str(oid)
+        },
+        arbitrary_types_allowed=True
+    )
+
+# ===========================================
+# Session Storage Model (NEW)
+# ===========================================
+
+class UserSession(BaseModel):
+    """Model for storing user sessions"""
+    session_id: str
+    user_id: str
+    user_agent: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_activity: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: datetime = Field(default_factory=lambda: datetime.utcnow() + timedelta(days=7))
+    is_active: bool = True
+    
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={
+            datetime: lambda dt: dt.isoformat(),
+            ObjectId: lambda oid: str(oid)
+        },
+        arbitrary_types_allowed=True
+    )
+
+# ===========================================
 # Export all models
 # ===========================================
 
@@ -712,7 +759,7 @@ __all__ = [
     "OAuthState", "OAuthCallback",
     # Security
     "TwoFactorVerify", "TwoFactorSetup", "SessionInfo", "SessionTerminate",
-    "ResetPasswordRequest",
+    "ResetPasswordRequest", "TwoFactorSecret", "UserSession",
     # Dashboard & Analytics
     "DashboardStats", "AnalyticsData", "PlatformStats",
     # API Response
