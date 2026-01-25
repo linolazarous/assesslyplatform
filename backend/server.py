@@ -2191,7 +2191,11 @@ async def publish_assessment(
 # Assessment Duplicate Endpoint
 # ===========================================
 
-@api_router.post("/assessments/{assessment_id}/duplicate", response_model=Assessment, tags=["Assessments"])
+@api_router.post(
+    "/assessments/{assessment_id}/duplicate",
+    response_model="Assessment",
+    tags=["Assessments"]
+)
 async def duplicate_assessment(
     assessment_id: str = Path(..., description="Assessment ID"),
     duplicate_request: AssessmentDuplicateRequest = Body(...),
@@ -2212,9 +2216,14 @@ async def duplicate_assessment(
         plan = user_data.get("plan", "free")
         
         if plan == "free":
-            assessment_count = await db_manager.db.assessments.count_documents({"user_id": current_user.id})
+            assessment_count = await db_manager.db.assessments.count_documents({
+                "user_id": current_user.id
+            })
             if assessment_count >= 5:
-                raise HTTPException(status_code=400, detail="Free plan limit reached (5 assessments)")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Free plan limit reached (5 assessments)"
+                )
         
         # Create duplicate assessment
         new_assessment_id = str(uuid.uuid4())
@@ -2235,11 +2244,10 @@ async def duplicate_assessment(
         new_assessment["created_at"] = datetime.utcnow()
         new_assessment["updated_at"] = datetime.utcnow()
         
-        # Remove _id field if present
-        if "_id" in new_assessment:
-            del new_assessment["_id"]
+        # Remove Mongo _id
+        new_assessment.pop("_id", None)
         
-        # Update question IDs in the duplicate
+        # Update question IDs
         for question in new_assessment.get("questions", []):
             question["id"] = str(uuid.uuid4())
             question["created_at"] = datetime.utcnow()
@@ -2259,7 +2267,7 @@ async def duplicate_assessment(
                 new_candidate = candidate.copy()
                 new_candidate["id"] = str(uuid.uuid4())
                 new_candidate["assessment_id"] = new_assessment_id
-                new_candidate["status"] = "invited"  # Reset status
+                new_candidate["status"] = "invited"
                 new_candidate["invitation_token"] = str(uuid.uuid4())
                 new_candidate["invited_at"] = datetime.utcnow()
                 new_candidate["started_at"] = None
@@ -2268,23 +2276,23 @@ async def duplicate_assessment(
                 new_candidate["created_at"] = datetime.utcnow()
                 new_candidate["updated_at"] = datetime.utcnow()
                 
-                if "_id" in new_candidate:
-                    del new_candidate["_id"]
+                new_candidate.pop("_id", None)
                 
                 await db_manager.db.candidates.insert_one(new_candidate)
         
-        logger.info(f"Assessment duplicated: {assessment_id} -> {new_assessment_id}")
+        logger.info(f"Assessment duplicated: {assessment_id} → {new_assessment_id}")
         
         return Assessment(**new_assessment)
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Duplicate assessment error: {e}", exc_info=True)
+        logger.error("Duplicate assessment error", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to duplicate assessment"
-        )
+            )
+        
 
 # ===========================================
 # Candidate Endpoints
