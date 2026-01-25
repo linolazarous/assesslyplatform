@@ -3516,18 +3516,22 @@ async def stripe_webhook(request: Request):
         )
 
 # ===========================================
-# Webhook Handlers (Placeholders)
+# Webhook Handlers (Refined)
 # ===========================================
 
-async def handle_checkout_completed(event):
+from typing import Any, Dict
+
+async def handle_checkout_completed(event: Dict[str, Any]) -> None:
     """Handle checkout.session.completed webhook event."""
     try:
         session = event.get("data", {}).get("object", {})
         customer_id = session.get("customer")
         subscription_id = session.get("subscription")
         user_id = session.get("metadata", {}).get("user_id")
+        plan_id = session.get("metadata", {}).get("plan_id", "basic")
         
         if not user_id or not subscription_id:
+            logger.warning("Checkout completed webhook missing user_id or subscription_id")
             return
         
         # Update user's subscription in database
@@ -3545,7 +3549,6 @@ async def handle_checkout_completed(event):
         )
         
         # Update user plan
-        plan_id = session.get("metadata", {}).get("plan_id", "basic")
         await db_manager.db.users.update_one(
             {"id": user_id},
             {"$set": {"plan": plan_id, "updated_at": datetime.utcnow()}}
@@ -3554,9 +3557,10 @@ async def handle_checkout_completed(event):
         logger.info(f"Checkout completed for user {user_id}, subscription {subscription_id}")
         
     except Exception as e:
-        logger.error(f"Error handling checkout completed: {e}")
+        logger.error(f"Error handling checkout completed: {e}", exc_info=True)
 
-async def handle_subscription_updated(event):
+
+async def handle_subscription_updated(event: Dict[str, Any]) -> None:
     """Handle customer.subscription.updated webhook event."""
     try:
         subscription = event.get("data", {}).get("object", {})
@@ -3569,38 +3573,50 @@ async def handle_subscription_updated(event):
                 {"$set": {"status": status, "updated_at": datetime.utcnow()}}
             )
             logger.info(f"Subscription {subscription_id} updated to status {status}")
+        else:
+            logger.warning("Subscription updated webhook missing id or status")
             
     except Exception as e:
-        logger.error(f"Error handling subscription updated: {e}")
+        logger.error(f"Error handling subscription updated: {e}", exc_info=True)
 
-async def handle_subscription_deleted(event):
+
+async def handle_subscription_deleted(event: Dict[str, Any]) -> None:
     """Handle customer.subscription.deleted webhook event."""
     try:
         subscription = event.get("data", {}).get("object", {})
         subscription_id = subscription.get("id")
         
-        if subscription_id:
-            await db_manager.db.subscriptions.update_one(
-                {"stripe_subscription_id": subscription_id},
-                {"$set": {"status": "cancelled", "cancelled_at": datetime.utcnow(), "updated_at": datetime.utcnow()}}
+        if not subscription_id:
+            logger.warning("Subscription deleted webhook missing subscription_id")
+            return
+        
+        await db_manager.db.subscriptions.update_one(
+            {"stripe_subscription_id": subscription_id},
+            {"$set": {
+                "status": "cancelled",
+                "cancelled_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+        
+        # Downgrade user plan to free
+        subscription_data = await db_manager.db.subscriptions.find_one(
+            {"stripe_subscription_id": subscription_id}
+        )
+        user_id = subscription_data.get("user_id") if subscription_data else None
+        if user_id:
+            await db_manager.db.users.update_one(
+                {"id": user_id},
+                {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
             )
-            
-            # Find user and downgrade to free plan
-            subscription_data = await db_manager.db.subscriptions.find_one(
-                {"stripe_subscription_id": subscription_id}
-            )
-            if subscription_data and subscription_data.get("user_id"):
-                await db_manager.db.users.update_one(
-                    {"id": subscription_data["user_id"]},
-                    {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
-                )
-            
-            logger.info(f"Subscription {subscription_id} deleted")
+        
+        logger.info(f"Subscription {subscription_id} deleted and user downgraded if applicable")
             
     except Exception as e:
-        logger.error(f"Error handling subscription deleted: {e}")
+        logger.error(f"Error handling subscription deleted: {e}", exc_info=True)
 
-async def handle_invoice_payment_succeeded(event):
+
+async def handle_invoice_payment_succeeded(event: Dict[str, Any]) -> None:
     """Handle invoice.payment_succeeded webhook event."""
     try:
         invoice = event.get("data", {}).get("object", {})
@@ -3610,14 +3626,21 @@ async def handle_invoice_payment_succeeded(event):
         if subscription_id:
             await db_manager.db.subscriptions.update_one(
                 {"stripe_subscription_id": subscription_id},
-                {"$set": {"last_payment_at": datetime.utcnow(), "last_payment_amount": amount_paid, "updated_at": datetime.utcnow()}}
+                {"$set": {
+                    "last_payment_at": datetime.utcnow(),
+                    "last_payment_amount": amount_paid,
+                    "updated_at": datetime.utcnow()
+                }}
             )
             logger.info(f"Invoice payment succeeded for subscription {subscription_id}: ${amount_paid}")
+        else:
+            logger.warning("Invoice payment succeeded webhook missing subscription_id")
             
     except Exception as e:
-        logger.error(f"Error handling invoice payment succeeded: {e}")
+        logger.error(f"Error handling invoice payment succeeded: {e}", exc_info=True)
 
-async def handle_invoice_payment_failed(event):
+
+async def handle_invoice_payment_failed(event: Dict[str, Any]) -> None:
     """Handle invoice.payment_failed webhook event."""
     try:
         invoice = event.get("data", {}).get("object", {})
@@ -3629,36 +3652,41 @@ async def handle_invoice_payment_failed(event):
                 {"$set": {"status": "past_due", "updated_at": datetime.utcnow()}}
             )
             logger.warning(f"Invoice payment failed for subscription {subscription_id}")
+        else:
+            logger.warning("Invoice payment failed webhook missing subscription_id")
             
     except Exception as e:
-        logger.error(f"Error handling invoice payment failed: {e}")
+        logger.error(f"Error handling invoice payment failed: {e}", exc_info=True)
 
-async def handle_customer_created(event):
+
+async def handle_customer_created(event: Dict[str, Any]) -> None:
     """Handle customer.created webhook event."""
     try:
         customer = event.get("data", {}).get("object", {})
         customer_id = customer.get("id")
         email = customer.get("email")
         
-        if email and customer_id:
+        if customer_id and email:
             await db_manager.db.users.update_one(
                 {"email": email},
                 {"$set": {"stripe_customer_id": customer_id, "updated_at": datetime.utcnow()}}
             )
             logger.info(f"Stripe customer created: {customer_id} for user {email}")
+        else:
+            logger.warning("Customer created webhook missing id or email")
             
     except Exception as e:
-        logger.error(f"Error handling customer created: {e}")
+        logger.error(f"Error handling customer created: {e}", exc_info=True)
 
-async def handle_customer_updated(event):
+
+async def handle_customer_updated(event: Dict[str, Any]) -> None:
     """Handle customer.updated webhook event."""
     try:
         customer = event.get("data", {}).get("object", {})
         customer_id = customer.get("id")
-        email = customer.get("email")
         name = customer.get("name")
         
-        if email and customer_id:
+        if customer_id:
             update_data = {"updated_at": datetime.utcnow()}
             if name:
                 update_data["name"] = name
@@ -3668,11 +3696,14 @@ async def handle_customer_updated(event):
                 {"$set": update_data}
             )
             logger.info(f"Stripe customer updated: {customer_id}")
+        else:
+            logger.warning("Customer updated webhook missing customer_id")
             
     except Exception as e:
-        logger.error(f"Error handling customer updated: {e}")
+        logger.error(f"Error handling customer updated: {e}", exc_info=True)
 
-async def handle_customer_deleted(event):
+
+async def handle_customer_deleted(event: Dict[str, Any]) -> None:
     """Handle customer.deleted webhook event."""
     try:
         customer = event.get("data", {}).get("object", {})
@@ -3684,9 +3715,12 @@ async def handle_customer_deleted(event):
                 {"$set": {"stripe_customer_id": None, "updated_at": datetime.utcnow()}}
             )
             logger.info(f"Stripe customer deleted: {customer_id}")
+        else:
+            logger.warning("Customer deleted webhook missing customer_id")
             
     except Exception as e:
-        logger.error(f"Error handling customer deleted: {e}")
+        logger.error(f"Error handling customer deleted: {e}", exc_info=True)
+    
 
 # ===========================================
 # Root Redirect
@@ -3694,7 +3728,10 @@ async def handle_customer_deleted(event):
 
 @app.get("/", include_in_schema=False)
 async def root_redirect():
-    """Redirect root to API documentation."""
+    """
+    Redirect root URL `/` to the API documentation.
+    This ensures visiting the base domain automatically sends users to `/api/`.
+    """
     return RedirectResponse(url="/api/")
 
 # ===========================================
