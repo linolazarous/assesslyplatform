@@ -11,6 +11,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from bson import ObjectId
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Query, Body, Header, Path
+from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
