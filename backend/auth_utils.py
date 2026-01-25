@@ -9,6 +9,7 @@ import pyotp
 import qrcode
 import base64
 import io
+import secrets
 from fastapi import HTTPException, status
 
 logger = logging.getLogger(__name__)
@@ -47,11 +48,24 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7              # 7 days
 # 2FA Utilities
 # ---------------------------
 
-def create_2fa_secret() -> str:
+def create_2fa_secret() -> Dict[str, Any]:
     """
-    Generate a new 2FA secret key
+    Generate a new 2FA secret key with backup codes
+    Returns a dict with 'secret' and 'backup_codes'
     """
-    return pyotp.random_base32()
+    secret = pyotp.random_base32()
+    
+    # Generate backup codes
+    backup_codes = []
+    for _ in range(10):
+        # Format: XXXXX-XXXXX (10 characters, split in middle)
+        code = f"{secrets.token_hex(3).upper()}-{secrets.token_hex(3).upper()}"
+        backup_codes.append(code)
+    
+    return {
+        "secret": secret,
+        "backup_codes": backup_codes
+    }
 
 
 def generate_2fa_qr_code(secret: str, email: str, issuer: str = "Assessly") -> str:
@@ -91,8 +105,6 @@ def generate_2fa_backup_codes(count: int = 10) -> Tuple[list, str]:
     Generate backup codes for 2FA
     Returns: (list of plain codes, hashed combined string for storage)
     """
-    import secrets
-    
     # Generate random backup codes
     backup_codes = []
     for _ in range(count):
@@ -174,6 +186,7 @@ def get_password_hash(password: str) -> str:
     except Exception as e:
         logger.error(f"Password hashing error: {e}")
         raise RuntimeError("Failed to hash password") from e
+
 
 # ---------------------------
 # JWT Creation
@@ -261,6 +274,7 @@ def create_tokens(user_id: str, email: str) -> Dict[str, str]:
     except Exception as e:
         logger.error(f"Failed to create tokens: {e}")
         raise
+
 
 # ---------------------------
 # JWT Verification
@@ -353,6 +367,7 @@ def decode_token(token: str, ignore_expiration: bool = False) -> Optional[Dict[s
         logger.warning(f"Failed to decode token: {e}")
         return None
 
+
 # ---------------------------
 # Token Utility Functions
 # ---------------------------
@@ -433,6 +448,7 @@ def refresh_access_token(refresh_token: str) -> Optional[Dict[str, str]]:
         logger.error(f"Unexpected error refreshing token: {e}")
         return None
 
+
 # ---------------------------
 # Security Helper Functions
 # ---------------------------
@@ -468,7 +484,6 @@ def generate_secure_token(length: int = 32) -> str:
     """
     Generate a cryptographically secure random token
     """
-    import secrets
     return secrets.token_urlsafe(length)
 
 
@@ -484,6 +499,7 @@ def verify_api_key(plain_api_key: str, hashed_api_key: str) -> bool:
     Verify an API key against its hash
     """
     return verify_password(plain_api_key, hashed_api_key)
+
 
 # ---------------------------
 # Rate Limiting Helper
@@ -516,6 +532,7 @@ class TokenBucket:
             self.tokens -= tokens
             return True
         return False
+
 
 # ---------------------------
 # Export
@@ -565,4 +582,4 @@ __all__ = [
     "ACCESS_TOKEN_EXPIRE_MINUTES",
     "REFRESH_TOKEN_EXPIRE_DAYS",
     "pwd_context",
-    ]
+]
