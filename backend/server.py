@@ -2094,7 +2094,11 @@ async def delete_assessment_question(
 # Assessment Publish Endpoint
 # ===========================================
 
-@api_router.post("/assessments/{assessment_id}/publish", response_model=Assessment, tags=["Assessments"])
+@api_router.post(
+    "/assessments/{assessment_id}/publish",
+    response_model="Assessment",
+    tags=["Assessments"]
+)
 async def publish_assessment(
     assessment_id: str = Path(..., description="Assessment ID"),
     publish_request: AssessmentPublishRequest = Body(...),
@@ -2109,17 +2113,16 @@ async def publish_assessment(
         })
         if not assessment_data:
             raise HTTPException(status_code=404, detail="Assessment not found")
-        
-        # Validate assessment has questions before publishing
+
+        # Validate assessment before publishing
         if publish_request.publish:
             questions = assessment_data.get("questions", [])
-            if len(questions) == 0:
+            if not questions:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot publish assessment without questions"
                 )
-            
-            # Validate all required fields
+
             required_fields = ["title", "description", "settings"]
             for field in required_fields:
                 if not assessment_data.get(field):
@@ -2127,27 +2130,26 @@ async def publish_assessment(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Cannot publish assessment without {field}"
                     )
-        
+
         # Update publish status
         update_data = {
             "is_published": publish_request.publish,
             "published_at": datetime.utcnow() if publish_request.publish else None,
             "updated_at": datetime.utcnow()
         }
-        
+
         if publish_request.publish:
             update_data["status"] = "published"
-            # Generate public URL for published assessments
             public_slug = f"{assessment_data.get('title', '').lower().replace(' ', '-')}-{assessment_id[:8]}"
             update_data["public_slug"] = public_slug
             update_data["public_url"] = f"{config.FRONTEND_URL}/assessment/{public_slug}"
-        
+
         await db_manager.db.assessments.update_one(
             {"id": assessment_id},
             {"$set": update_data}
         )
-        
-        # Send notification if publishing
+
+        # Optional notification
         if publish_request.publish:
             try:
                 await send_assessment_published_notification(
@@ -2157,18 +2159,24 @@ async def publish_assessment(
                     update_data["public_url"]
                 )
             except Exception as e:
-                logger.error(f"Failed to send publish notification: {e}")
-        
-        logger.info(f"Assessment {assessment_id} {'published' if publish_request.publish else 'unpublished'}")
-        
-        # Get updated assessment
-        updated_assessment = await db_manager.db.assessments.find_one({"id": assessment_id})
-        updated_assessment["id"] = str(updated_assessment["_id"]) if "_id" in updated_assessment else updated_assessment.get("id", assessment_id)
+                logger.warning(f"Publish notification failed: {e}")
+
+        logger.info(
+            f"Assessment {assessment_id} "
+            f"{'published' if publish_request.publish else 'unpublished'}"
+        )
+
+        # Fetch updated assessment
+        updated_assessment = await db_manager.db.assessments.find_one(
+            {"id": assessment_id}
+        )
+
         if "_id" in updated_assessment:
+            updated_assessment["id"] = str(updated_assessment["_id"])
             del updated_assessment["_id"]
-        
+
         return Assessment(**updated_assessment)
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -2177,6 +2185,7 @@ async def publish_assessment(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to publish assessment"
         )
+        
 
 # ===========================================
 # Assessment Duplicate Endpoint
