@@ -19,6 +19,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost
 from pydantic import BaseModel, Field, validator, ConfigDict
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
@@ -406,22 +407,22 @@ if config.is_production:
             "localhost",
             "127.0.0.1",
             config.FRONTEND_URL.replace("https://", "").replace("http://", "").split(":")[0],
-            "assesslyplatformfrontend.onrender.com"  # Add your frontend domain
+            "assesslyplatformfrontend.onrender.com"
         ]
     )
 
-# CORS middleware - FIXED: Add frontend URL directly
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",  # Local development
-        "http://localhost:3000",  # Alternative local port
-        "https://assesslyplatformfrontend.onrender.com",  # Your frontend
-        config.FRONTEND_URL,  # From config if set
-        *config.CORS_ORIGINS  # Any existing origins
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://assesslyplatformfrontend.onrender.com",
+        config.FRONTEND_URL,
+        *config.CORS_ORIGINS
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "X-API-Key", "X-CSRF-Token"],
     expose_headers=["X-Total-Count", "X-Error-Code", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-Request-ID"],
     max_age=600
@@ -430,16 +431,16 @@ app.add_middleware(
 # Compression middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# NEW: Request logging to database middleware
+# Request logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = datetime.utcnow()
     request_id = secrets.token_urlsafe(8)
     
-    # Add request ID to headers
-    request.headers.__dict__["_list"].append((b"x-request-id", request_id.encode()))
+    # Store request ID in state (do NOT modify headers)
+    request.state.request_id = request_id
     
-    # Skip logging for health checks, static files, and webhooks
+    # Skip health checks, static files, and webhooks
     if request.url.path in ["/health", "/favicon.ico", "/api/health", "/api/status"] or \
        request.url.path.startswith("/api/webhooks/"):
         response = await call_next(request)
@@ -454,7 +455,7 @@ async def log_requests(request: Request, call_next):
             payload = verify_token(token)
             if payload and "sub" in payload:
                 user_id = payload["sub"]
-        except:
+        except Exception:
             pass
     
     # Log request to database
@@ -470,7 +471,7 @@ async def log_requests(request: Request, call_next):
     }
     
     try:
-        if db_manager.db:
+        if db_manager.db is not None:  # FIXED: explicit None check
             await db_manager.db.api_logs.insert_one(log_data)
     except Exception as e:
         logger.error(f"Failed to log request to database: {e}")
@@ -482,13 +483,13 @@ async def log_requests(request: Request, call_next):
         response = await call_next(request)
         process_time = (datetime.utcnow() - start_time).total_seconds() * 1000
         
-        # Add request ID to response headers
+        # Add request ID and process time to response headers
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Process-Time"] = f"{process_time:.2f}ms"
         
         # Update log with response
         try:
-            if db_manager.db:
+            if db_manager.db is not None:  # FIXED: explicit None check
                 await db_manager.db.api_logs.update_one(
                     {"request_id": request_id},
                     {"$set": {
@@ -500,7 +501,7 @@ async def log_requests(request: Request, call_next):
         except Exception as e:
             logger.error(f"Failed to update request log: {e}")
         
-        # Log response
+        # Console log for response
         log_level = logging.WARNING if response.status_code >= 400 else logging.INFO
         logger.log(log_level, f"Response {request_id}: {request.method} {request.url.path} - Status: {response.status_code} - {process_time:.2f}ms")
         
