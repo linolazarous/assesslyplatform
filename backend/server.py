@@ -3357,8 +3357,8 @@ async def update_user_organization(
 
 @api_router.post("/contact", tags=["Public"])
 async def submit_contact_form(
-    contact_form: ContactFormCreate = Body(...)
-):
+    contact_form: "ContactFormCreate" = Body(...)
+) -> "SuccessResponse":
     """Submit a contact form."""
     try:
         # Verify reCAPTCHA if configured
@@ -3405,10 +3405,11 @@ async def submit_contact_form(
             detail="Failed to submit contact form"
         )
 
+
 @api_router.post("/demo", tags=["Public"])
 async def submit_demo_request(
-    demo_request: DemoRequestCreate = Body(...)
-):
+    demo_request: "DemoRequestCreate" = Body(...)
+) -> "SuccessResponse":
     """Submit a demo request."""
     try:
         # Verify reCAPTCHA if configured
