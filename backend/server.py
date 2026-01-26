@@ -397,120 +397,150 @@ app = FastAPI(
 )
 
 # ===========================================
-# Middleware
+# Middleware (PRODUCTION)
 # ===========================================
 
-# Security middleware
-if config.is_production:
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=[
-            "assesslyplatform.com",
-            "api.assesslyplatform.com",
-            "localhost",
-            "127.0.0.1",
-            config.FRONTEND_URL.replace("https://", "").replace("http://", "").split(":")[0],
-            "assesslyplatformfrontend.onrender.com"
-        ]
-    )
+# -------------------------------------------------
+# Trusted Host Middleware (REQUIRED FOR PRODUCTION)
+# -------------------------------------------------
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=[
+        # Primary domains
+        "assesslyplatform.com",
+        "api.assesslyplatform.com",
 
-# CORS middleware
+        # Render backend domain (CRITICAL FIX)
+        "assesslyplatform-pfm1.onrender.com",
+
+        # Render frontend
+        "assesslyplatformfrontend.onrender.com",
+
+        # Derived frontend host (safe)
+        config.FRONTEND_URL
+            .replace("https://", "")
+            .replace("http://", "")
+            .split(":")[0],
+    ],
+)
+
+# -------------------------
+# CORS Middleware
+# -------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
         "https://assesslyplatformfrontend.onrender.com",
         config.FRONTEND_URL,
-        *config.CORS_ORIGINS
+        *config.CORS_ORIGINS,
     ],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "X-API-Key", "X-CSRF-Token"],
-    expose_headers=["X-Total-Count", "X-Error-Code", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-Request-ID"],
-    max_age=600
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "X-Requested-With",
+        "X-API-Key",
+        "X-CSRF-Token",
+    ],
+    expose_headers=[
+        "X-Total-Count",
+        "X-Error-Code",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-Request-ID",
+    ],
+    max_age=600,
 )
 
-# Compression middleware
+# -------------------------
+# Compression Middleware
+# -------------------------
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# Request logging middleware
+# -------------------------------------------------
+# Request Logging Middleware (PRODUCTION SAFE)
+# -------------------------------------------------
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = datetime.utcnow()
     request_id = secrets.token_urlsafe(8)
-    
-    # Store request ID in state (do NOT modify headers)
     request.state.request_id = request_id
-    
-    # Skip health checks, static files, and webhooks
-    if request.url.path in ["/health", "/favicon.ico", "/api/health", "/api/status"] or \
-       request.url.path.startswith("/api/webhooks/"):
-        response = await call_next(request)
-        return response
-    
-    # Get user ID if authenticated
-    user_id = None
+
+    # Skip internal + health endpoints only
+    if request.url.path in {
+        "/health",
+        "/api/health",
+        "/api/status",
+        "/favicon.ico",
+    } or request.url.path.startswith("/api/webhooks/"):
+        return await call_next(request)
+
+    # Resolve authenticated user (if present)
+    user_id: Optional[str] = None
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         try:
-            token = auth_header.replace("Bearer ", "")
+            token = auth_header.removeprefix("Bearer ").strip()
             payload = verify_token(token)
-            if payload and "sub" in payload:
-                user_id = payload["sub"]
+            user_id = payload.get("sub") if payload else None
         except Exception:
-            pass
-    
-    # Log request to database
+            user_id = None
+
     log_data = {
         "request_id": request_id,
         "user_id": user_id,
         "method": request.method,
         "endpoint": request.url.path,
-        "query_params": str(request.query_params),
+        "query_params": dict(request.query_params),
         "user_agent": request.headers.get("user-agent"),
         "ip_address": request.client.host if request.client else None,
-        "created_at": datetime.utcnow()
+        "created_at": datetime.utcnow(),
     }
-    
+
+    # Insert initial log (non-blocking failure)
     try:
-        if db_manager.db is not None:  # FIXED: explicit None check
+        if db_manager.db is not None:
             await db_manager.db.api_logs.insert_one(log_data)
     except Exception as e:
-        logger.error(f"Failed to log request to database: {e}")
-    
-    # Log to console
-    logger.info(f"Request {request_id}: {request.method} {request.url.path} - User: {user_id or 'Anonymous'}")
-    
+        logger.error(f"API log insert failed: {e}")
+
     try:
         response = await call_next(request)
-        process_time = (datetime.utcnow() - start_time).total_seconds() * 1000
-        
-        # Add request ID and process time to response headers
+        process_time_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+
+        # Response headers
         response.headers["X-Request-ID"] = request_id
-        response.headers["X-Process-Time"] = f"{process_time:.2f}ms"
-        
-        # Update log with response
+        response.headers["X-Process-Time"] = f"{process_time_ms:.2f}ms"
+
+        # Update log
         try:
-            if db_manager.db is not None:  # FIXED: explicit None check
+            if db_manager.db is not None:
                 await db_manager.db.api_logs.update_one(
                     {"request_id": request_id},
                     {"$set": {
                         "status_code": response.status_code,
-                        "response_time_ms": process_time,
-                        "completed_at": datetime.utcnow()
-                    }}
+                        "response_time_ms": process_time_ms,
+                        "completed_at": datetime.utcnow(),
+                    }},
                 )
         except Exception as e:
-            logger.error(f"Failed to update request log: {e}")
-        
-        # Console log for response
+            logger.error(f"API log update failed: {e}")
+
         log_level = logging.WARNING if response.status_code >= 400 else logging.INFO
-        logger.log(log_level, f"Response {request_id}: {request.method} {request.url.path} - Status: {response.status_code} - {process_time:.2f}ms")
-        
+        logger.log(
+            log_level,
+            f"{request.method} {request.url.path} → {response.status_code} [{process_time_ms:.2f}ms] ({request_id})",
+        )
+
         return response
+
     except Exception as e:
-        logger.error(f"Request {request_id} failed: {request.method} {request.url.path} - Error: {e}", exc_info=True)
+        logger.error(
+            f"Unhandled request failure [{request_id}] {request.method} {request.url.path}: {e}",
+            exc_info=True,
+        )
         raise
 
 # ===========================================
