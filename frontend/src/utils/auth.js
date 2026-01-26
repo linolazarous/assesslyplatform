@@ -49,23 +49,23 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Wrap in try/catch to prevent unhandled errors
     try {
       // Handle 401 Unauthorized (token expired)
       if (error.response?.status === 401 && !originalRequest?._retry) {
         originalRequest._retry = true;
 
-        // Attempt token refresh
+        // Try to refresh token
         const result = await authAPI.refreshToken();
 
         if (result?.access_token) {
           // Update tokens
           setAuthToken(result.access_token);
-
           if (result.refresh_token) {
             setRefreshToken(result.refresh_token);
           }
 
-          // Retry original request with new token
+          // Retry original request
           originalRequest.headers = originalRequest.headers || {};
           originalRequest.headers.Authorization = `Bearer ${result.access_token}`;
 
@@ -73,19 +73,18 @@ api.interceptors.response.use(
         }
       }
 
-      // Handle specific API error responses
+      // Handle common errors
       if (error.response) {
         const status = error.response.status;
-        const errorData = error.response.data;
+        const data = error.response.data;
 
         switch (status) {
           case 400:
-            console.error('Bad request:', errorData);
+            console.error('Bad request:', data);
             break;
           case 403:
-            console.error('Forbidden:', errorData);
-            // Handle 2FA required
-            if (errorData?.detail?.includes('Two-factor authentication required')) {
+            console.error('Forbidden:', data);
+            if (data?.detail?.includes('Two-factor authentication required')) {
               return Promise.reject({
                 ...error,
                 requires2FA: true,
@@ -94,22 +93,22 @@ api.interceptors.response.use(
             }
             break;
           case 404:
-            console.error('Resource not found:', error.response.config.url);
+            console.error('Not found:', error.response.config.url);
             break;
           case 422:
-            console.warn('Validation error:', errorData);
+            console.warn('Validation error:', data);
             break;
           case 429:
-            console.error('Rate limit exceeded:', errorData);
+            console.error('Rate limit exceeded:', data);
             break;
           case 500:
           case 502:
           case 503:
           case 504:
-            console.error('Server error:', errorData);
+            console.error('Server error:', data);
             break;
           default:
-            console.error('API Error:', errorData);
+            console.error('API error:', data);
         }
       } else if (error.request) {
         console.error('Network error:', error.message);
@@ -120,7 +119,6 @@ api.interceptors.response.use(
       return Promise.reject(error);
     } catch (refreshError) {
       console.error('Token refresh failed:', refreshError);
-      // Clear local auth state
       clearAuthData();
       clearSessionId();
 
@@ -131,7 +129,6 @@ api.interceptors.response.use(
     }
   }
 );
-
     // Handle other common errors
     if (error.response) {
       const status = error.response.status;
