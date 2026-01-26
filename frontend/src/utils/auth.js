@@ -50,37 +50,47 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     // Handle 401 Unauthorized (token expired)
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest?._retry) {
       originalRequest._retry = true;
 
       try {
         // Try to refresh token using the authAPI
         const result = await authAPI.refreshToken();
-        
-        if (result.access_token) {
+
+        if (result?.access_token) {
           // Update tokens
           setAuthToken(result.access_token);
+
           if (result.refresh_token) {
             setRefreshToken(result.refresh_token);
           }
-          
+
           // Retry original request
+          originalRequest.headers = originalRequest.headers || {};
           originalRequest.headers.Authorization = `Bearer ${result.access_token}`;
+
           return api(originalRequest);
         }
       } catch (refreshError) {
         console.error('Token refresh failed:', refreshError);
-        // Refresh failed, logout user
+
+        // Clear local auth state ONLY
         clearAuthData();
         clearSessionId();
-        
-        // Only redirect if not already on login page
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login?session=expired';
-        }
-        return Promise.reject(refreshError);
+
+        // ❌ DO NOT hard redirect in interceptor (causes white screen)
+        // ✅ Let React auth guards / routing handle it
+        return Promise.reject({
+          ...refreshError,
+          isAuthExpired: true
+        });
       }
     }
+
+    // Default error handling
+    return Promise.reject(error);
+  }
+);
 
     // Handle other common errors
     if (error.response) {
