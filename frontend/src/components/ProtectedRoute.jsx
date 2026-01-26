@@ -18,6 +18,24 @@ const ProtectedRoute = ({ children, requireVerifiedEmail = false, requirePlan = 
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
 
+  // Listen for global Axios errors (e.g., token expired)
+  useEffect(() => {
+    const handleAxiosError = (event) => {
+      const error = event.detail;
+      if (error?.isAuthExpired) {
+        console.warn('Session expired, logging out...');
+        localStorage.removeItem(LOCAL_STORAGE_KEYS.TOKEN);
+        localStorage.removeItem(LOCAL_STORAGE_KEYS.USER);
+        setIsAuthenticated(false);
+        setError('Session expired. Please log in again.');
+      }
+    };
+
+    window.addEventListener('axios-error', handleAxiosError);
+    return () => window.removeEventListener('axios-error', handleAxiosError);
+  }, []);
+
+  // Main authentication check
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -27,34 +45,26 @@ const ProtectedRoute = ({ children, requireVerifiedEmail = false, requirePlan = 
         const token = localStorage.getItem(LOCAL_STORAGE_KEYS.TOKEN);
         const userData = localStorage.getItem(LOCAL_STORAGE_KEYS.USER);
 
-        // Basic token check
         if (!token || !userData) {
           setIsAuthenticated(false);
           setError('Authentication required');
           return;
         }
 
-        // Parse user data
         const parsedUser = JSON.parse(userData);
         setUser(parsedUser);
 
-        // Optional: Verify token with backend (if you want to ensure it's still valid)
-        try {
-          // You can add a quick token validation API call here if needed
-          // Example: await api.get('/auth/verify');
-        } catch (validationError) {
-          console.warn('Token validation failed:', validationError);
-          // Don't fail immediately - token might still be valid
-        }
+        // Optional: Backend token validation
+        await api.get('/api/auth/verify');
 
-        // Check if email verification is required
+        // Check email verification requirement
         if (requireVerifiedEmail && !parsedUser.is_verified) {
           setIsAuthenticated(false);
           setError('Email verification required');
           return;
         }
 
-        // Check if specific plan is required
+        // Check plan requirement
         if (requirePlan && parsedUser.plan !== requirePlan) {
           setIsAuthenticated(false);
           setError(`Plan upgrade required. You need the ${requirePlan} plan to access this feature.`);
@@ -62,13 +72,11 @@ const ProtectedRoute = ({ children, requireVerifiedEmail = false, requirePlan = 
         }
 
         setIsAuthenticated(true);
-
       } catch (err) {
         console.error('Auth check error:', err);
         setIsAuthenticated(false);
         setError(err.message || 'Authentication failed');
-        
-        // Clear invalid tokens
+
         localStorage.removeItem(LOCAL_STORAGE_KEYS.TOKEN);
         localStorage.removeItem(LOCAL_STORAGE_KEYS.USER);
       } finally {
@@ -79,7 +87,7 @@ const ProtectedRoute = ({ children, requireVerifiedEmail = false, requirePlan = 
     checkAuth();
   }, [location, requireVerifiedEmail, requirePlan]);
 
-  // Show loading state
+  // Loading state
   if (isChecking) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -119,9 +127,9 @@ const ProtectedRoute = ({ children, requireVerifiedEmail = false, requirePlan = 
     );
   }
 
-  // Handle unauthenticated access
+  // Handle unauthenticated or error state
   if (!isAuthenticated) {
-    // Show detailed error for plan requirements
+    // Plan upgrade required
     if (error?.includes('Plan upgrade required')) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-green-50 flex items-center justify-center p-4">
@@ -152,30 +160,25 @@ const ProtectedRoute = ({ children, requireVerifiedEmail = false, requirePlan = 
                   </p>
                 </div>
 
-                <div className="pt-4 border-t border-gray-200">
-                  <p className="text-sm text-gray-600 mb-4">
-                    Choose your next step:
-                  </p>
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => window.location.href = '/pricing'}
-                      className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-teal-600 text-white rounded-lg hover:opacity-90 transition-opacity font-medium"
-                    >
-                      View Plans & Pricing
-                    </button>
-                    <button
-                      onClick={() => window.history.back()}
-                      className="w-full px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-                    >
-                      Go Back
-                    </button>
-                    <button
-                      onClick={() => window.location.href = '/dashboard'}
-                      className="w-full px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-                    >
-                      Return to Dashboard
-                    </button>
-                  </div>
+                <div className="pt-4 border-t border-gray-200 space-y-3">
+                  <button
+                    onClick={() => window.location.href = '/pricing'}
+                    className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-teal-600 text-white rounded-lg hover:opacity-90 transition-opacity font-medium"
+                  >
+                    View Plans & Pricing
+                  </button>
+                  <button
+                    onClick={() => window.history.back()}
+                    className="w-full px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                  >
+                    Go Back
+                  </button>
+                  <button
+                    onClick={() => window.location.href = '/dashboard'}
+                    className="w-full px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                  >
+                    Return to Dashboard
+                  </button>
                 </div>
               </div>
             </div>
@@ -184,7 +187,7 @@ const ProtectedRoute = ({ children, requireVerifiedEmail = false, requirePlan = 
       );
     }
 
-    // Handle email verification required
+    // Email verification required
     if (error === 'Email verification required') {
       return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-green-50 flex items-center justify-center p-4">
@@ -228,38 +231,32 @@ const ProtectedRoute = ({ children, requireVerifiedEmail = false, requirePlan = 
                   </ul>
                 </div>
 
-                <div className="pt-4 border-t border-gray-200">
-                  <p className="text-sm text-gray-600 mb-4">
-                    Need help? Try these options:
-                  </p>
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => {
-                        // Here you would typically trigger a resend email API call
-                        console.log('Resend verification email to:', user?.email);
-                        alert(`Verification email resent to ${user?.email}`);
-                      }}
-                      className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-teal-600 text-white rounded-lg hover:opacity-90 transition-opacity font-medium"
-                    >
-                      Resend Verification Email
-                    </button>
-                    <button
-                      onClick={() => window.location.href = '/support'}
-                      className="w-full px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-                    >
-                      Contact Support
-                    </button>
-                    <button
-                      onClick={() => {
-                        localStorage.removeItem(LOCAL_STORAGE_KEYS.TOKEN);
-                        localStorage.removeItem(LOCAL_STORAGE_KEYS.USER);
-                        window.location.href = '/login';
-                      }}
-                      className="w-full px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-                    >
-                      Sign in with a different account
-                    </button>
-                  </div>
+                <div className="pt-4 border-t border-gray-200 space-y-3">
+                  <button
+                    onClick={() => {
+                      console.log('Resend verification email to:', user?.email);
+                      alert(`Verification email resent to ${user?.email}`);
+                    }}
+                    className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-teal-600 text-white rounded-lg hover:opacity-90 transition-opacity font-medium"
+                  >
+                    Resend Verification Email
+                  </button>
+                  <button
+                    onClick={() => window.location.href = '/support'}
+                    className="w-full px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                  >
+                    Contact Support
+                  </button>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem(LOCAL_STORAGE_KEYS.TOKEN);
+                      localStorage.removeItem(LOCAL_STORAGE_KEYS.USER);
+                      window.location.href = '/login';
+                    }}
+                    className="w-full px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                  >
+                    Sign in with a different account
+                  </button>
                 </div>
               </div>
             </div>
@@ -268,15 +265,15 @@ const ProtectedRoute = ({ children, requireVerifiedEmail = false, requirePlan = 
       );
     }
 
-    // General authentication error - redirect to login with return URL
+    // General authentication fallback
     return (
-      <Navigate 
-        to="/login" 
-        replace 
-        state={{ 
+      <Navigate
+        to="/login"
+        replace
+        state={{
           from: location,
           message: error || 'Please sign in to access this page'
-        }} 
+        }}
       />
     );
   }
@@ -285,11 +282,11 @@ const ProtectedRoute = ({ children, requireVerifiedEmail = false, requirePlan = 
   return children;
 };
 
-// Higher-order component version for class components
+// Higher-order component version
 export const withAuth = (Component, options = {}) => {
   return function WithAuthWrapper(props) {
     return (
-      <ProtectedRoute 
+      <ProtectedRoute
         requireVerifiedEmail={options.requireVerifiedEmail}
         requirePlan={options.requirePlan}
       >
@@ -337,11 +334,9 @@ export const useAuth = () => {
     };
 
     checkAuth();
-    
-    // Listen for storage changes (in case of logout from another tab)
+
     const handleStorageChange = () => checkAuth();
     window.addEventListener('storage', handleStorageChange);
-    
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
