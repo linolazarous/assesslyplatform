@@ -9,7 +9,7 @@ import config, {
   setUser,
   getUser,
   clearAuthData,
-  isAuthenticated,
+  isAuthenticated as _isAuthenticated,
   decodeToken,
   isTokenExpired,
   getTokenLifetime,
@@ -40,21 +40,23 @@ api.interceptors.request.use(
     if (token) {
       req.headers.Authorization = `Bearer ${token}`;
     }
+
     if (sessionId) {
       req.headers['X-Session-ID'] = sessionId;
     }
+
     return req;
   },
   (error) => Promise.reject(error)
 );
 
 /* ------------------------------------------------------------------ */
-/* Response interceptor (SAFE, NO REDIRECTS) */
+/* Response interceptor (NO redirects here) */
 /* ------------------------------------------------------------------ */
 
 api.interceptors.response.use(
   (response) => {
-    if (response.data?.session_id) {
+    if (response?.data?.session_id) {
       setSessionId(response.data.session_id);
     }
     return response;
@@ -62,7 +64,6 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Handle expired access token
     if (error.response?.status === 401 && !originalRequest?._retry) {
       originalRequest._retry = true;
 
@@ -100,31 +101,49 @@ api.interceptors.response.use(
 /* ------------------------------------------------------------------ */
 
 export const login = async (email, password) => {
-  return apiUtils.handle2FALogin({ email, password });
+  const result = await apiUtils.handle2FALogin({ email, password });
+
+  if (result?.session_id) {
+    setSessionId(result.session_id);
+  }
+
+  return result;
 };
 
 export const register = async (userData) => {
-  return authAPI.register(userData);
+  const result = await authAPI.register(userData);
+
+  if (result?.session_id) {
+    setSessionId(result.session_id);
+  }
+
+  return result;
 };
 
 export const logout = async () => {
   try {
     await authAPI.logout(getSessionId());
   } catch (_) {
-    // ignore
+    // ignore backend logout errors
   } finally {
     clearAuthData();
     clearSessionId();
   }
+
   return { success: true };
 };
 
 export const refreshToken = async () => {
   const result = await authAPI.refreshToken();
-  setAuthToken(result.access_token);
-  if (result.refresh_token) {
+
+  if (result?.access_token) {
+    setAuthToken(result.access_token);
+  }
+
+  if (result?.refresh_token) {
     setRefreshToken(result.refresh_token);
   }
+
   return result;
 };
 
@@ -146,20 +165,27 @@ export const getCurrentUser = async () => {
 };
 
 export const validateSession = async () => {
-  if (!isAuthenticated()) return false;
+  if (!_isAuthenticated()) return false;
 
   const token = getAuthToken();
   if (isTokenExpired(token)) {
     await refreshToken();
   }
+
   return true;
 };
 
 /* ------------------------------------------------------------------ */
-/* UTILITIES */
+/* UTILITIES (EXPLICIT EXPORTS) */
 /* ------------------------------------------------------------------ */
 
-export const checkAuth = () => isAuthenticated();
+export const isAuthenticated = () => {
+  return _isAuthenticated();
+};
+
+export const checkAuth = () => {
+  return _isAuthenticated();
+};
 
 export const getAuthHeaders = () => {
   const headers = { 'Content-Type': 'application/json' };
@@ -173,7 +199,7 @@ export const getAuthHeaders = () => {
 };
 
 /* ------------------------------------------------------------------ */
-/* EXPORTS */
+/* RE-EXPORT SHARED HELPERS */
 /* ------------------------------------------------------------------ */
 
 export {
@@ -191,5 +217,9 @@ export {
   setSessionId,
   clearSessionId
 };
+
+/* ------------------------------------------------------------------ */
+/* DEFAULT EXPORT */
+/* ------------------------------------------------------------------ */
 
 export default api;
