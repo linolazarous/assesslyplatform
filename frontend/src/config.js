@@ -523,6 +523,11 @@ export const removeSessionId = () => {
   }
 };
 
+// Alias for backward compatibility (used by auth.js)
+export const clearSessionId = () => {
+  removeSessionId();
+};
+
 export const clearAuthData = () => {
   try {
     removeAuthToken();
