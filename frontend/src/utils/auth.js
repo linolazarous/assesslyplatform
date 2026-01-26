@@ -49,12 +49,12 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Handle 401 Unauthorized (token expired)
-    if (error.response?.status === 401 && !originalRequest?._retry) {
-      originalRequest._retry = true;
+    try {
+      // Handle 401 Unauthorized (token expired)
+      if (error.response?.status === 401 && !originalRequest?._retry) {
+        originalRequest._retry = true;
 
-      try {
-        // Try to refresh token using the authAPI
+        // Attempt token refresh
         const result = await authAPI.refreshToken();
 
         if (result?.access_token) {
@@ -65,30 +65,70 @@ api.interceptors.response.use(
             setRefreshToken(result.refresh_token);
           }
 
-          // Retry original request
+          // Retry original request with new token
           originalRequest.headers = originalRequest.headers || {};
           originalRequest.headers.Authorization = `Bearer ${result.access_token}`;
 
           return api(originalRequest);
         }
-      } catch (refreshError) {
-        console.error('Token refresh failed:', refreshError);
-
-        // Clear local auth state ONLY
-        clearAuthData();
-        clearSessionId();
-
-        // ❌ DO NOT hard redirect in interceptor (causes white screen)
-        // ✅ Let React auth guards / routing handle it
-        return Promise.reject({
-          ...refreshError,
-          isAuthExpired: true
-        });
       }
-    }
 
-    // Default error handling
-    return Promise.reject(error);
+      // Handle specific API error responses
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+
+        switch (status) {
+          case 400:
+            console.error('Bad request:', errorData);
+            break;
+          case 403:
+            console.error('Forbidden:', errorData);
+            // Handle 2FA required
+            if (errorData?.detail?.includes('Two-factor authentication required')) {
+              return Promise.reject({
+                ...error,
+                requires2FA: true,
+                message: 'Two-factor authentication required',
+              });
+            }
+            break;
+          case 404:
+            console.error('Resource not found:', error.response.config.url);
+            break;
+          case 422:
+            console.warn('Validation error:', errorData);
+            break;
+          case 429:
+            console.error('Rate limit exceeded:', errorData);
+            break;
+          case 500:
+          case 502:
+          case 503:
+          case 504:
+            console.error('Server error:', errorData);
+            break;
+          default:
+            console.error('API Error:', errorData);
+        }
+      } else if (error.request) {
+        console.error('Network error:', error.message);
+      } else {
+        console.error('Error:', error.message);
+      }
+
+      return Promise.reject(error);
+    } catch (refreshError) {
+      console.error('Token refresh failed:', refreshError);
+      // Clear local auth state
+      clearAuthData();
+      clearSessionId();
+
+      return Promise.reject({
+        ...refreshError,
+        isAuthExpired: true,
+      });
+    }
   }
 );
 
