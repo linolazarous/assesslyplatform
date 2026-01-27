@@ -11,7 +11,18 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from bson import ObjectId
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Query, Body, Header, Path
+from fastapi import (
+    FastAPI,
+    APIRouter,
+    HTTPException,
+    Depends,
+    status,
+    Request,
+    Query,
+    Body,
+    Header,
+    Path,
+)
 from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,15 +30,13 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 
-# TrustedHostMiddleware from Starlette
+# Starlette middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from pydantic import BaseModel, Field, validator, ConfigDict
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -493,46 +502,72 @@ app.add_middleware(
 # -------------------------
 # Security Headers Middleware (CSP, HSTS, etc.)
 # -------------------------
-@app.middleware("http")
-async def security_headers_middleware(request: Request, call_next):
-    response = await call_next(request)
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
 
-    # Content Security Policy (React + Vite + GA SAFE)
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "script-src 'self' https://www.googletagmanager.com; "
-        "connect-src 'self' https://assesslyplatform-pfm1.onrender.com https://www.googletagmanager.com; "
-        "img-src 'self' data: https:; "
-        "style-src 'self' 'unsafe-inline'; "
-        "font-src 'self' https://fonts.gstatic.com; "
-        "frame-ancestors 'none'; "
-        "base-uri 'self'; "
-        "form-action 'self';"
-    )
+        # Content Security Policy (React + Vite + GA SAFE)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' https://www.googletagmanager.com; "
+            "connect-src 'self' "
+            "https://assesslyplatform-pfm1.onrender.com "
+            "https://www.googletagmanager.com; "
+            "img-src 'self' data: blob: https:; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self';"
+        )
 
-    # Strict Transport Security (HTTPS only)
-    response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
+        # HTTPS enforcement
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains; preload"
+        )
 
-    # Clickjacking protection
-    response.headers["X-Frame-Options"] = "DENY"
+        # Clickjacking protection
+        response.headers["X-Frame-Options"] = "DENY"
 
-    # MIME sniffing protection
-    response.headers["X-Content-Type-Options"] = "nosniff"
+        # MIME sniffing protection
+        response.headers["X-Content-Type-Options"] = "nosniff"
 
-    # Referrer control
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Referrer control
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
-    # Permissions policy (lock down browser APIs)
-    response.headers["Permissions-Policy"] = (
-        "camera=(), microphone=(), geolocation=(), payment=()"
-    )
+        # Lock down browser features
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=()"
+        )
 
-    return response
-    
+        return response
+        
+
 # -------------------------
-# Compression Middleware
+# Middleware (ORDER MATTERS)
 # -------------------------
+
+# 1️⃣ Host validation (FIRST)
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=[...]
+)
+
+# 2️⃣ CORS handling
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[...],
+    allow_credentials=True,
+    allow_methods=[...],
+    allow_headers=[...],
+)
+
+# 3️⃣ Security headers (CSP, HSTS, etc.)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 4️⃣ Compression (LAST)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 
 # -------------------------------------------------
 # Request Logging Middleware (PRODUCTION SAFE)
