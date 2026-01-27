@@ -935,37 +935,37 @@ app.include_router(user_router, prefix="/api/users")
 # NEW: System Status Endpoint
 # ===========================================
 
-@api_router.get("/status", response_model=APIStatus, tags=["System"])
+@api_router.get(
+    "/status",
+    response_model=APIStatus,
+    tags=["System"],
+    dependencies=[Depends(get_current_admin_user)],  # 🔐 PROTECTED
+)
 async def api_status():
-    """Get detailed API status."""
+    """Get detailed API status (admin only)."""
     try:
-        # Check database connection
-        await db_manager.client.admin.command('ping')
+        await db_manager.client.admin.command("ping")
         db_status = "healthy"
     except Exception as e:
         db_status = f"unhealthy: {str(e)}"
-    
-    # Check Stripe configuration
+
     try:
         validate_stripe_config()
         stripe_status = "healthy"
     except Exception as e:
         stripe_status = f"unhealthy: {str(e)}"
-    
-    # Check email configuration
+
     email_status = "configured" if config.EMAIL_HOST else "not_configured"
-    
-    # Calculate uptime
     uptime = (datetime.utcnow() - config.start_time).total_seconds()
-    
-    # Get system stats
+
     try:
         user_count = await db_manager.db.users.count_documents({})
         assessment_count = await db_manager.db.assessments.count_documents({})
         candidate_count = await db_manager.db.candidates.count_documents({})
-    except:
+    except Exception as e:
+        logger.warning(f"Stats collection failed: {e}")
         user_count = assessment_count = candidate_count = 0
-    
+
     return APIStatus(
         status="operational",
         version="1.0.0",
@@ -973,13 +973,13 @@ async def api_status():
         dependencies={
             "database": db_status,
             "stripe": stripe_status,
-            "email": email_status
+            "email": email_status,
         },
         stats={
             "users": user_count,
             "assessments": assessment_count,
-            "candidates": candidate_count
-        }
+            "candidates": candidate_count,
+        },
     )
 
 # ===========================================
@@ -993,8 +993,11 @@ async def register(
 ):
     """Register a new user."""
     try:
-        # Check if user already exists
-        existing_user = await db_manager.db.users.find_one({"email": user_create.email})
+        # Normalize email to lowercase
+        email = user_create.email.strip().lower()
+
+        # Check if user already exists (race-condition safe)
+        existing_user = await db_manager.db.users.find_one({"email": email})
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1008,17 +1011,17 @@ async def register(
                 detail="reCAPTCHA verification failed"
             )
         
-        # Create user
+        # Create user ID and hashed password
         user_id = str(uuid.uuid4())
         hashed_password = get_password_hash(user_create.password)
         
         user_data = {
             "id": user_id,
-            "email": user_create.email,
+            "email": email,  # stored lowercase
             "name": user_create.name,
             "hashed_password": hashed_password,
             "organization": user_create.organization,
-            "is_verified": False,
+            "is_verified": False,  # email verification required
             "two_factor_enabled": False,
             "plan": "free",
             "created_at": datetime.utcnow(),
@@ -1026,6 +1029,7 @@ async def register(
             "last_login": None
         }
         
+        # Insert new user
         await db_manager.db.users.insert_one(user_data)
         
         # Create organization if provided
@@ -1062,7 +1066,7 @@ async def register(
         await db_manager.db.subscriptions.insert_one(subscription_data)
         
         # Generate tokens
-        access_token = create_access_token({"sub": user_id, "email": user_create.email})
+        access_token = create_access_token({"sub": user_id, "email": email})
         refresh_token = create_refresh_token({"sub": user_id})
         
         # Create session
@@ -1070,13 +1074,13 @@ async def register(
         ip_address = request.client.host if request.client else None
         session_id = await create_user_session(user_id, user_agent, ip_address)
         
-        # Send welcome email
+        # Send welcome email (optional failure)
         try:
-            await send_welcome_email(user_create.name, user_create.email)
+            await send_welcome_email(user_create.name, email)
         except Exception as e:
             logger.error(f"Failed to send welcome email: {e}")
         
-        logger.info(f"New user registered: {user_create.email}")
+        logger.info(f"New user registered: {email}")
         
         user = User(**user_data)
         
@@ -1105,29 +1109,41 @@ async def login(
 ):
     """Authenticate user and return tokens."""
     try:
-        user_data = await db_manager.db.users.find_one({"email": credentials.email})
+        # Fetch user by email
+        user_data = await db_manager.db.users.find_one({"email": credentials.email.lower()})
         if not user_data:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password"
             )
         
+        # Verify password
         if not verify_password(credentials.password, user_data.get("hashed_password", "")):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password"
             )
-        
+
+        # Convert to User model
         user = User(**user_data)
-        
-        # Check if 2FA is enabled
+
+        # ------------------------------
+        # 1️⃣ Email verification check
+        # ------------------------------
+        if not user_data.get("is_verified"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Please verify your email before logging in"
+            )
+
+        # ------------------------------
+        # 2️⃣ Check if 2FA is enabled
+        # ------------------------------
         if config.TWO_FACTOR_ENABLED and user_data.get("two_factor_enabled"):
-            # Generate 2FA verification token
             temp_token = create_access_token(
                 {"sub": user.id, "email": user.email, "2fa_required": True},
                 expires_delta=timedelta(minutes=15)
             )
-            
             return Token(
                 access_token=temp_token,
                 token_type="bearer",
@@ -1136,16 +1152,20 @@ async def login(
                 message="Two-factor authentication required"
             )
         
-        # Generate regular tokens
+        # ------------------------------
+        # 3️⃣ Generate regular tokens
+        # ------------------------------
         access_token = create_access_token({"sub": user.id, "email": user.email})
         refresh_token = create_refresh_token({"sub": user.id})
         
-        # Create session
+        # ------------------------------
+        # 4️⃣ Create session
+        # ------------------------------
         user_agent = request.headers.get("user-agent")
         ip_address = request.client.host if request.client else None
         session_id = await create_user_session(user.id, user_agent, ip_address)
         
-        # Update last login
+        # Update last login timestamp
         await db_manager.db.users.update_one(
             {"id": user.id},
             {"$set": {"last_login": datetime.utcnow()}}
@@ -1153,6 +1173,9 @@ async def login(
         
         logger.info(f"User logged in: {user.email}")
         
+        # ------------------------------
+        # 5️⃣ Return token response
+        # ------------------------------
         return Token(
             access_token=access_token,
             refresh_token=refresh_token,
