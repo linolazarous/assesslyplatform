@@ -1,42 +1,71 @@
 # backend/server.py
+
+# ===========================================
+# Standard Library Imports
+# ===========================================
 import os
 import sys
-import logging
+import json
 import uuid
 import secrets
-import json
-from urllib.parse import urlencode
-import httpx
-from typing import Optional, Dict, Any, List
+import logging
 from datetime import datetime, timedelta
-from bson import ObjectId
+from typing import Optional, Dict, Any, List
+from urllib.parse import urlencode
 
+# ===========================================
+# Third-Party Libraries
+# ===========================================
+import httpx
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+
+# ===========================================
+# FastAPI Core
+# ===========================================
 from fastapi import (
     FastAPI,
     APIRouter,
     HTTPException,
     Depends,
-    status,
     Request,
+    Response,
+    status,
     Query,
     Body,
     Header,
     Path,
 )
-from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
+
+# ===========================================
+# FastAPI Responses
+# ===========================================
+from fastapi.responses import (
+    JSONResponse,
+    RedirectResponse,
+    PlainTextResponse,
+    FileResponse,
+)
+
+# ===========================================
+# FastAPI Security & Middleware
+# ===========================================
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 
-# Starlette middleware
+# ===========================================
+# Starlette Middleware
+# ===========================================
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 
-from pydantic import BaseModel, Field, validator, ConfigDict
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+# ===========================================
+# Pydantic
+# ===========================================
+from pydantic import BaseModel, Field, ConfigDict
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
