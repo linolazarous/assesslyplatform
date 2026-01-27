@@ -25,7 +25,30 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field, validator, ConfigDict
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response: Response = await call_next(request)
+
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' https://www.googletagmanager.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' https://assesslyplatform-pfm1.onrender.com; "
+            "frame-ancestors 'none';"
+        )
+
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        return response
+        
 # Import database models with clear names
 from models import (
     UserModel,
@@ -425,33 +448,46 @@ app.add_middleware(
 )
 
 # -------------------------
-# CORS Middleware
+# CORS Middleware (FIXED)
 # -------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://assesslyplatformfrontend.onrender.com",
         config.FRONTEND_URL,
-        *config.CORS_ORIGINS,
+        # Explicitly list extra origins (NO "*")
+        *[origin for origin in config.CORS_ORIGINS if origin != "*"],
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "OPTIONS",
+    ],
     allow_headers=[
         "Authorization",
         "Content-Type",
         "Accept",
+        "Origin",
+        "User-Agent",
+        "Referer",
         "X-Requested-With",
         "X-API-Key",
         "X-CSRF-Token",
+        "X-Session-ID",
     ],
     expose_headers=[
+        "Authorization",
         "X-Total-Count",
         "X-Error-Code",
         "X-RateLimit-Limit",
         "X-RateLimit-Remaining",
         "X-Request-ID",
     ],
-    max_age=600,
+    max_age=86400,  # cache preflight for 24h
 )
 
 # -------------------------
@@ -831,6 +867,8 @@ async def health_check():
             "stripe": stripe_status == "healthy"
         }
     }
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 # ===========================================
 # API Router
