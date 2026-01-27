@@ -352,34 +352,33 @@ db_manager = DatabaseManager()
 
 log_level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
 
-# Build handlers list dynamically
 handlers = [logging.StreamHandler(sys.stdout)]
 
 if config.is_production:
     try:
         os.makedirs("/var/log/assessly", exist_ok=True)
-        file_handler = logging.FileHandler("/var/log/assessly/app.log", encoding="utf-8")
+        file_handler = logging.FileHandler(
+            "/var/log/assessly/app.log", encoding="utf-8"
+        )
         file_handler.setFormatter(logging.Formatter(
             "%(asctime)s | %(levelname)s | %(name)s | %(module)s:%(lineno)d | %(message)s",
-            datefmt="%Y-%m-d %H:%M:%S"
+            datefmt="%Y-%m-%d %H:%M:%S"
         ))
         handlers.append(file_handler)
     except Exception as e:
-        # Log to console if file logging fails
-        print(f"Warning: Could not set up file logging: {e}")
+        print(f"Warning: File logging disabled: {e}")
 
-# Configure root logger
 logging.basicConfig(
     level=log_level,
+    handlers=handlers,
     format="%(asctime)s | %(levelname)s | %(name)s | %(module)s:%(lineno)d | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=handlers
 )
 
-# Configure our application logger
 logger = logging.getLogger("assessly-api")
 logger.setLevel(log_level)
 logger.propagate = False
+
 
 # ===========================================
 # FastAPI App Configuration
@@ -392,94 +391,64 @@ app = FastAPI(
     docs_url="/api/docs" if config.is_development else None,
     redoc_url="/api/redoc" if config.is_development else None,
     openapi_url="/api/openapi.json" if config.is_development else None,
-    openapi_tags=[
-        {
-            "name": "Authentication",
-            "description": "User authentication and OAuth endpoints"
-        },
-        {
-            "name": "Assessments",
-            "description": "Assessment creation and management"
-        },
-        {
-            "name": "Candidates",
-            "description": "Candidate invitation and management"
-        },
-        {
-            "name": "Subscriptions",
-            "description": "Subscription and billing management"
-        },
-        {
-            "name": "User Management",
-            "description": "User profile and organization management"
-        },
-        {
-            "name": "Public",
-            "description": "Public endpoints"
-        },
-        {
-            "name": "Security",
-            "description": "Security and 2FA endpoints"
-        },
-        {
-            "name": "System",
-            "description": "System status and monitoring"
-        }
-    ]
 )
 
+
 # ===========================================
-# Middleware (PRODUCTION)
+# Middleware Configuration (PRODUCTION SAFE)
 # ===========================================
 
 # -------------------------------------------------
-# Trusted Host Middleware (REQUIRED FOR PRODUCTION)
+# 1️⃣ Trusted Host Middleware (FIRST)
 # -------------------------------------------------
-allowed_hosts = [
-    # Primary backend domains
+
+allowed_hosts = {
     "assesslyplatform.com",
     "api.assesslyplatform.com",
-
-    # Render backend domain
     "assesslyplatform-pfm1.onrender.com",
-
-    # Render frontend domain
     "assesslyplatformfrontend.onrender.com",
-]
+}
 
-# Add FRONTEND_URL from config if defined and valid
 frontend_url = getattr(config, "FRONTEND_URL", None)
-if frontend_url and isinstance(frontend_url, str) and frontend_url.strip() != "":
-    # Remove protocol and port
-    frontend_host = frontend_url.replace("https://", "").replace("http://", "").split(":")[0]
-    if frontend_host and frontend_host != "...":  # safety check against ellipsis
-        allowed_hosts.append(frontend_host)
+if isinstance(frontend_url, str) and frontend_url.strip():
+    frontend_host = (
+        frontend_url
+        .replace("https://", "")
+        .replace("http://", "")
+        .split("/")[0]
+        .split(":")[0]
+    )
+    if frontend_host not in {"*", "...", ""}:
+        allowed_hosts.add(frontend_host)
 
-# Apply middleware
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=allowed_hosts,
+    allowed_hosts=list(allowed_hosts),
 )
 
-# -------------------------
-# CORS Middleware (FIXED)
-# -------------------------
+
+# -------------------------------------------------
+# 2️⃣ CORS Middleware (STRICT + SAFE)
+# -------------------------------------------------
+
+cors_origins = set()
+
+if isinstance(config.FRONTEND_URL, str) and config.FRONTEND_URL.strip():
+    cors_origins.add(config.FRONTEND_URL)
+
+cors_origins.add("https://assesslyplatformfrontend.onrender.com")
+
+if isinstance(config.CORS_ORIGINS, (list, tuple, set)):
+    for origin in config.CORS_ORIGINS:
+        if isinstance(origin, str) and origin.startswith("http"):
+            cors_origins.add(origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://assesslyplatformfrontend.onrender.com",
-        config.FRONTEND_URL,
-        # Explicitly list extra origins (NO "*")
-        *[origin for origin in config.CORS_ORIGINS if origin != "*"],
-    ],
+    allow_origins=list(cors_origins),
     allow_credentials=True,
     allow_methods=[
-        "GET",
-        "POST",
-        "PUT",
-        "PATCH",
-        "DELETE",
-        "OPTIONS",
+        "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
     ],
     allow_headers=[
         "Authorization",
@@ -501,23 +470,22 @@ app.add_middleware(
         "X-RateLimit-Remaining",
         "X-Request-ID",
     ],
-    max_age=86400,  # cache preflight for 24h
+    max_age=86400,
 )
 
-# -------------------------
-# Security Headers Middleware (CSP, HSTS, etc.)
-# -------------------------
+
+# -------------------------------------------------
+# 3️⃣ Security Headers Middleware
+# -------------------------------------------------
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response: Response = await call_next(request)
 
-        # Content Security Policy (React + Vite + GA SAFE)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' https://www.googletagmanager.com; "
-            "connect-src 'self' "
-            "https://assesslyplatform-pfm1.onrender.com "
-            "https://www.googletagmanager.com; "
+            "connect-src 'self' https://assesslyplatform-pfm1.onrender.com https://www.googletagmanager.com; "
             "img-src 'self' data: blob: https:; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
@@ -526,137 +494,27 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "form-action 'self';"
         )
 
-        # HTTPS enforcement
         response.headers["Strict-Transport-Security"] = (
             "max-age=63072000; includeSubDomains; preload"
         )
-
-        # Clickjacking protection
         response.headers["X-Frame-Options"] = "DENY"
-
-        # MIME sniffing protection
         response.headers["X-Content-Type-Options"] = "nosniff"
-
-        # Referrer control
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-        # Lock down browser features
         response.headers["Permissions-Policy"] = (
             "camera=(), microphone=(), geolocation=(), payment=()"
         )
 
         return response
-        
 
-# -------------------------
-# Middleware (ORDER MATTERS)
-# -------------------------
 
-# 1️⃣ Host validation (FIRST)
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=[...]
-)
-
-# 2️⃣ CORS handling
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[...],
-    allow_credentials=True,
-    allow_methods=[...],
-    allow_headers=[...],
-)
-
-# 3️⃣ Security headers (CSP, HSTS, etc.)
 app.add_middleware(SecurityHeadersMiddleware)
 
-# 4️⃣ Compression (LAST)
+
+# -------------------------------------------------
+# 4️⃣ Compression Middleware (LAST)
+# -------------------------------------------------
+
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-
-
-# -------------------------------------------------
-# Request Logging Middleware (PRODUCTION SAFE)
-# -------------------------------------------------
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    start_time = datetime.utcnow()
-    request_id = secrets.token_urlsafe(8)
-    request.state.request_id = request_id
-
-    # Skip internal + health endpoints only
-    if request.url.path in {
-        "/health",
-        "/api/health",
-        "/api/status",
-        "/favicon.ico",
-    } or request.url.path.startswith("/api/webhooks/"):
-        return await call_next(request)
-
-    # Resolve authenticated user (if present)
-    user_id: Optional[str] = None
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        try:
-            token = auth_header.removeprefix("Bearer ").strip()
-            payload = verify_token(token)
-            user_id = payload.get("sub") if payload else None
-        except Exception:
-            user_id = None
-
-    log_data = {
-        "request_id": request_id,
-        "user_id": user_id,
-        "method": request.method,
-        "endpoint": request.url.path,
-        "query_params": dict(request.query_params),
-        "user_agent": request.headers.get("user-agent"),
-        "ip_address": request.client.host if request.client else None,
-        "created_at": datetime.utcnow(),
-    }
-
-    # Insert initial log (non-blocking failure)
-    try:
-        if db_manager.db is not None:
-            await db_manager.db.api_logs.insert_one(log_data)
-    except Exception as e:
-        logger.error(f"API log insert failed: {e}")
-
-    try:
-        response = await call_next(request)
-        process_time_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
-
-        # Response headers
-        response.headers["X-Request-ID"] = request_id
-        response.headers["X-Process-Time"] = f"{process_time_ms:.2f}ms"
-
-        # Update log
-        try:
-            if db_manager.db is not None:
-                await db_manager.db.api_logs.update_one(
-                    {"request_id": request_id},
-                    {"$set": {
-                        "status_code": response.status_code,
-                        "response_time_ms": process_time_ms,
-                        "completed_at": datetime.utcnow(),
-                    }},
-                )
-        except Exception as e:
-            logger.error(f"API log update failed: {e}")
-
-        log_level = logging.WARNING if response.status_code >= 400 else logging.INFO
-        logger.log(
-            log_level,
-            f"{request.method} {request.url.path} → {response.status_code} [{process_time_ms:.2f}ms] ({request_id})",
-        )
-
-        return response
-
-    except Exception as e:
-        logger.error(
-            f"Unhandled request failure [{request_id}] {request.method} {request.url.path}: {e}",
-            exc_info=True,
-        )
-        raise
 
 # ===========================================
 # Authentication & Session Management
