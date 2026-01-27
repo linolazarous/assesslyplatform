@@ -491,6 +491,45 @@ app.add_middleware(
 )
 
 # -------------------------
+# Security Headers Middleware (CSP, HSTS, etc.)
+# -------------------------
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+
+    # Content Security Policy (React + Vite + GA SAFE)
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' https://www.googletagmanager.com; "
+        "connect-src 'self' https://assesslyplatform-pfm1.onrender.com https://www.googletagmanager.com; "
+        "img-src 'self' data: https:; "
+        "style-src 'self' 'unsafe-inline'; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self';"
+    )
+
+    # Strict Transport Security (HTTPS only)
+    response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
+
+    # Clickjacking protection
+    response.headers["X-Frame-Options"] = "DENY"
+
+    # MIME sniffing protection
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    # Referrer control
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    # Permissions policy (lock down browser APIs)
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(), payment=()"
+    )
+
+    return response
+    
+# -------------------------
 # Compression Middleware
 # -------------------------
 app.add_middleware(GZipMiddleware, minimum_size=1000)
