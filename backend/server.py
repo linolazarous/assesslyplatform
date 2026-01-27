@@ -516,6 +516,34 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+# -------------------------
+# Root & Infrastructure Routes
+# -------------------------
+
+@app.head("/")
+async def head_root():
+    return Response(status_code=200)
+
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/api", status_code=307)
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    return Response(status_code=204)
+
+
+@app.get("/robots.txt")
+async def robots():
+    return PlainTextResponse(
+        """User-agent: *
+Disallow: /api/
+Allow: /health
+"""
+)
+    
 # ===========================================
 # Authentication & Session Management
 # ===========================================
@@ -892,6 +920,13 @@ async def api_root():
 
 # Register router
 app.include_router(api_router)
+
+# -------------------------
+# API Routers
+# -------------------------
+app.include_router(auth_router, prefix="/api/auth")
+app.include_router(assessment_router, prefix="/api/assessments")
+app.include_router(user_router, prefix="/api/users")
 
 # ===========================================
 # NEW: System Status Endpoint
