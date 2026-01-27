@@ -11,20 +11,15 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-    <!-- Security Headers -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;">
+    <!-- SECURITY (NON-BREAKING) -->
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
-    <meta http-equiv="X-Frame-Options" content="DENY">
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 
     <!-- SEO -->
-    <title>
-      Assessly Platform | Measure Smarter, Not Harder — From Questions to Insights,
-      Anywhere.
-    </title>
+    <title>Assessly Platform | Measure Smarter, Not Harder</title>
     <meta
       name="description"
-      content="Assessly Platform is an enterprise-grade multi-tenant assessment, analytics, and insights platform. Measure smarter with secure, scalable evaluations."
+      content="Assessly Platform is an enterprise-grade multi-tenant assessment, analytics, and insights platform."
     />
     <meta name="author" content="Assessly Platform" />
     <meta name="robots" content="index, follow" />
@@ -32,88 +27,43 @@
 
     <!-- Open Graph -->
     <meta property="og:title" content="Assessly Platform | Measure Smarter, Not Harder" />
-    <meta
-      property="og:description"
-      content="Enterprise-grade assessment, analytics, and insights platform for organizations."
-    />
+    <meta property="og:description" content="Enterprise-grade assessment & analytics platform." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://assesslyplatform.com" />
     <meta property="og:image" content="https://assesslyplatform.com/images/logo.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Assessly Platform Logo" />
-    <meta property="og:site_name" content="Assessly Platform" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Assessly Platform" />
-    <meta
-      name="twitter:description"
-      content="Measure Smarter, Not Harder — From Questions to Insights, Anywhere."
-    />
+    <meta name="twitter:description" content="Measure Smarter, Not Harder." />
     <meta name="twitter:image" content="https://assesslyplatform.com/images/logo.png" />
-    <meta name="twitter:image:alt" content="Assessly Platform Logo" />
-    <meta name="twitter:creator" content="@assessly" />
 
-    <!-- PWA Manifest -->
+    <!-- PWA -->
     <link rel="manifest" href="/manifest.json" />
 
-    <!-- Favicon & App Icons (Using only logo.svg and logo.png) -->
-    <link rel="icon" type="image/svg+xml" href="/images/logo.svg">
-    <link rel="icon" type="image/png" href="/images/logo.png">
-    <link rel="apple-touch-icon" href="/images/logo.png">
-    <link rel="shortcut icon" href="/images/logo.svg" type="image/svg+xml">
-    
-    <!-- Mask icon for Safari -->
-    <link rel="mask-icon" href="/images/logo.svg" color="#0B1F33">
+    <!-- Icons -->
+    <link rel="icon" type="image/svg+xml" href="/images/logo.svg" />
+    <link rel="icon" type="image/png" href="/images/logo.png" />
+    <link rel="apple-touch-icon" href="/images/logo.png" />
 
-    <!-- Performance Optimizations -->
-    <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
-    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    
-    <!-- Preload logo for critical rendering -->
-    <link rel="preload" as="image" href="/images/logo.svg" type="image/svg+xml">
-    
-    <!-- Font Loading (Optional) -->
-    <link rel="stylesheet" 
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-          media="print" 
-          onload="this.media='all'">
-    <noscript>
-      <link rel="stylesheet" 
-            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-    </noscript>
+    <!-- Performance -->
+    <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-    <!-- Google Analytics (GA4) -->
+    <!-- Fonts -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
+
+    <!-- Google Analytics (SAFE) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-LBKQT3P0K8"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
-      function gtag() {
-        dataLayer.push(arguments);
-      }
-      gtag("js", new Date());
-      gtag("config", "G-LBKQT3P0K8", {
-        anonymize_ip: true,
-        send_page_view: true,
-        page_title: document.title,
-        page_location: window.location.href
-      });
-      
-      // Track logo load performance
-      document.addEventListener('DOMContentLoaded', function() {
-        const logo = new Image();
-        logo.src = '/images/logo.svg';
-        logo.onload = function() {
-          if (window.gtag) {
-            gtag('event', 'asset_loaded', {
-              'asset_type': 'logo',
-              'load_time': performance.now(),
-              'event_category': 'Performance'
-            });
-          }
-        };
-      });
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-LBKQT3P0K8', { anonymize_ip: true });
     </script>
 
     <!-- Structured Data -->
@@ -122,78 +72,25 @@
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "Assessly Platform",
-      "description": "Enterprise-grade multi-tenant assessment, analytics, and insights platform",
       "url": "https://assesslyplatform.com",
       "applicationCategory": "BusinessApplication",
-      "operatingSystem": "Web",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      },
-      "author": {
-        "@type": "Organization",
-        "name": "Assessly",
-        "logo": {
-          "@type": "ImageObject",
-          "url": "https://assesslyplatform.com/images/logo.svg",
-          "width": "1200",
-          "height": "630"
-        }
-      },
-      "image": "https://assesslyplatform.com/images/logo.png"
+      "operatingSystem": "Web"
     }
     </script>
   </head>
 
   <body>
     <noscript>
-      <div style="text-align: center; padding: 50px; font-family: sans-serif;">
-        <!-- Using the logo in noscript fallback -->
-        <img src="/images/logo.svg" alt="Assessly Platform Logo" width="120" height="40" style="margin-bottom: 20px;">
-        <h1>JavaScript Required</h1>
-        <p>Assessly Platform requires JavaScript to run. Please enable JavaScript in your browser to continue.</p>
-        <p>If you believe this is an error, please <a href="mailto:support@assesslyplatform.com">contact support</a>.</p>
+      <div style="text-align:center;padding:40px">
+        <img src="/images/logo.svg" width="120" alt="Assessly Logo" />
+        <h2>JavaScript Required</h2>
+        <p>Please enable JavaScript to use Assessly Platform.</p>
       </div>
     </noscript>
 
-    <!-- React Root -->
     <div id="root"></div>
 
-    <!-- VITE ENTRY POINT -->
+    <!-- VITE ENTRY -->
     <script type="module" src="/src/main.jsx"></script>
-
-    <!-- Performance & Fallback Scripts -->
-    <script>
-      // Track page load performance
-      window.addEventListener('load', function() {
-        setTimeout(function() {
-          if (window.gtag) {
-            gtag('event', 'timing_complete', {
-              'name': 'load',
-              'value': performance.now(),
-              'event_category': 'Performance'
-            });
-          }
-        }, 0);
-      });
-
-      // Fallback for blocked GA
-      if (typeof gtag === 'undefined') {
-        window.gtag = function() {
-          console.debug('[GA Blocked]', arguments);
-        };
-      }
-
-      // Logo lazy loading fallback
-      document.addEventListener('DOMContentLoaded', function() {
-        const logoElements = document.querySelectorAll('img[data-src="/images/logo.svg"], img[data-src="/images/logo.png"]');
-        logoElements.forEach(function(img) {
-          if (!img.complete) {
-            img.src = img.dataset.src;
-          }
-        });
-      });
-    </script>
   </body>
 </html>
