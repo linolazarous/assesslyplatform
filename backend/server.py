@@ -905,17 +905,17 @@ async def general_exception_handler(request: Request, exc: Exception):
 # Health Check Endpoint
 # ===========================================
 
-@app.get("/health")
+@app.get("/health", tags=["Health"])
 async def health_check():
     """Health check endpoint with system status."""
     try:
         # Check database connection
-        await db_manager.client.admin.command('ping')
+        await db_manager.client.admin.command("ping")
         db_status = "healthy"
     except Exception as e:
         db_status = f"unhealthy: {str(e)}"
         logger.error(f"Database health check failed: {e}")
-    
+
     # Check Stripe configuration
     try:
         validate_stripe_config()
@@ -923,38 +923,39 @@ async def health_check():
     except Exception as e:
         stripe_status = f"unhealthy: {str(e)}"
         logger.error(f"Stripe health check failed: {e}")
-    
+
     # Calculate uptime
     uptime = (datetime.utcnow() - config.start_time).total_seconds()
-    
+
     return {
         "service": "Assessly Platform API",
-        "status": "operational",
+        "status": "operational" if db_status == "healthy" else "degraded",
         "version": "1.0.0",
         "environment": config.ENVIRONMENT,
         "timestamp": datetime.utcnow().isoformat(),
         "uptime_seconds": uptime,
-        "database": db_status,
-        "stripe": stripe_status,
+        "dependencies": {
+            "database": db_status,
+            "stripe": stripe_status,
+        },
         "checks": {
             "database": db_status == "healthy",
-            "stripe": stripe_status == "healthy"
+            "stripe": stripe_status == "healthy",
+        },
         }
-    }
-
-app.add_middleware(SecurityHeadersMiddleware)
+    
 
 # ===========================================
 # API Router
 # ===========================================
 
-api_router = APIRouter(prefix="/api")
+api_router = APIRouter(prefix="/api", tags=["API"])
 
-@api_router.get("/", tags=["API"])
+@api_router.get("/")
 async def api_root():
     """API root endpoint."""
     uptime = (datetime.utcnow() - config.start_time).total_seconds()
-    
+
     return {
         "message": "Assessly Platform API",
         "version": "1.0.0",
@@ -974,58 +975,60 @@ async def api_root():
                 "/api/auth/verify-email",
                 "/api/auth/forgot-password",
                 "/api/auth/reset-password",
-                "/api/auth/resend-verification"
+                "/api/auth/resend-verification",
             ],
             "security": [
                 "/api/auth/2fa/setup",
                 "/api/auth/2fa/verify",
                 "/api/auth/2fa/disable",
                 "/api/auth/sessions",
-                "/api/auth/sessions/{session_id}"
+                "/api/auth/sessions/{session_id}",
             ],
             "assessments": [
                 "/api/assessments",
                 "/api/assessments/{id}",
                 "/api/assessments/{id}/questions",
-                "/api/assessments/{id}/questions/{question_id}",
                 "/api/assessments/{id}/settings",
                 "/api/assessments/{id}/publish",
-                "/api/assessments/{id}/duplicate"
+                "/api/assessments/{id}/duplicate",
             ],
             "candidates": [
                 "/api/candidates",
                 "/api/candidates/{id}",
                 "/api/candidates/{id}/resend",
-                "/api/candidates/{id}/results"
+                "/api/candidates/{id}/results",
             ],
             "subscriptions": [
                 "/api/subscriptions/checkout",
                 "/api/subscriptions/me",
                 "/api/subscriptions/cancel",
                 "/api/subscriptions/upgrade",
-                "/api/plans"
+                "/api/plans",
             ],
             "billing": [
                 "/api/payments/intent",
-                "/api/billing/history"
+                "/api/billing/history",
             ],
             "user_management": [
                 "/api/users/me",
                 "/api/users/me/password",
                 "/api/organizations/me",
-                "/api/dashboard/stats"
+                "/api/dashboard/stats",
             ],
             "public": [
                 "/api/contact",
                 "/api/demo",
                 "/api/status",
-                "/api/health"
+                "/health",
             ],
             "webhooks": [
-                "/api/webhooks/stripe"
-            ]
-        }
+                "/api/webhooks/stripe",
+            ],
+        },
     }
+
+# Register router
+app.include_router(api_router)
 
 # ===========================================
 # NEW: System Status Endpoint
