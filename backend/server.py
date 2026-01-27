@@ -435,25 +435,29 @@ app = FastAPI(
 # -------------------------------------------------
 # Trusted Host Middleware (REQUIRED FOR PRODUCTION)
 # -------------------------------------------------
+# Prepare allowed hosts safely
+allowed_hosts = [
+    # Primary domains
+    "assesslyplatform.com",
+    "api.assesslyplatform.com",
+
+    # Render backend domain (CRITICAL FIX)
+    "assesslyplatform-pfm1.onrender.com",
+
+    # Render frontend
+    "assesslyplatformfrontend.onrender.com",
+]
+
+# Add derived frontend host from config if available
+if getattr(config, "FRONTEND_URL", None):
+    frontend_host = config.FRONTEND_URL.replace("https://", "").replace("http://", "").split(":")[0]
+    if frontend_host:  # only append if not empty
+        allowed_hosts.append(frontend_host)
+
+# Apply TrustedHostMiddleware
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=[
-        # Primary domains
-        "assesslyplatform.com",
-        "api.assesslyplatform.com",
-
-        # Render backend domain (CRITICAL FIX)
-        "assesslyplatform-pfm1.onrender.com",
-
-        # Render frontend
-        "assesslyplatformfrontend.onrender.com",
-
-        # Derived frontend host (safe)
-        config.FRONTEND_URL
-            .replace("https://", "")
-            .replace("http://", "")
-            .split(":")[0],
-    ],
+    allowed_hosts=allowed_hosts,
 )
 
 # -------------------------
