@@ -422,15 +422,11 @@ app = FastAPI(
     openapi_url="/api/openapi.json" if config.is_development else None,
 )
 
-
 # ===========================================
 # Middleware Configuration (PRODUCTION SAFE)
 # ===========================================
 
-# -------------------------------------------------
 # 1️⃣ Trusted Host Middleware (FIRST)
-# -------------------------------------------------
-
 allowed_hosts = {
     "assesslyplatform.com",
     "api.assesslyplatform.com",
@@ -441,8 +437,7 @@ allowed_hosts = {
 frontend_url = getattr(config, "FRONTEND_URL", None)
 if isinstance(frontend_url, str) and frontend_url.strip():
     frontend_host = (
-        frontend_url
-        .replace("https://", "")
+        frontend_url.replace("https://", "")
         .replace("http://", "")
         .split("/")[0]
         .split(":")[0]
@@ -455,11 +450,7 @@ app.add_middleware(
     allowed_hosts=list(allowed_hosts),
 )
 
-
-# -------------------------------------------------
-# 2️⃣ CORS Middleware (STRICT + SAFE)
-# -------------------------------------------------
-
+# 2️⃣ CORS Middleware
 cors_origins = set()
 
 if isinstance(config.FRONTEND_URL, str) and config.FRONTEND_URL.strip():
@@ -476,9 +467,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=list(cors_origins),
     allow_credentials=True,
-    allow_methods=[
-        "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
-    ],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
         "Authorization",
         "Content-Type",
@@ -502,11 +491,7 @@ app.add_middleware(
     max_age=86400,
 )
 
-
-# -------------------------------------------------
 # 3️⃣ Security Headers Middleware
-# -------------------------------------------------
-
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response: Response = await call_next(request)
@@ -514,7 +499,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' https://www.googletagmanager.com; "
-            "connect-src 'self' https://assesslyplatform-pfm1.onrender.com https://www.googletagmanager.com; "
+            "connect-src 'self' https://assesslyplatform-pfm1.onrender.com https://www.googletagmanager.com https://api.stripe.com; "
             "img-src 'self' data: blob: https:; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
@@ -535,14 +520,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         return response
 
-
 app.add_middleware(SecurityHeadersMiddleware)
 
-
-# -------------------------------------------------
 # 4️⃣ Compression Middleware (LAST)
-# -------------------------------------------------
-
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # -------------------------
@@ -553,24 +533,20 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 async def head_root():
     return Response(status_code=200)
 
-
 @app.get("/")
 async def root():
     return RedirectResponse(url="/api", status_code=307)
-
 
 @app.get("/favicon.ico")
 async def favicon():
     return Response(status_code=204)
 
-
 @app.get("/robots.txt")
 async def robots():
     return PlainTextResponse(
-        """User-agent: *
-Disallow: /api/
-Allow: /health
-"""
+        "User-agent: *\n"
+        "Disallow: /api/\n"
+        "Allow: /health\n"
 )
     
 # ===========================================
