@@ -849,9 +849,7 @@ api_router = APIRouter(prefix="/api", tags=["API"])
 
 @api_router.get("/")
 async def api_root():
-    """API root endpoint."""
     uptime = (datetime.utcnow() - config.start_time).total_seconds()
-
     return {
         "message": "Assessly Platform API",
         "version": "1.0.0",
@@ -860,74 +858,74 @@ async def api_root():
         "uptime_seconds": uptime,
         "documentation": "/api/docs" if config.is_development else None,
         "endpoints": {
-            "authentication": [
-                "/api/auth/register",
-                "/api/auth/login",
-                "/api/auth/me",
-                "/api/auth/logout",
-                "/api/auth/refresh",
-                "/api/auth/google",
-                "/api/auth/github",
-                "/api/auth/verify-email",
-                "/api/auth/forgot-password",
-                "/api/auth/reset-password",
-                "/api/auth/resend-verification",
-            ],
-            "security": [
-                "/api/auth/2fa/setup",
-                "/api/auth/2fa/verify",
-                "/api/auth/2fa/disable",
-                "/api/auth/sessions",
-                "/api/auth/sessions/{session_id}",
-            ],
-            "assessments": [
-                "/api/assessments",
-                "/api/assessments/{id}",
-                "/api/assessments/{id}/questions",
-                "/api/assessments/{id}/settings",
-                "/api/assessments/{id}/publish",
-                "/api/assessments/{id}/duplicate",
-            ],
-            "candidates": [
-                "/api/candidates",
-                "/api/candidates/{id}",
-                "/api/candidates/{id}/resend",
-                "/api/candidates/{id}/results",
-            ],
-            "subscriptions": [
-                "/api/subscriptions/checkout",
-                "/api/subscriptions/me",
-                "/api/subscriptions/cancel",
-                "/api/subscriptions/upgrade",
-                "/api/plans",
-            ],
-            "billing": [
-                "/api/payments/intent",
-                "/api/billing/history",
-            ],
-            "user_management": [
-                "/api/users/me",
-                "/api/users/me/password",
-                "/api/organizations/me",
-                "/api/dashboard/stats",
-            ],
-            "public": [
-                "/api/contact",
-                "/api/demo",
-                "/api/status",
-                "/health",
-            ],
-            "webhooks": [
-                "/api/webhooks/stripe",
-            ],
+            "authentication": [...],
+            "security": [...],
+            "assessments": [...],
+            "candidates": [...],
+            "subscriptions": [...],
+            "billing": [...],
+            "user_management": [...],
+            "system": ["/api/status", "/health"],
+            "webhooks": ["/api/webhooks/stripe"],
         },
     }
 
-# Register router
+
+# ===========================================
+# System Status Endpoint (INTERNAL)
+# ===========================================
+
+@api_router.get(
+    "/status",
+    response_model=APIStatus,
+    tags=["System"],
+)
+async def api_status():
+    try:
+        await db_manager.client.admin.command("ping")
+        db_status = "healthy"
+    except Exception as e:
+        db_status = f"unhealthy: {str(e)}"
+
+    try:
+        validate_stripe_config()
+        stripe_status = "healthy"
+    except Exception as e:
+        stripe_status = f"unhealthy: {str(e)}"
+
+    email_status = "configured" if config.EMAIL_HOST else "not_configured"
+    uptime = (datetime.utcnow() - config.start_time).total_seconds()
+
+    try:
+        user_count = await db_manager.db.users.count_documents({})
+        assessment_count = await db_manager.db.assessments.count_documents({})
+        candidate_count = await db_manager.db.candidates.count_documents({})
+    except Exception as e:
+        logger.warning(f"Stats query failed: {e}")
+        user_count = assessment_count = candidate_count = 0
+
+    return APIStatus(
+        status="operational",
+        version="1.0.0",
+        uptime=uptime,
+        dependencies={
+            "database": db_status,
+            "stripe": stripe_status,
+            "email": email_status,
+        },
+        stats={
+            "users": user_count,
+            "assessments": assessment_count,
+            "candidates": candidate_count,
+        },
+    )
+
+
+# ✅ REGISTER ROUTER LAST
 app.include_router(api_router)
 
 # -------------------------
-# API Routers
+# Other API Routers
 # -------------------------
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(assessment_router, prefix="/api/assessments")
