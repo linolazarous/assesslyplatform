@@ -847,7 +847,12 @@ async def health_check():
 
 api_router = APIRouter(prefix="/api", tags=["API"])
 
-@api_router.get("/")
+
+# ===========================================
+# API Root
+# ===========================================
+
+@api_router.get("/", tags=["System"])
 async def api_root():
     uptime = (datetime.utcnow() - config.start_time).total_seconds()
     return {
@@ -858,27 +863,27 @@ async def api_root():
         "uptime_seconds": uptime,
         "documentation": "/api/docs" if config.is_development else None,
         "endpoints": {
-            "authentication": [...],
-            "security": [...],
-            "assessments": [...],
-            "candidates": [...],
-            "subscriptions": [...],
-            "billing": [...],
-            "user_management": [...],
+            "authentication": [
+                "/api/auth/register",
+                "/api/auth/login",
+                "/api/auth/refresh",
+                "/api/auth/me",
+                "/api/auth/logout",
+            ],
             "system": ["/api/status", "/health"],
-            "webhooks": ["/api/webhooks/stripe"],
         },
     }
 
 
 # ===========================================
-# System Status Endpoint (INTERNAL)
+# System Status Endpoint (ADMIN ONLY)
 # ===========================================
 
 @api_router.get(
     "/status",
     response_model=APIStatus,
     tags=["System"],
+    dependencies=[Depends(get_current_admin_user)],
 )
 async def api_status():
     try:
@@ -900,8 +905,7 @@ async def api_status():
         user_count = await db_manager.db.users.count_documents({})
         assessment_count = await db_manager.db.assessments.count_documents({})
         candidate_count = await db_manager.db.candidates.count_documents({})
-    except Exception as e:
-        logger.warning(f"Stats query failed: {e}")
+    except Exception:
         user_count = assessment_count = candidate_count = 0
 
     return APIStatus(
@@ -920,349 +924,165 @@ async def api_status():
         },
     )
 
-
-# ✅ REGISTER ROUTER LAST
-app.include_router(api_router)
-
-# -------------------------
-# Other API Routers
-# -------------------------
-app.include_router(auth_router, prefix="/api/auth")
-app.include_router(assessment_router, prefix="/api/assessments")
-app.include_router(user_router, prefix="/api/users")
-
-# ===========================================
-# NEW: System Status Endpoint
-# ===========================================
-
-@api_router.get(
-    "/status",
-    response_model=APIStatus,
-    tags=["System"],
-    dependencies=[Depends(get_current_admin_user)],  # 🔐 PROTECTED
-)
-async def api_status():
-    """Get detailed API status (admin only)."""
-    try:
-        await db_manager.client.admin.command("ping")
-        db_status = "healthy"
-    except Exception as e:
-        db_status = f"unhealthy: {str(e)}"
-
-    try:
-        validate_stripe_config()
-        stripe_status = "healthy"
-    except Exception as e:
-        stripe_status = f"unhealthy: {str(e)}"
-
-    email_status = "configured" if config.EMAIL_HOST else "not_configured"
-    uptime = (datetime.utcnow() - config.start_time).total_seconds()
-
-    try:
-        user_count = await db_manager.db.users.count_documents({})
-        assessment_count = await db_manager.db.assessments.count_documents({})
-        candidate_count = await db_manager.db.candidates.count_documents({})
-    except Exception as e:
-        logger.warning(f"Stats collection failed: {e}")
-        user_count = assessment_count = candidate_count = 0
-
-    return APIStatus(
-        status="operational",
-        version="1.0.0",
-        uptime=uptime,
-        dependencies={
-            "database": db_status,
-            "stripe": stripe_status,
-            "email": email_status,
-        },
-        stats={
-            "users": user_count,
-            "assessments": assessment_count,
-            "candidates": candidate_count,
-        },
-    )
 
 # ===========================================
 # Authentication Routes
 # ===========================================
 
-@api_router.post("/auth/register", response_model=Token, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
-async def register(
-    request: Request,
-    user_create: UserCreate = Body(...)
-):
-    """Register a new user."""
-    try:
-        # Normalize email to lowercase
-        email = user_create.email.strip().lower()
+@api_router.post(
+    "/auth/register",
+    response_model=Token,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Authentication"],
+)
+async def register(request: Request, user_create: UserCreate = Body(...)):
+    email = user_create.email.strip().lower()
 
-        # Check if user already exists (race-condition safe)
-        existing_user = await db_manager.db.users.find_one({"email": email})
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User with this email already exists"
-            )
-        
-        # Verify reCAPTCHA if configured
-        if user_create.recaptcha_token and not await verify_recaptcha(user_create.recaptcha_token):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="reCAPTCHA verification failed"
-            )
-        
-        # Create user ID and hashed password
-        user_id = str(uuid.uuid4())
-        hashed_password = get_password_hash(user_create.password)
-        
-        user_data = {
-            "id": user_id,
-            "email": email,  # stored lowercase
-            "name": user_create.name,
-            "hashed_password": hashed_password,
-            "organization": user_create.organization,
-            "is_verified": False,  # email verification required
-            "two_factor_enabled": False,
-            "plan": "free",
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-            "last_login": None
-        }
-        
-        # Insert new user
-        await db_manager.db.users.insert_one(user_data)
-        
-        # Create organization if provided
-        if user_create.organization:
-            org_id = str(uuid.uuid4())
-            org_data = {
-                "id": org_id,
-                "name": user_create.organization,
-                "owner_id": user_id,
-                "slug": user_create.organization.lower().replace(" ", "-"),
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }
-            await db_manager.db.organizations.insert_one(org_data)
-            
-            # Update user with organization ID
-            await db_manager.db.users.update_one(
-                {"id": user_id},
-                {"$set": {"organization_id": org_id}}
-            )
-        
-        # Create free subscription
-        subscription_data = {
-            "id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "plan_id": "free",
-            "status": "active",
-            "stripe_subscription_id": "free_plan",
-            "current_period_start": datetime.utcnow(),
-            "current_period_end": datetime.utcnow() + timedelta(days=30),
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }
-        await db_manager.db.subscriptions.insert_one(subscription_data)
-        
-        # Generate tokens
-        access_token = create_access_token({"sub": user_id, "email": email})
-        refresh_token = create_refresh_token({"sub": user_id})
-        
-        # Create session
-        user_agent = request.headers.get("user-agent")
-        ip_address = request.client.host if request.client else None
-        session_id = await create_user_session(user_id, user_agent, ip_address)
-        
-        # Send welcome email (optional failure)
-        try:
-            await send_welcome_email(user_create.name, email)
-        except Exception as e:
-            logger.error(f"Failed to send welcome email: {e}")
-        
-        logger.info(f"New user registered: {email}")
-        
-        user = User(**user_data)
-        
-        return Token(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            token_type="bearer",
-            user=user,
-            session_id=session_id,
-            redirect_url=f"{config.FRONTEND_URL}/dashboard"
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Registration error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Registration failed"
-        )
+    if await db_manager.db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+
+    user_id = str(uuid.uuid4())
+    hashed_password = get_password_hash(user_create.password)
+
+    user_data = {
+        "id": user_id,
+        "email": email,
+        "name": user_create.name,
+        "hashed_password": hashed_password,
+        "organization": user_create.organization,
+        "is_verified": False,
+        "two_factor_enabled": False,
+        "plan": "free",
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+        "last_login": None,
+    }
+
+    await db_manager.db.users.insert_one(user_data)
+
+    access_token = create_access_token({"sub": user_id, "email": email})
+    refresh_token = create_refresh_token({"sub": user_id})
+
+    session_id = await create_user_session(
+        user_id,
+        request.headers.get("user-agent"),
+        request.client.host if request.client else None,
+    )
+
+    return Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        user=User(**user_data),
+        session_id=session_id,
+        redirect_url=f"{config.FRONTEND_URL}/dashboard",
+    )
+
 
 @api_router.post("/auth/login", response_model=Token, tags=["Authentication"])
-async def login(
-    request: Request,
-    credentials: UserLogin = Body(...)
-):
-    """Authenticate user and return tokens."""
-    try:
-        # Fetch user by email
-        user_data = await db_manager.db.users.find_one({"email": credentials.email.lower()})
-        if not user_data:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
-            )
-        
-        # Verify password
-        if not verify_password(credentials.password, user_data.get("hashed_password", "")):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
-            )
+async def login(request: Request, credentials: UserLogin = Body(...)):
+    user_data = await db_manager.db.users.find_one(
+        {"email": credentials.email.lower()}
+    )
 
-        # Convert to User model
-        user = User(**user_data)
+    if not user_data or not verify_password(
+        credentials.password, user_data.get("hashed_password", "")
+    ):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
 
-        # ------------------------------
-        # 1️⃣ Email verification check
-        # ------------------------------
-        if not user_data.get("is_verified"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Please verify your email before logging in"
-            )
-
-        # ------------------------------
-        # 2️⃣ Check if 2FA is enabled
-        # ------------------------------
-        if config.TWO_FACTOR_ENABLED and user_data.get("two_factor_enabled"):
-            temp_token = create_access_token(
-                {"sub": user.id, "email": user.email, "2fa_required": True},
-                expires_delta=timedelta(minutes=15)
-            )
-            return Token(
-                access_token=temp_token,
-                token_type="bearer",
-                user=user,
-                requires_2fa=True,
-                message="Two-factor authentication required"
-            )
-        
-        # ------------------------------
-        # 3️⃣ Generate regular tokens
-        # ------------------------------
-        access_token = create_access_token({"sub": user.id, "email": user.email})
-        refresh_token = create_refresh_token({"sub": user.id})
-        
-        # ------------------------------
-        # 4️⃣ Create session
-        # ------------------------------
-        user_agent = request.headers.get("user-agent")
-        ip_address = request.client.host if request.client else None
-        session_id = await create_user_session(user.id, user_agent, ip_address)
-        
-        # Update last login timestamp
-        await db_manager.db.users.update_one(
-            {"id": user.id},
-            {"$set": {"last_login": datetime.utcnow()}}
+    if not user_data.get("is_verified"):
+        raise HTTPException(
+            status_code=403,
+            detail="Please verify your email before logging in",
         )
-        
-        logger.info(f"User logged in: {user.email}")
-        
-        # ------------------------------
-        # 5️⃣ Return token response
-        # ------------------------------
+
+    user = User(**user_data)
+
+    if config.TWO_FACTOR_ENABLED and user_data.get("two_factor_enabled"):
+        temp_token = create_access_token(
+            {"sub": user.id, "email": user.email, "2fa_required": True},
+            expires_delta=timedelta(minutes=15),
+        )
         return Token(
-            access_token=access_token,
-            refresh_token=refresh_token,
+            access_token=temp_token,
             token_type="bearer",
             user=user,
-            session_id=session_id,
-            redirect_url=f"{config.FRONTEND_URL}/dashboard"
+            requires_2fa=True,
+            message="Two-factor authentication required",
         )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Login error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication failed"
-        )
+
+    access_token = create_access_token({"sub": user.id, "email": user.email})
+    refresh_token = create_refresh_token({"sub": user.id})
+
+    session_id = await create_user_session(
+        user.id,
+        request.headers.get("user-agent"),
+        request.client.host if request.client else None,
+    )
+
+    await db_manager.db.users.update_one(
+        {"id": user.id},
+        {"$set": {"last_login": datetime.utcnow()}},
+    )
+
+    return Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        user=user,
+        session_id=session_id,
+        redirect_url=f"{config.FRONTEND_URL}/dashboard",
+    )
+
 
 @api_router.post("/auth/refresh", response_model=Token, tags=["Authentication"])
 async def refresh_token_endpoint(refresh_token: str = Body(..., embed=True)):
-    """Refresh access token using refresh token."""
-    try:
-        payload = verify_refresh_token(refresh_token)
-        if not payload or "sub" not in payload:
-            raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
-        
-        user_id = payload["sub"]
-        
-        # Check if user exists
-        user_data = await db_manager.db.users.find_one({"id": user_id})
-        if not user_data:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        # Generate new tokens
-        new_access_token = create_access_token({"sub": user_id, "email": user_data["email"]})
-        new_refresh_token = create_refresh_token({"sub": user_id})
-        
-        user = User(**user_data)
-        
-        return Token(
-            access_token=new_access_token,
-            refresh_token=new_refresh_token,
-            token_type="bearer",
-            user=user
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Token refresh error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to refresh token"
-        )
+    payload = verify_refresh_token(refresh_token)
+    if not payload or "sub" not in payload:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    user_data = await db_manager.db.users.find_one({"id": payload["sub"]})
+    if not user_data:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return Token(
+        access_token=create_access_token(
+            {"sub": user_data["id"], "email": user_data["email"]}
+        ),
+        refresh_token=create_refresh_token({"sub": user_data["id"]}),
+        token_type="bearer",
+        user=User(**user_data),
+    )
+
 
 @api_router.get("/auth/me", response_model=User, tags=["Authentication"])
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
-    """Get current user information."""
+async def get_current_user_info(
+    current_user: User = Depends(get_current_user),
+):
     return current_user
+
 
 @api_router.post("/auth/logout", tags=["Authentication"])
 async def logout(
     current_user: User = Depends(get_current_user),
-    session_id: Optional[str] = Header(None, alias="X-Session-ID")
+    session_id: Optional[str] = Header(None, alias="X-Session-ID"),
 ):
-    """Logout user and terminate session."""
-    try:
-        if session_id:
-            await terminate_session(session_id, current_user.id)
-        else:
-            # If no session ID, terminate all sessions
-            await terminate_all_sessions(current_user.id)
-        
-        logger.info(f"User logged out: {current_user.email}")
-        
-        return {
-            "message": "Successfully logged out",
-            "redirect_url": f"{config.FRONTEND_URL}/login",
-            "session_terminated": True
-        }
-        
-    except Exception as e:
-        logger.error(f"Logout error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to logout"
-        )
+    if session_id:
+        await terminate_session(session_id, current_user.id)
+    else:
+        await terminate_all_sessions(current_user.id)
+
+    return {
+        "message": "Successfully logged out",
+        "redirect_url": f"{config.FRONTEND_URL}/login",
+    }
+
+
+# ===========================================
+# REGISTER ROUTER (ONCE, AT THE END)
+# ===========================================
+
+app.include_router(api_router)
         
 
 # ===========================================
