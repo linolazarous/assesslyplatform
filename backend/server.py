@@ -1357,7 +1357,7 @@ class TwoFactorSetup(BaseModel):
         
 
 # ===========================================
-# Session Management Endpoints (FIXED)
+# Session Management Endpoints
 # ===========================================
 
 @api_router.get("/auth/sessions", response_model=List[SessionInfo], tags=["Security"])
@@ -1372,35 +1372,28 @@ async def get_user_sessions(
             "expires_at": {"$gt": datetime.utcnow()}
         }).sort("last_activity", -1).to_list(length=50)
 
-        session_list = []
+        results = []
         for session in sessions:
-            is_current = (
-                current_session_id is not None and
-                session.get("session_id") == current_session_id
-            )
-
-            device_info = session.get("device_info", {})
-            location = session.get("location")
-
+            device_info = session.get("device_info") or {}
             if isinstance(device_info, str):
                 try:
                     device_info = json.loads(device_info)
                 except Exception:
                     device_info = {"raw": device_info}
 
-            session_list.append(SessionInfo(
+            results.append(SessionInfo(
                 session_id=session["session_id"],
                 user_agent=session.get("user_agent", "Unknown"),
                 ip_address=session.get("ip_address", "Unknown"),
                 created_at=session["created_at"],
                 last_activity=session["last_activity"],
                 expires_at=session["expires_at"],
-                is_current=is_current,
+                is_current=session["session_id"] == current_session_id,
                 device_info=device_info,
-                location=location
+                location=session.get("location")
             ))
 
-        return session_list
+        return results
 
     except Exception as e:
         logger.error(f"Get sessions error: {e}", exc_info=True)
@@ -1412,22 +1405,15 @@ async def get_user_sessions(
 
 @api_router.delete("/auth/sessions/{target_session_id}", tags=["Security"])
 async def terminate_user_session(
-    target_session_id: str = Path(
-        ...,
-        min_length=32,
-        max_length=64,
-        description="Session ID to terminate"
-    ),
+    target_session_id: str = Path(..., min_length=32, max_length=64),
     current_user: User = Depends(get_current_user)
 ):
-    """Terminate a specific session by ID."""
+    """Terminate a specific session."""
     try:
-        success = await terminate_session(target_session_id, current_user.id)
-
-        if not success:
+        if not await terminate_session(target_session_id, current_user.id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found or you don't have permission to terminate it"
+                detail="Session not found"
             )
 
         return SuccessResponse(
@@ -1437,12 +1423,6 @@ async def terminate_user_session(
 
     except HTTPException:
         raise
-    except ValueError as e:
-        logger.error(f"Invalid session termination request: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
     except Exception as e:
         logger.error(f"Terminate session error: {e}", exc_info=True)
         raise HTTPException(
@@ -1456,19 +1436,16 @@ async def terminate_all_user_sessions(
     current_user: User = Depends(get_current_user),
     current_session_id: Optional[str] = Header(None, alias="X-Session-ID")
 ):
-    """Terminate all sessions except current one."""
+    """Terminate all sessions except current."""
     try:
-        terminated_count = await terminate_all_sessions(
+        count = await terminate_all_sessions(
             user_id=current_user.id,
             exclude_session_id=current_session_id
         )
 
         return SuccessResponse(
-            message=f"Terminated {terminated_count} session(s)",
-            data={
-                "terminated_count": terminated_count,
-                "current_session_preserved": current_session_id is not None
-            }
+            message=f"Terminated {count} session(s)",
+            data={"terminated_count": count}
         )
 
     except Exception as e:
@@ -1479,133 +1456,78 @@ async def terminate_all_user_sessions(
         )
 
 
-@api_router.post("/auth/sessions/terminate-other", tags=["Security"])
-async def terminate_other_user_sessions(
-    current_user: User = Depends(get_current_user),
-    current_session_id: str = Header(..., alias="X-Session-ID")
-):
-    """Terminate all other sessions except the current one."""
-    try:
-        terminated_count = await terminate_all_sessions(
-            user_id=current_user.id,
-            exclude_session_id=current_session_id
-        )
-
-        return SuccessResponse(
-            message=f"Terminated {terminated_count} other session(s)",
-            data={
-                "terminated_count": terminated_count,
-                "current_session_id": current_session_id
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Terminate other sessions error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to terminate other sessions"
-                )
-        
-
 # ===========================================
 # Email Verification Endpoints
 # ===========================================
 
 @api_router.post("/auth/verify-email", tags=["Authentication"])
 async def verify_email(token: str = Body(..., embed=True)):
-    """Verify user's email address using verification token"""
+    """Verify email address."""
     try:
-        # Verify token
         payload = verify_token(token)
-        if not payload or "sub" not in payload:
+        if not payload or payload.get("type") != "email_verification":
             raise HTTPException(
-                status_code=400,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired verification token"
             )
-        
+
         user_id = payload["sub"]
-        
-        # Update user verification status
-        result = await db_manager.db.users.update_one(
+
+        user = await db_manager.db.users.find_one({"id": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if user.get("is_verified"):
+            return {"message": "Email already verified"}
+
+        await db_manager.db.users.update_one(
             {"id": user_id},
             {"$set": {"is_verified": True, "updated_at": datetime.utcnow()}}
         )
-        
-        if result.modified_count == 0:
-            raise HTTPException(
-                status_code=404,
-                detail="User not found or already verified"
-            )
-        
-        # Get user email for response
-        user_data = await db_manager.db.users.find_one({"id": user_id})
-        
+
         return {
             "message": "Email verified successfully",
-            "user_email": user_data["email"]
+            "email": user["email"]
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Email verification error: {str(e)}")
+        logger.error(f"Email verification error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to verify email"
         )
 
+
 @api_router.post("/auth/resend-verification", tags=["Authentication"])
 async def resend_verification(email: str = Body(..., embed=True)):
-    """Resend verification email to user"""
+    """Resend email verification."""
     try:
-        # Validate email
-        if not email or "@" not in email:
-            raise HTTPException(
-                status_code=400,
-                detail="Valid email address is required"
-            )
-        
-        # Check if user exists
-        user_data = await db_manager.db.users.find_one({"email": email})
-        if not user_data:
-            # Return success even if user doesn't exist (security best practice)
+        email = email.strip().lower()
+        user = await db_manager.db.users.find_one({"email": email})
+
+        if not user or user.get("is_verified"):
             return {
-                "message": "If an account exists with this email, a verification email has been sent",
-                "email": email
+                "message": "If an account exists, a verification email has been sent"
             }
-        
-        # Check if user is already verified
-        if user_data.get("is_verified"):
-            raise HTTPException(
-                status_code=400,
-                detail="User is already verified"
-            )
-        
-        # Generate verification token
-        verification_token = create_access_token(
-            {"sub": user_data["id"], "email": email},
+
+        token = create_access_token(
+            {"sub": user["id"], "type": "email_verification"},
             expires_delta=timedelta(hours=24)
         )
-        
-        # Send verification email
-        try:
-            await send_email_verification(user_data["name"], email, verification_token)
-        except Exception as e:
-            logger.error(f"Failed to send verification email: {e}")
-        
-        return {
-            "message": "Verification email sent successfully",
-            "email": email
-        }
-        
-    except HTTPException:
-        raise
+
+        await send_email_verification(user["name"], email, token)
+
+        return {"message": "Verification email sent"}
+
     except Exception as e:
-        logger.error(f"Resend verification error: {str(e)}")
+        logger.error(f"Resend verification error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to resend verification email"
         )
+
 
 # ===========================================
 # Password Reset Endpoints
@@ -1613,140 +1535,95 @@ async def resend_verification(email: str = Body(..., embed=True)):
 
 @api_router.post("/auth/forgot-password", tags=["Authentication"])
 async def forgot_password(email: str = Body(..., embed=True)):
-    """Initiate password reset process"""
+    """Request password reset."""
     try:
-        # Validate email
-        if not email or "@" not in email:
-            raise HTTPException(
-                status_code=400,
-                detail="Valid email address is required"
+        email = email.strip().lower()
+        user = await db_manager.db.users.find_one({"email": email})
+
+        if user:
+            token = create_access_token(
+                {"sub": user["id"], "type": "password_reset"},
+                expires_delta=timedelta(hours=1)
             )
-        
-        # Check if user exists
-        user_data = await db_manager.db.users.find_one({"email": email})
-        if not user_data:
-            # Return success even if user doesn't exist (security best practice)
-            return {
-                "message": "If an account exists with this email, a password reset link has been sent",
-                "email": email
-            }
-        
-        # Generate password reset token
-        reset_token = create_access_token(
-            {"sub": user_data["id"], "email": email, "type": "password_reset"},
-            expires_delta=timedelta(hours=1)
-        )
-        
-        # Store reset token
-        reset_token_data = {
-            "id": str(uuid.uuid4()),
-            "user_id": user_data["id"],
-            "token": reset_token,
-            "expires_at": datetime.utcnow() + timedelta(hours=1),
-            "created_at": datetime.utcnow()
-        }
-        await db_manager.db.password_reset_tokens.insert_one(reset_token_data)
-        
-        # Send password reset email
-        try:
-            await send_password_reset_email(user_data["name"], email, reset_token)
-        except Exception as e:
-            logger.error(f"Failed to send password reset email: {e}")
-        
+
+            await db_manager.db.password_reset_tokens.insert_one({
+                "token": token,
+                "user_id": user["id"],
+                "expires_at": datetime.utcnow() + timedelta(hours=1),
+                "created_at": datetime.utcnow()
+            })
+
+            await send_password_reset_email(user["name"], email, token)
+
         return {
-            "message": "If an account exists with this email, a password reset link has been sent",
-            "email": email
+            "message": "If an account exists, a password reset email has been sent"
         }
-        
-    except HTTPException:
-        raise
+
     except Exception as e:
-        logger.error(f"Forgot password error: {str(e)}")
+        logger.error(f"Forgot password error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail="Failed to process password reset request"
+            detail="Failed to process password reset"
         )
+
 
 @api_router.post("/auth/reset-password", tags=["Authentication"])
 async def reset_password(
     token: str = Body(..., embed=True),
     new_password: str = Body(..., embed=True)
 ):
-    """Reset password using reset token"""
+    """Reset password."""
     try:
-        # Validate inputs
-        if not token:
-            raise HTTPException(
-                status_code=400,
-                detail="Reset token is required"
-            )
-        
-        if not new_password or len(new_password) < 8:
+        if len(new_password) < 8:
             raise HTTPException(
                 status_code=400,
                 detail="Password must be at least 8 characters"
             )
-        
-        # Verify reset token
+
         payload = verify_token(token)
-        if not payload or "sub" not in payload or payload.get("type") != "password_reset":
+        if not payload or payload.get("type") != "password_reset":
             raise HTTPException(
                 status_code=400,
                 detail="Invalid or expired reset token"
             )
-        
+
         user_id = payload["sub"]
-        user_email = payload.get("email", "")
-        
-        # Check if token exists in database
+
         token_data = await db_manager.db.password_reset_tokens.find_one({
             "token": token,
             "user_id": user_id,
             "expires_at": {"$gt": datetime.utcnow()}
         })
-        
+
         if not token_data:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid or expired reset token"
             )
-        
-        # Update user password
-        new_hashed_password = get_password_hash(new_password)
+
         await db_manager.db.users.update_one(
             {"id": user_id},
             {"$set": {
-                "hashed_password": new_hashed_password,
-                "updated_at": datetime.utcnow(),
-                "password_changed_at": datetime.utcnow()
+                "hashed_password": get_password_hash(new_password),
+                "password_changed_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
             }}
         )
-        
-        # Delete used token
+
         await db_manager.db.password_reset_tokens.delete_one({"token": token})
-        
-        # Terminate all sessions (security measure)
         await terminate_all_sessions(user_id)
-        
-        # Send confirmation email
-        try:
-            await send_password_reset_confirmation(user_email)
-        except Exception as e:
-            logger.error(f"Failed to send password reset confirmation: {e}")
-        
-        return {
-            "message": "Password reset successfully",
-            "user_email": user_email
-        }
-        
+
+        return {"message": "Password reset successfully"}
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Password reset error: {str(e)}")
+        logger.error(f"Reset password error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to reset password"
-        )
+            )
+        
 
 # ===========================================
 # Assessment Endpoints
