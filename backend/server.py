@@ -1098,47 +1098,46 @@ async def setup_2fa(current_user: User = Depends(get_current_user)):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Two-factor authentication is not enabled"
             )
-        
-        # Check if 2FA is already enabled
+
+        # Email must be verified first
         user_data = await db_manager.db.users.find_one({"id": current_user.id})
+        if not user_data.get("is_verified"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Verify your email before enabling two-factor authentication"
+            )
+
         if user_data.get("two_factor_enabled"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Two-factor authentication is already enabled"
             )
-        
-        # Generate 2FA secret
+
+        # Generate secret + backup codes
         secret_data = create_2fa_secret()
-        secret = secret_data["secret"]
-        backup_codes = secret_data["backup_codes"]
-        
-        # Store secret temporarily (will be verified before enabling)
+
         await db_manager.db.two_factor_secrets.update_one(
             {"user_id": current_user.id},
             {"$set": {
-                "secret": secret,
-                "backup_codes": backup_codes,
+                "secret": secret_data["secret"],
+                "backup_codes": secret_data["backup_codes"],
                 "created_at": datetime.utcnow()
             }},
             upsert=True
         )
-        
-        # Generate QR code URL
-        qr_code_url = generate_2fa_qr_code(secret, current_user.email)
-        
-        # Send setup email
-        try:
-            await send_2fa_setup_email(current_user.name, current_user.email, secret)
-        except Exception as e:
-            logger.error(f"Failed to send 2FA setup email: {e}")
-        
-        return TwoFactorSetup(
-            secret=secret,
-            qr_code_url=qr_code_url,
-            backup_codes=backup_codes,
-            message="Scan QR code with authenticator app"
+
+        qr_code_url = generate_2fa_qr_code(
+            secret_data["secret"],
+            current_user.email
         )
-        
+
+        return TwoFactorSetup(
+            secret=secret_data["secret"],
+            qr_code_url=qr_code_url,
+            backup_codes=secret_data["backup_codes"],
+            message="Scan the QR code using your authenticator app"
+        )
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1148,6 +1147,7 @@ async def setup_2fa(current_user: User = Depends(get_current_user)):
             detail="Failed to setup two-factor authentication"
         )
 
+
 @api_router.post("/auth/2fa/verify", response_model=SuccessResponse, tags=["Security"])
 async def verify_2fa_setup(
     verification: TwoFactorVerify = Body(...),
@@ -1155,46 +1155,44 @@ async def verify_2fa_setup(
 ):
     """Verify and enable two-factor authentication."""
     try:
-        # Get stored secret
-        secret_data = await db_manager.db.two_factor_secrets.find_one({"user_id": current_user.id})
+        secret_data = await db_manager.db.two_factor_secrets.find_one(
+            {"user_id": current_user.id}
+        )
+
         if not secret_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No pending 2FA setup found"
             )
-        
-        # Verify token
+
         if not verify_2fa_token(secret_data["secret"], verification.token):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid verification token"
             )
-        
-        # Enable 2FA for user
+
         await db_manager.db.users.update_one(
             {"id": current_user.id},
             {"$set": {
                 "two_factor_enabled": True,
-                "two_factor_method": verification.method,
                 "two_factor_secret": secret_data["secret"],
                 "two_factor_backup_codes": secret_data["backup_codes"],
                 "updated_at": datetime.utcnow()
             }}
         )
-        
-        # Remove temporary secret
-        await db_manager.db.two_factor_secrets.delete_one({"user_id": current_user.id})
-        
-        # Terminate all existing sessions (security measure)
+
+        await db_manager.db.two_factor_secrets.delete_one(
+            {"user_id": current_user.id}
+        )
+
+        # Kill existing sessions after enabling 2FA
         await terminate_all_sessions(current_user.id)
-        
-        logger.info(f"2FA enabled for user: {current_user.email}")
-        
+
         return SuccessResponse(
             message="Two-factor authentication enabled successfully",
             data={"backup_codes": secret_data["backup_codes"]}
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1204,6 +1202,7 @@ async def verify_2fa_setup(
             detail="Failed to verify two-factor authentication"
         )
 
+
 @api_router.post("/auth/2fa/disable", response_model=SuccessResponse, tags=["Security"])
 async def disable_2fa(
     verification: TwoFactorVerify = Body(...),
@@ -1211,49 +1210,46 @@ async def disable_2fa(
 ):
     """Disable two-factor authentication."""
     try:
-        # Get user's 2FA secret
-        user_data = await db_manager.db.users.find_one({"id": current_user.id})
+        user_data = await db_manager.db.users.find_one(
+            {"id": current_user.id}
+        )
+
         if not user_data.get("two_factor_enabled"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Two-factor authentication is not enabled"
             )
-        
-        # Verify token or backup code
+
         secret = user_data.get("two_factor_secret")
         backup_codes = user_data.get("two_factor_backup_codes", [])
-        
-        is_valid = False
+
+        valid = False
         if verification.token in backup_codes:
-            # Remove used backup code
             backup_codes.remove(verification.token)
-            is_valid = True
+            valid = True
         else:
-            # Verify as TOTP token
-            is_valid = verify_2fa_token(secret, verification.token)
-        
-        if not is_valid:
+            valid = verify_2fa_token(secret, verification.token)
+
+        if not valid:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid verification token or backup code"
+                detail="Invalid verification token"
             )
-        
-        # Disable 2FA
+
         await db_manager.db.users.update_one(
             {"id": current_user.id},
             {"$set": {
                 "two_factor_enabled": False,
-                "two_factor_method": None,
                 "two_factor_secret": None,
                 "two_factor_backup_codes": [],
                 "updated_at": datetime.utcnow()
             }}
         )
-        
-        logger.info(f"2FA disabled for user: {current_user.email}")
-        
-        return SuccessResponse(message="Two-factor authentication disabled successfully")
-        
+
+        return SuccessResponse(
+            message="Two-factor authentication disabled successfully"
+        )
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1263,6 +1259,7 @@ async def disable_2fa(
             detail="Failed to disable two-factor authentication"
         )
 
+
 @api_router.post("/auth/2fa/login", response_model=Token, tags=["Security"])
 async def verify_2fa_login(
     request: Request,
@@ -1270,67 +1267,59 @@ async def verify_2fa_login(
 ):
     """Verify 2FA token after initial login."""
     try:
-        # Get token from Authorization header
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication required"
             )
-        
-        temp_token = auth_header.replace("Bearer ", "")
-        payload = verify_token(temp_token)
-        
-        if not payload or "sub" not in payload or not payload.get("2fa_required"):
+
+        payload = verify_token(auth_header.replace("Bearer ", ""))
+
+        if not payload or not payload.get("2fa_required"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired 2FA verification token"
+                detail="Invalid or expired 2FA session"
             )
-        
+
         user_id = payload["sub"]
-        
-        # Get user and verify 2FA
         user_data = await db_manager.db.users.find_one({"id": user_id})
-        if not user_data:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        if not user_data.get("two_factor_enabled"):
+
+        if not user_data or not user_data.get("is_verified"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User not verified"
+            )
+
+        if not verify_2fa_token(
+            user_data["two_factor_secret"],
+            verification.token
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Two-factor authentication is not enabled"
+                detail="Invalid 2FA token"
             )
-        
-        # Verify token
-        secret = user_data.get("two_factor_secret")
-        if not verify_2fa_token(secret, verification.token):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid verification token"
-            )
-        
+
         user = User(**user_data)
-        
-        # Generate final tokens with 2FA verification flag
+
         access_token = create_access_token({
             "sub": user.id,
             "email": user.email,
             "2fa_verified": True
         })
         refresh_token = create_refresh_token({"sub": user.id})
-        
-        # Create session
-        user_agent = request.headers.get("user-agent")
-        ip_address = request.client.host if request.client else None
-        session_id = await create_user_session(user.id, user_agent, ip_address)
-        
-        # Update last login
+
+        session_id = await create_user_session(
+            user.id,
+            request.headers.get("user-agent"),
+            request.client.host if request.client else None
+        )
+
         await db_manager.db.users.update_one(
             {"id": user.id},
             {"$set": {"last_login": datetime.utcnow()}}
         )
-        
-        logger.info(f"2FA login successful for user: {user.email}")
-        
+
         return Token(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -1339,7 +1328,7 @@ async def verify_2fa_login(
             session_id=session_id,
             redirect_url=f"{config.FRONTEND_URL}/dashboard"
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1348,49 +1337,23 @@ async def verify_2fa_login(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Two-factor authentication failed"
         )
-        
+
 
 # ===========================================
-# Security Models (NEW for server.py)
+# Security Models
 # ===========================================
 
 class TwoFactorVerify(BaseModel):
     token: str
-    method: str = "totp"
+
 
 class TwoFactorSetup(BaseModel):
     secret: str
     qr_code_url: str
-    backup_codes: List[str] = []
+    backup_codes: List[str]
     message: Optional[str] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
-
-class SessionInfo(BaseModel):
-    session_id: str
-    user_agent: Optional[str] = None
-    ip_address: Optional[str] = None
-    created_at: datetime
-    last_activity: datetime
-    expires_at: datetime
-    is_current: bool = False
-    device_info: Optional[Dict[str, Any]] = None  # Added device_info field
-    location: Optional[str] = None  # Added location field
-    
-    model_config = ConfigDict(from_attributes=True)
-
-class SessionTerminate(BaseModel):
-    session_id: str
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    new_password: str
-    
-    @validator('new_password')
-    def password_strength(cls, v):
-        if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters')
-        return v
         
 
 # ===========================================
