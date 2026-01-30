@@ -1,11 +1,11 @@
 # Core FastAPI and server
 fastapi==0.110.1
 uvicorn[standard]==0.25.0
-starlette==0.37.2
+starlette==0.49.1
 
 # MongoDB
 motor==3.3.1
-pymongo==4.5.0
+pymongo==4.6.3
 dnspython==2.8.0
 
 # Data validation
