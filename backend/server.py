@@ -67,6 +67,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # ===========================================
 from pydantic import BaseModel, Field, ConfigDict
 
+# ===========================================
+# Security Headers Middleware
+# ===========================================
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response: Response = await call_next(request)
@@ -547,7 +550,7 @@ async def robots():
         "User-agent: *\n"
         "Disallow: /api/\n"
         "Allow: /health\n"
-)
+    )
     
 # ===========================================
 # Authentication & Session Management
@@ -602,6 +605,23 @@ async def get_current_user(
     except Exception as e:
         logger.error(f"Authentication error: {e}")
         raise HTTPException(status_code=401, detail="Authentication failed")
+
+# ===========================================
+# Admin Authorization Dependency
+# ===========================================
+
+def get_current_admin_user(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Restricts access to admin-only users
+    """
+    if not getattr(current_user, "is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user
 
 async def create_user_session(user_id: str, user_agent: str = None, ip_address: str = None) -> str:
     """Create a new user session."""
@@ -838,15 +858,13 @@ async def health_check():
             "database": db_status == "healthy",
             "stripe": stripe_status == "healthy",
         },
-        }
-    
+    }
 
 # ===========================================
 # API Router
 # ===========================================
 
 api_router = APIRouter(prefix="/api", tags=["API"])
-
 
 # ===========================================
 # API Root
@@ -873,7 +891,6 @@ async def api_root():
             "system": ["/api/status", "/health"],
         },
     }
-
 
 # ===========================================
 # System Status Endpoint (ADMIN ONLY)
@@ -924,6 +941,17 @@ async def api_status():
         },
     )
 
+# ===========================================
+# Admin Dashboard Endpoint
+# ===========================================
+
+@api_router.get(
+    "/admin/dashboard",
+    dependencies=[Depends(get_current_admin_user)],
+    tags=["Admin"]
+)
+async def admin_dashboard():
+    return {"status": "Admin access granted"}
 
 # ===========================================
 # Authentication Routes
@@ -977,7 +1005,6 @@ async def register(request: Request, user_create: UserCreate = Body(...)):
         session_id=session_id,
         redirect_url=f"{config.FRONTEND_URL}/dashboard",
     )
-
 
 @api_router.post("/auth/login", response_model=Token, tags=["Authentication"])
 async def login(request: Request, credentials: UserLogin = Body(...)):
@@ -1034,7 +1061,6 @@ async def login(request: Request, credentials: UserLogin = Body(...)):
         redirect_url=f"{config.FRONTEND_URL}/dashboard",
     )
 
-
 @api_router.post("/auth/refresh", response_model=Token, tags=["Authentication"])
 async def refresh_token_endpoint(refresh_token: str = Body(..., embed=True)):
     payload = verify_refresh_token(refresh_token)
@@ -1054,13 +1080,11 @@ async def refresh_token_endpoint(refresh_token: str = Body(..., embed=True)):
         user=User(**user_data),
     )
 
-
 @api_router.get("/auth/me", response_model=User, tags=["Authentication"])
 async def get_current_user_info(
     current_user: User = Depends(get_current_user),
 ):
     return current_user
-
 
 @api_router.post("/auth/logout", tags=["Authentication"])
 async def logout(
@@ -1076,14 +1100,6 @@ async def logout(
         "message": "Successfully logged out",
         "redirect_url": f"{config.FRONTEND_URL}/login",
     }
-
-
-# ===========================================
-# REGISTER ROUTER (ONCE, AT THE END)
-# ===========================================
-
-app.include_router(api_router)
-        
 
 # ===========================================
 # Two-Factor Authentication Endpoints
@@ -1147,7 +1163,6 @@ async def setup_2fa(current_user: User = Depends(get_current_user)):
             detail="Failed to setup two-factor authentication"
         )
 
-
 @api_router.post("/auth/2fa/verify", response_model=SuccessResponse, tags=["Security"])
 async def verify_2fa_setup(
     verification: TwoFactorVerify = Body(...),
@@ -1201,7 +1216,6 @@ async def verify_2fa_setup(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to verify two-factor authentication"
         )
-
 
 @api_router.post("/auth/2fa/disable", response_model=SuccessResponse, tags=["Security"])
 async def disable_2fa(
@@ -1258,7 +1272,6 @@ async def disable_2fa(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to disable two-factor authentication"
         )
-
 
 @api_router.post("/auth/2fa/login", response_model=Token, tags=["Security"])
 async def verify_2fa_login(
@@ -1338,24 +1351,6 @@ async def verify_2fa_login(
             detail="Two-factor authentication failed"
         )
 
-
-# ===========================================
-# Security Models
-# ===========================================
-
-class TwoFactorVerify(BaseModel):
-    token: str
-
-
-class TwoFactorSetup(BaseModel):
-    secret: str
-    qr_code_url: str
-    backup_codes: List[str]
-    message: Optional[str] = None
-
-    model_config = ConfigDict(from_attributes=True)
-        
-
 # ===========================================
 # Session Management Endpoints
 # ===========================================
@@ -1402,7 +1397,6 @@ async def get_user_sessions(
             detail="Failed to retrieve sessions"
         )
 
-
 @api_router.delete("/auth/sessions/{target_session_id}", tags=["Security"])
 async def terminate_user_session(
     target_session_id: str = Path(..., min_length=32, max_length=64),
@@ -1430,7 +1424,6 @@ async def terminate_user_session(
             detail="Failed to terminate session"
         )
 
-
 @api_router.post("/auth/sessions/terminate-all", tags=["Security"])
 async def terminate_all_user_sessions(
     current_user: User = Depends(get_current_user),
@@ -1454,7 +1447,6 @@ async def terminate_all_user_sessions(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to terminate sessions"
         )
-
 
 # ===========================================
 # Email Verification Endpoints
@@ -1499,7 +1491,6 @@ async def verify_email(token: str = Body(..., embed=True)):
             detail="Failed to verify email"
         )
 
-
 @api_router.post("/auth/resend-verification", tags=["Authentication"])
 async def resend_verification(email: str = Body(..., embed=True)):
     """Resend email verification."""
@@ -1527,7 +1518,6 @@ async def resend_verification(email: str = Body(..., embed=True)):
             status_code=500,
             detail="Failed to resend verification email"
         )
-
 
 # ===========================================
 # Password Reset Endpoints
@@ -1565,7 +1555,6 @@ async def forgot_password(email: str = Body(..., embed=True)):
             status_code=500,
             detail="Failed to process password reset"
         )
-
 
 @api_router.post("/auth/reset-password", tags=["Authentication"])
 async def reset_password(
@@ -1622,8 +1611,7 @@ async def reset_password(
         raise HTTPException(
             status_code=500,
             detail="Failed to reset password"
-            )
-        
+        )
 
 # ===========================================
 # Assessment Endpoints
@@ -1664,7 +1652,6 @@ async def get_assessments(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve assessments"
         )
-
 
 @api_router.post(
     "/assessments",
@@ -1723,7 +1710,6 @@ async def create_assessment(
             detail="Failed to create assessment"
         )
 
-
 @api_router.get(
     "/assessments/{assessment_id}",
     response_model="Assessment",
@@ -1743,7 +1729,6 @@ async def get_assessment(
 
     assessment.pop("_id", None)
     return Assessment(**assessment)
-
 
 @api_router.put(
     "/assessments/{assessment_id}",
@@ -1775,7 +1760,6 @@ async def update_assessment(
     updated.pop("_id", None)
     return Assessment(**updated)
 
-
 # ===========================================
 # Assessment Publish Endpoint
 # ===========================================
@@ -1784,7 +1768,6 @@ def _slugify(text: str) -> str:
     return "-".join(
         "".join(c for c in text.lower() if c.isalnum() or c == " ").split()
     )
-
 
 @api_router.post(
     "/assessments/{assessment_id}/publish",
@@ -1844,7 +1827,6 @@ async def publish_assessment(
             detail="Failed to publish assessment"
         )
 
-
 # ===========================================
 # Candidate Endpoints
 # ===========================================
@@ -1887,7 +1869,7 @@ async def get_candidates(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve candidates"
         )
-        
+
 # ===========================================
 # Subscription & Billing Endpoints (PRODUCTION READY)
 # ===========================================
@@ -1898,7 +1880,6 @@ PLAN_HIERARCHY = {
     "professional": 2,
     "enterprise": 3,
 }
-
 
 @api_router.get("/plans", response_model=List[Plan], tags=["Subscriptions"])
 async def get_plans():
@@ -1922,7 +1903,6 @@ async def get_plans():
     except Exception:
         logger.exception("Get plans error")
         raise HTTPException(500, "Failed to retrieve plans")
-
 
 # ===========================================
 # Checkout & Subscription Creation
@@ -1967,7 +1947,6 @@ async def create_checkout_session_endpoint(
     logger.info(f"Checkout created | user={current_user.id} plan={plan_id}")
     return session_data
 
-
 # ===========================================
 # Current Subscription
 # ===========================================
@@ -1988,7 +1967,6 @@ async def get_user_subscription(current_user: User = Depends(get_current_user)):
 
     sub.pop("_id", None)
     return sub
-
 
 # ===========================================
 # Cancel Subscription
@@ -2021,7 +1999,6 @@ async def cancel_subscription_endpoint(current_user: User = Depends(get_current_
 
     logger.info(f"Subscription cancelled | user={current_user.id}")
     return SuccessResponse(message="Subscription cancelled")
-
 
 # ===========================================
 # Upgrade Subscription
@@ -2069,6 +2046,78 @@ async def upgrade_subscription(
         "redirect_url": f"{config.FRONTEND_URL}/dashboard?plan={plan_id}",
     }
 
+# ===========================================
+# Stripe Webhook Handlers
+# ===========================================
+
+async def handle_checkout_completed(event):
+    """Handle checkout.session.completed event."""
+    try:
+        session = event["data"]["object"]
+        user_id = session.get("metadata", {}).get("user_id")
+        
+        if user_id:
+            await db_manager.db.users.update_one(
+                {"id": user_id},
+                {"$set": {
+                    "plan": session.get("metadata", {}).get("plan_id", "basic"),
+                    "updated_at": datetime.utcnow()
+                }}
+            )
+    except Exception as e:
+        logger.error(f"Error handling checkout completed: {e}")
+
+async def handle_subscription_updated(event):
+    """Handle customer.subscription.updated event."""
+    try:
+        subscription = event["data"]["object"]
+        stripe_subscription_id = subscription["id"]
+        
+        await db_manager.db.subscriptions.update_one(
+            {"stripe_subscription_id": stripe_subscription_id},
+            {"$set": {
+                "status": subscription["status"],
+                "current_period_end": datetime.fromtimestamp(subscription["current_period_end"]),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+    except Exception as e:
+        logger.error(f"Error handling subscription updated: {e}")
+
+async def handle_subscription_deleted(event):
+    """Handle customer.subscription.deleted event."""
+    try:
+        subscription = event["data"]["object"]
+        stripe_subscription_id = subscription["id"]
+        
+        await db_manager.db.subscriptions.update_one(
+            {"stripe_subscription_id": stripe_subscription_id},
+            {"$set": {
+                "status": "cancelled",
+                "cancelled_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+    except Exception as e:
+        logger.error(f"Error handling subscription deleted: {e}")
+
+async def handle_invoice_payment_succeeded(event):
+    """Handle invoice.payment_succeeded event."""
+    try:
+        invoice = event["data"]["object"]
+        # Handle successful payment
+        logger.info(f"Payment succeeded for invoice: {invoice['id']}")
+    except Exception as e:
+        logger.error(f"Error handling invoice payment succeeded: {e}")
+
+async def handle_invoice_payment_failed(event):
+    """Handle invoice.payment_failed event."""
+    try:
+        invoice = event["data"]["object"]
+        # Handle failed payment
+        logger.warning(f"Payment failed for invoice: {invoice['id']}")
+    except Exception as e:
+        logger.error(f"Error handling invoice payment failed: {e}")
 
 # ===========================================
 # Stripe Webhook (IDEMPOTENT)
@@ -2099,22 +2148,101 @@ async def stripe_webhook(request: Request):
         await handler(event)
 
     return {"received": True, "type": event["type"]}
+
+# ===========================================
+# Contact Form Endpoint
+# ===========================================
+
+@api_router.post("/contact", tags=["Public"])
+async def submit_contact_form(
+    contact_form: ContactFormCreate = Body(...)
+):
+    """Submit contact form."""
+    try:
+        contact_data = {
+            "id": str(uuid.uuid4()),
+            "name": contact_form.name,
+            "email": contact_form.email,
+            "subject": contact_form.subject,
+            "message": contact_form.message,
+            "created_at": datetime.utcnow(),
+            "status": "new"
+        }
+
+        await db_manager.db.contact_forms.insert_one(contact_data)
+        await send_contact_notification(contact_form)
+
+        return {
+            "success": True,
+            "message": "Thank you for your message. We'll get back to you soon."
+        }
+    except Exception as e:
+        logger.error(f"Contact form error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to submit contact form"
+        )
+
+# ===========================================
+# Demo Request Endpoint
+# ===========================================
+
+@api_router.post("/demo", tags=["Public"])
+async def request_demo(
+    demo_request: DemoRequestCreate = Body(...)
+):
+    """Request a demo."""
+    try:
+        demo_data = {
+            "id": str(uuid.uuid4()),
+            "name": demo_request.name,
+            "email": demo_request.email,
+            "company": demo_request.company,
+            "role": demo_request.role,
+            "company_size": demo_request.company_size,
+            "preferred_date": demo_request.preferred_date,
+            "message": demo_request.message,
+            "created_at": datetime.utcnow(),
+            "status": "pending"
+        }
+
+        await db_manager.db.demo_requests.insert_one(demo_data)
+        await send_demo_request_notification(demo_request)
+
+        return {
+            "success": True,
+            "message": "Demo request received. We'll contact you shortly."
+        }
+    except Exception as e:
+        logger.error(f"Demo request error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to submit demo request"
+        )
+
+# ===========================================
+# Test Email Endpoint (Development Only)
+# ===========================================
+
+@api_router.post("/test-email", tags=["Development"])
+async def test_email():
+    """Test email functionality (development only)."""
+    if config.is_production:
+        raise HTTPException(status_code=403, detail="Not available in production")
     
+    try:
+        from email_service import send_test_email
+        await send_test_email()
+        return {"message": "Test email sent successfully"}
+    except Exception as e:
+        logger.error(f"Test email error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to send test email: {str(e)}"
+        )
 
 # ===========================================
-# Root Redirect
-# ===========================================
-
-@app.get("/", include_in_schema=False)
-async def root_redirect():
-    """
-    Redirect root URL `/` to the API documentation.
-    This ensures visiting the base domain automatically sends users to `/api/`.
-    """
-    return RedirectResponse(url="/api/")
-
-# ===========================================
-# Include Router
+# Include Router (MUST BE AT THE END!)
 # ===========================================
 
 app.include_router(api_router)
@@ -2174,4 +2302,4 @@ if __name__ == "__main__":
         access_log=False if config.is_production else True,
         timeout_keep_alive=30,
         workers=4 if config.is_production else 1
-            )
+)
