@@ -67,9 +67,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # ===========================================
 from pydantic import BaseModel, Field, ConfigDict
 
-# ===========================================
-# Security Headers Middleware
-# ===========================================
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response: Response = await call_next(request)
@@ -550,7 +547,7 @@ async def robots():
         "User-agent: *\n"
         "Disallow: /api/\n"
         "Allow: /health\n"
-    )
+)
     
 # ===========================================
 # Authentication & Session Management
@@ -605,23 +602,6 @@ async def get_current_user(
     except Exception as e:
         logger.error(f"Authentication error: {e}")
         raise HTTPException(status_code=401, detail="Authentication failed")
-
-# ===========================================
-# Admin Authorization Dependency
-# ===========================================
-
-def get_current_admin_user(
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Restricts access to admin-only users
-    """
-    if not getattr(current_user, "is_admin", False):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
-    return current_user
 
 async def create_user_session(user_id: str, user_agent: str = None, ip_address: str = None) -> str:
     """Create a new user session."""
@@ -858,7 +838,7 @@ async def health_check():
             "database": db_status == "healthy",
             "stripe": stripe_status == "healthy",
         },
-    }
+        }
     
 
 # ===========================================
@@ -944,17 +924,6 @@ async def api_status():
         },
     )
 
-# ===========================================
-# Admin Dashboard Endpoint
-# ===========================================
-
-@api_router.get(
-    "/admin/dashboard",
-    dependencies=[Depends(get_current_admin_user)],
-    tags=["Admin"]
-)
-async def admin_dashboard():
-    return {"status": "Admin access granted"}
 
 # ===========================================
 # Authentication Routes
@@ -1108,6 +1077,13 @@ async def logout(
         "redirect_url": f"{config.FRONTEND_URL}/login",
     }
 
+
+# ===========================================
+# REGISTER ROUTER (ONCE, AT THE END)
+# ===========================================
+
+app.include_router(api_router)
+        
 
 # ===========================================
 # Two-Factor Authentication Endpoints
@@ -1362,6 +1338,23 @@ async def verify_2fa_login(
             detail="Two-factor authentication failed"
         )
 
+
+# ===========================================
+# Security Models
+# ===========================================
+
+class TwoFactorVerify(BaseModel):
+    token: str
+
+
+class TwoFactorSetup(BaseModel):
+    secret: str
+    qr_code_url: str
+    backup_codes: List[str]
+    message: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+        
 
 # ===========================================
 # Session Management Endpoints
@@ -1629,7 +1622,7 @@ async def reset_password(
         raise HTTPException(
             status_code=500,
             detail="Failed to reset password"
-        )
+            )
         
 
 # ===========================================
@@ -2078,79 +2071,6 @@ async def upgrade_subscription(
 
 
 # ===========================================
-# Stripe Webhook Handlers
-# ===========================================
-
-async def handle_checkout_completed(event):
-    """Handle checkout.session.completed event."""
-    try:
-        session = event["data"]["object"]
-        user_id = session.get("metadata", {}).get("user_id")
-        
-        if user_id:
-            await db_manager.db.users.update_one(
-                {"id": user_id},
-                {"$set": {
-                    "plan": session.get("metadata", {}).get("plan_id", "basic"),
-                    "updated_at": datetime.utcnow()
-                }}
-            )
-    except Exception as e:
-        logger.error(f"Error handling checkout completed: {e}")
-
-async def handle_subscription_updated(event):
-    """Handle customer.subscription.updated event."""
-    try:
-        subscription = event["data"]["object"]
-        stripe_subscription_id = subscription["id"]
-        
-        await db_manager.db.subscriptions.update_one(
-            {"stripe_subscription_id": stripe_subscription_id},
-            {"$set": {
-                "status": subscription["status"],
-                "current_period_end": datetime.fromtimestamp(subscription["current_period_end"]),
-                "updated_at": datetime.utcnow()
-            }}
-        )
-    except Exception as e:
-        logger.error(f"Error handling subscription updated: {e}")
-
-async def handle_subscription_deleted(event):
-    """Handle customer.subscription.deleted event."""
-    try:
-        subscription = event["data"]["object"]
-        stripe_subscription_id = subscription["id"]
-        
-        await db_manager.db.subscriptions.update_one(
-            {"stripe_subscription_id": stripe_subscription_id},
-            {"$set": {
-                "status": "cancelled",
-                "cancelled_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }}
-        )
-    except Exception as e:
-        logger.error(f"Error handling subscription deleted: {e}")
-
-async def handle_invoice_payment_succeeded(event):
-    """Handle invoice.payment_succeeded event."""
-    try:
-        invoice = event["data"]["object"]
-        # Handle successful payment
-        logger.info(f"Payment succeeded for invoice: {invoice['id']}")
-    except Exception as e:
-        logger.error(f"Error handling invoice payment succeeded: {e}")
-
-async def handle_invoice_payment_failed(event):
-    """Handle invoice.payment_failed event."""
-    try:
-        invoice = event["data"]["object"]
-        # Handle failed payment
-        logger.warning(f"Payment failed for invoice: {invoice['id']}")
-    except Exception as e:
-        logger.error(f"Error handling invoice payment failed: {e}")
-
-# ===========================================
 # Stripe Webhook (IDEMPOTENT)
 # ===========================================
 
@@ -2254,4 +2174,4 @@ if __name__ == "__main__":
         access_log=False if config.is_production else True,
         timeout_keep_alive=30,
         workers=4 if config.is_production else 1
-    )
+            )
