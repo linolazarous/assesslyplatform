@@ -67,27 +67,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # ===========================================
 from pydantic import BaseModel, Field, ConfigDict
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response: Response = await call_next(request)
-
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' https://www.googletagmanager.com; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data: blob:; "
-            "connect-src 'self' https://assesslyplatform-pfm1.onrender.com; "
-            "frame-ancestors 'none';"
-        )
-
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-        return response
-        
-# Import database models with clear names
+# ===========================================
+# Import Database Models
+# ===========================================
 from models import (
     UserModel,
     AssessmentModel,
@@ -106,7 +88,9 @@ from models import (
     CandidateResultsModel
 )
 
-# Import API schemas
+# ===========================================
+# Import API Schemas
+# ===========================================
 from schemas import (
     User, UserCreate, UserLogin, UserUpdate, Token,
     ContactFormCreate, DemoRequestCreate,
@@ -119,9 +103,12 @@ from schemas import (
     Plan, TwoFactorSetup, SessionInfo, ResetPasswordRequest,
     AssessmentPublishRequest, AssessmentDuplicateRequest,
     CandidateResendInvite, CandidateResults,
-    TwoFactorVerify, APIStatus
+    TwoFactorVerify, APIStatus, Assessment, Candidate
 )
 
+# ===========================================
+# Import Utility Modules
+# ===========================================
 from auth_utils import (
     verify_password,
     get_password_hash,
@@ -194,7 +181,8 @@ class Config:
         "MAX_SESSIONS_PER_USER": ("5", "Maximum concurrent sessions"),
         "SESSION_TIMEOUT_MINUTES": ("43200", "Session timeout in minutes (30 days)"),
         "API_RATE_LIMIT_PER_USER": ("1000/hour", "API rate limit per user"),
-        "UPLOAD_MAX_SIZE_MB": ("10", "Maximum upload size in MB")
+        "UPLOAD_MAX_SIZE_MB": ("10", "Maximum upload size in MB"),
+        "ADMIN_EMAILS": ("", "Comma-separated list of admin emails")
     }
     
     def __init__(self):
@@ -253,6 +241,10 @@ class Config:
         self.API_RATE_LIMIT_PER_USER = os.getenv("API_RATE_LIMIT_PER_USER", "1000/hour")
         self.UPLOAD_MAX_SIZE_MB = int(os.getenv("UPLOAD_MAX_SIZE_MB", "10"))
         
+        # Admin configuration
+        admin_emails = os.getenv("ADMIN_EMAILS", "")
+        self.ADMIN_EMAILS = [email.strip().lower() for email in admin_emails.split(",") if email.strip()]
+        
         # Validate database name (no spaces allowed)
         if " " in self.DB_NAME:
             raise ValueError("Database name cannot contain spaces")
@@ -300,6 +292,7 @@ class DatabaseManager:
             await self.db.users.create_index([("google_id", 1)], sparse=True)
             await self.db.users.create_index([("github_id", 1)], sparse=True)
             await self.db.users.create_index([("two_factor_enabled", 1)])
+            await self.db.users.create_index([("is_admin", 1)])
             
             # Assessments collection indexes
             await self.db.assessments.create_index([("user_id", 1)])
@@ -342,21 +335,21 @@ class DatabaseManager:
             await self.db.oauth_states.create_index([("state", 1)], unique=True)
             await self.db.oauth_states.create_index([("created_at", 1)], expireAfterSeconds=300)  # 5 minutes TTL
             
-            # NEW: User sessions collection indexes
+            # User sessions collection indexes
             await self.db.user_sessions.create_index([("user_id", 1)])
             await self.db.user_sessions.create_index([("session_id", 1)], unique=True)
             await self.db.user_sessions.create_index([("expires_at", 1)], expireAfterSeconds=0)  # TTL based on expires_at
             
-            # NEW: 2FA secrets collection indexes
+            # 2FA secrets collection indexes
             await self.db.two_factor_secrets.create_index([("user_id", 1)], unique=True)
             await self.db.two_factor_secrets.create_index([("created_at", 1)], expireAfterSeconds=300)  # 5 minutes TTL for unverified
             
-            # NEW: Candidate results collection indexes
+            # Candidate results collection indexes
             await self.db.candidate_results.create_index([("candidate_id", 1)], unique=True)
             await self.db.candidate_results.create_index([("assessment_id", 1)])
             await self.db.candidate_results.create_index([("score", -1)])
             
-            # NEW: API logs collection indexes
+            # API logs collection indexes
             await self.db.api_logs.create_index([("user_id", 1)])
             await self.db.api_logs.create_index([("endpoint", 1)])
             await self.db.api_logs.create_index([("created_at", -1)])
@@ -407,7 +400,6 @@ logging.basicConfig(
 logger = logging.getLogger("assessly-api")
 logger.setLevel(log_level)
 logger.propagate = False
-
 
 # ===========================================
 # FastAPI App Configuration
@@ -525,30 +517,6 @@ app.add_middleware(SecurityHeadersMiddleware)
 # 4️⃣ Compression Middleware (LAST)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# -------------------------
-# Root & Infrastructure Routes
-# -------------------------
-
-@app.head("/")
-async def head_root():
-    return Response(status_code=200)
-
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/api", status_code=307)
-
-@app.get("/favicon.ico")
-async def favicon():
-    return Response(status_code=204)
-
-@app.get("/robots.txt")
-async def robots():
-    return PlainTextResponse(
-        "User-agent: *\n"
-        "Disallow: /api/\n"
-        "Allow: /health\n"
-)
-    
 # ===========================================
 # Authentication & Session Management
 # ===========================================
@@ -602,6 +570,23 @@ async def get_current_user(
     except Exception as e:
         logger.error(f"Authentication error: {e}")
         raise HTTPException(status_code=401, detail="Authentication failed")
+
+# ===========================================
+# Admin Authorization Dependency
+# ===========================================
+
+def get_current_admin_user(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Restricts access to admin-only users
+    """
+    if not getattr(current_user, "is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user
 
 async def create_user_session(user_id: str, user_agent: str = None, ip_address: str = None) -> str:
     """Create a new user session."""
@@ -838,15 +823,13 @@ async def health_check():
             "database": db_status == "healthy",
             "stripe": stripe_status == "healthy",
         },
-        }
-    
+    }
 
 # ===========================================
 # API Router
 # ===========================================
 
 api_router = APIRouter(prefix="/api", tags=["API"])
-
 
 # ===========================================
 # API Root
@@ -873,7 +856,6 @@ async def api_root():
             "system": ["/api/status", "/health"],
         },
     }
-
 
 # ===========================================
 # System Status Endpoint (ADMIN ONLY)
@@ -924,6 +906,22 @@ async def api_status():
         },
     )
 
+# ===========================================
+# Admin Dashboard Endpoint
+# ===========================================
+
+@api_router.get(
+    "/admin/dashboard",
+    dependencies=[Depends(get_current_admin_user)],
+    tags=["Admin"]
+)
+async def admin_dashboard():
+    """Admin-only dashboard endpoint."""
+    return {
+        "status": "Admin access granted",
+        "timestamp": datetime.utcnow().isoformat(),
+        "message": "Welcome to the admin dashboard"
+    }
 
 # ===========================================
 # Authentication Routes
@@ -937,6 +935,9 @@ async def api_status():
 )
 async def register(request: Request, user_create: UserCreate = Body(...)):
     email = user_create.email.strip().lower()
+    
+    # Check if user is admin based on email
+    is_admin = email in config.ADMIN_EMAILS
 
     if await db_manager.db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="User with this email already exists")
@@ -951,6 +952,7 @@ async def register(request: Request, user_create: UserCreate = Body(...)):
         "hashed_password": hashed_password,
         "organization": user_create.organization,
         "is_verified": False,
+        "is_admin": is_admin,
         "two_factor_enabled": False,
         "plan": "free",
         "created_at": datetime.utcnow(),
@@ -1076,14 +1078,6 @@ async def logout(
         "message": "Successfully logged out",
         "redirect_url": f"{config.FRONTEND_URL}/login",
     }
-
-
-# ===========================================
-# REGISTER ROUTER (ONCE, AT THE END)
-# ===========================================
-
-app.include_router(api_router)
-        
 
 # ===========================================
 # Two-Factor Authentication Endpoints
@@ -1338,24 +1332,6 @@ async def verify_2fa_login(
             detail="Two-factor authentication failed"
         )
 
-
-# ===========================================
-# Security Models
-# ===========================================
-
-class TwoFactorVerify(BaseModel):
-    token: str
-
-
-class TwoFactorSetup(BaseModel):
-    secret: str
-    qr_code_url: str
-    backup_codes: List[str]
-    message: Optional[str] = None
-
-    model_config = ConfigDict(from_attributes=True)
-        
-
 # ===========================================
 # Session Management Endpoints
 # ===========================================
@@ -1455,7 +1431,6 @@ async def terminate_all_user_sessions(
             detail="Failed to terminate sessions"
         )
 
-
 # ===========================================
 # Email Verification Endpoints
 # ===========================================
@@ -1527,7 +1502,6 @@ async def resend_verification(email: str = Body(..., embed=True)):
             status_code=500,
             detail="Failed to resend verification email"
         )
-
 
 # ===========================================
 # Password Reset Endpoints
@@ -1622,8 +1596,7 @@ async def reset_password(
         raise HTTPException(
             status_code=500,
             detail="Failed to reset password"
-            )
-        
+        )
 
 # ===========================================
 # Assessment Endpoints
@@ -1631,7 +1604,7 @@ async def reset_password(
 
 @api_router.get(
     "/assessments",
-    response_model=List["Assessment"],
+    response_model=List[Assessment],
     tags=["Assessments"]
 )
 async def get_assessments(
@@ -1668,7 +1641,7 @@ async def get_assessments(
 
 @api_router.post(
     "/assessments",
-    response_model="Assessment",
+    response_model=Assessment,
     status_code=status.HTTP_201_CREATED,
     tags=["Assessments"]
 )
@@ -1726,7 +1699,7 @@ async def create_assessment(
 
 @api_router.get(
     "/assessments/{assessment_id}",
-    response_model="Assessment",
+    response_model=Assessment,
     tags=["Assessments"]
 )
 async def get_assessment(
@@ -1747,7 +1720,7 @@ async def get_assessment(
 
 @api_router.put(
     "/assessments/{assessment_id}",
-    response_model="Assessment",
+    response_model=Assessment,
     tags=["Assessments"]
 )
 async def update_assessment(
@@ -1775,7 +1748,6 @@ async def update_assessment(
     updated.pop("_id", None)
     return Assessment(**updated)
 
-
 # ===========================================
 # Assessment Publish Endpoint
 # ===========================================
@@ -1788,7 +1760,7 @@ def _slugify(text: str) -> str:
 
 @api_router.post(
     "/assessments/{assessment_id}/publish",
-    response_model="Assessment",
+    response_model=Assessment,
     tags=["Assessments"]
 )
 async def publish_assessment(
@@ -1844,14 +1816,13 @@ async def publish_assessment(
             detail="Failed to publish assessment"
         )
 
-
 # ===========================================
 # Candidate Endpoints
 # ===========================================
 
 @api_router.get(
     "/candidates",
-    response_model=List["Candidate"],
+    response_model=List[Candidate],
     tags=["Candidates"]
 )
 async def get_candidates(
@@ -1887,7 +1858,7 @@ async def get_candidates(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve candidates"
         )
-        
+
 # ===========================================
 # Subscription & Billing Endpoints (PRODUCTION READY)
 # ===========================================
@@ -2069,6 +2040,74 @@ async def upgrade_subscription(
         "redirect_url": f"{config.FRONTEND_URL}/dashboard?plan={plan_id}",
     }
 
+# ===========================================
+# Stripe Webhook Handlers
+# ===========================================
+
+async def handle_checkout_completed(event: dict):
+    """Handle checkout.session.completed event."""
+    session = event["data"]["object"]
+    user_id = session.get("metadata", {}).get("user_id")
+    if user_id:
+        await db_manager.db.users.update_one(
+            {"id": user_id},
+            {"$set": {"plan": session.get("metadata", {}).get("plan_id", "basic")}}
+        )
+
+async def handle_subscription_updated(event: dict):
+    """Handle customer.subscription.updated event."""
+    subscription = event["data"]["object"]
+    customer_id = subscription.get("customer")
+    if customer_id:
+        await db_manager.db.subscriptions.update_one(
+            {"stripe_customer_id": customer_id},
+            {"$set": {
+                "status": subscription.get("status"),
+                "current_period_end": datetime.fromtimestamp(subscription.get("current_period_end")),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+
+async def handle_subscription_deleted(event: dict):
+    """Handle customer.subscription.deleted event."""
+    subscription = event["data"]["object"]
+    customer_id = subscription.get("customer")
+    if customer_id:
+        await db_manager.db.subscriptions.update_one(
+            {"stripe_customer_id": customer_id},
+            {"$set": {
+                "status": "cancelled",
+                "cancelled_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+
+async def handle_invoice_payment_succeeded(event: dict):
+    """Handle invoice.payment_succeeded event."""
+    invoice = event["data"]["object"]
+    customer_id = invoice.get("customer")
+    if customer_id:
+        await db_manager.db.invoices.insert_one({
+            "stripe_invoice_id": invoice.get("id"),
+            "stripe_customer_id": customer_id,
+            "amount_paid": invoice.get("amount_paid"),
+            "currency": invoice.get("currency"),
+            "status": invoice.get("status"),
+            "created_at": datetime.utcnow()
+        })
+
+async def handle_invoice_payment_failed(event: dict):
+    """Handle invoice.payment_failed event."""
+    invoice = event["data"]["object"]
+    customer_id = invoice.get("customer")
+    if customer_id:
+        await db_manager.db.subscriptions.update_one(
+            {"stripe_customer_id": customer_id},
+            {"$set": {
+                "status": "past_due",
+                "updated_at": datetime.utcnow()
+            }}
+        )
 
 # ===========================================
 # Stripe Webhook (IDEMPOTENT)
@@ -2099,19 +2138,30 @@ async def stripe_webhook(request: Request):
         await handler(event)
 
     return {"received": True, "type": event["type"]}
-    
 
 # ===========================================
-# Root Redirect
+# Basic Root Endpoints
 # ===========================================
 
-@app.get("/", include_in_schema=False)
-async def root_redirect():
-    """
-    Redirect root URL `/` to the API documentation.
-    This ensures visiting the base domain automatically sends users to `/api/`.
-    """
-    return RedirectResponse(url="/api/")
+@app.head("/")
+async def head_root():
+    return Response(status_code=200)
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/api", status_code=307)
+
+@app.get("/favicon.ico")
+async def favicon():
+    return Response(status_code=204)
+
+@app.get("/robots.txt")
+async def robots():
+    return PlainTextResponse(
+        "User-agent: *\n"
+        "Disallow: /api/\n"
+        "Allow: /health\n"
+    )
 
 # ===========================================
 # Include Router
