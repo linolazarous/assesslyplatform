@@ -10,7 +10,7 @@ import uuid
 import secrets
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from urllib.parse import urlencode
 
 # ===========================================
@@ -35,6 +35,9 @@ from fastapi import (
     Body,
     Header,
     Path,
+    Form,
+    UploadFile,
+    File,
 )
 
 # ===========================================
@@ -45,6 +48,7 @@ from fastapi.responses import (
     RedirectResponse,
     PlainTextResponse,
     FileResponse,
+    StreamingResponse,
 )
 
 # ===========================================
@@ -65,7 +69,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # ===========================================
 # Pydantic
 # ===========================================
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
 # ===========================================
 # Import Database Models
@@ -103,7 +107,9 @@ from schemas import (
     Plan, TwoFactorSetup, SessionInfo, ResetPasswordRequest,
     AssessmentPublishRequest, AssessmentDuplicateRequest,
     CandidateResendInvite, CandidateResults,
-    TwoFactorVerify, APIStatus, Assessment, Candidate
+    TwoFactorVerify, APIStatus, Assessment, Candidate,
+    Organization, ContactForm, DemoRequest, Question,
+    AssessmentAnalytics, PublicAssessment
 )
 
 # ===========================================
@@ -182,7 +188,8 @@ class Config:
         "SESSION_TIMEOUT_MINUTES": ("43200", "Session timeout in minutes (30 days)"),
         "API_RATE_LIMIT_PER_USER": ("1000/hour", "API rate limit per user"),
         "UPLOAD_MAX_SIZE_MB": ("10", "Maximum upload size in MB"),
-        "ADMIN_EMAILS": ("", "Comma-separated list of admin emails")
+        "ADMIN_EMAILS": ("", "Comma-separated list of admin emails"),
+        "PUBLIC_API_RATE_LIMIT": ("10/minute", "Public API rate limit")
     }
     
     def __init__(self):
@@ -240,6 +247,7 @@ class Config:
         self.SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "43200"))
         self.API_RATE_LIMIT_PER_USER = os.getenv("API_RATE_LIMIT_PER_USER", "1000/hour")
         self.UPLOAD_MAX_SIZE_MB = int(os.getenv("UPLOAD_MAX_SIZE_MB", "10"))
+        self.PUBLIC_API_RATE_LIMIT = os.getenv("PUBLIC_API_RATE_LIMIT", "10/minute")
         
         # Admin configuration
         admin_emails = os.getenv("ADMIN_EMAILS", "")
@@ -300,6 +308,7 @@ class DatabaseManager:
             await self.db.assessments.create_index([("status", 1)])
             await self.db.assessments.create_index([("created_at", -1)])
             await self.db.assessments.create_index([("is_published", 1)])
+            await self.db.assessments.create_index([("public_slug", 1)], unique=True, sparse=True)
             
             # Candidates collection indexes
             await self.db.candidates.create_index([("assessment_id", 1)])
@@ -394,7 +403,7 @@ logging.basicConfig(
     level=log_level,
     handlers=handlers,
     format="%(asctime)s | %(levelname)s | %(name)s | %(module)s:%(lineno)d | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+    datefmt="%Y-%m-d %H:%M:%S",
 )
 
 logger = logging.getLogger("assessly-api")
@@ -832,6 +841,30 @@ async def health_check():
 api_router = APIRouter(prefix="/api", tags=["API"])
 
 # ===========================================
+# Basic Routes
+# ===========================================
+
+@app.head("/")
+async def head_root():
+    return Response(status_code=200)
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/api", status_code=307)
+
+@app.get("/favicon.ico")
+async def favicon():
+    return Response(status_code=204)
+
+@app.get("/robots.txt")
+async def robots():
+    return PlainTextResponse(
+        "User-agent: *\n"
+        "Disallow: /api/\n"
+        "Allow: /health\n"
+    )
+
+# ===========================================
 # API Root
 # ===========================================
 
@@ -853,7 +886,38 @@ async def api_root():
                 "/api/auth/me",
                 "/api/auth/logout",
             ],
-            "system": ["/api/status", "/health"],
+            "assessments": [
+                "/api/assessments",
+                "/api/assessments/{id}",
+                "/api/assessments/{id}/questions",
+                "/api/assessments/{id}/publish",
+                "/api/assessments/{id}/duplicate",
+            ],
+            "candidates": [
+                "/api/candidates",
+                "/api/candidates/{id}",
+                "/api/candidates/{id}/invite",
+                "/api/candidates/{id}/results",
+            ],
+            "organizations": [
+                "/api/organizations",
+                "/api/organizations/{id}",
+            ],
+            "subscriptions": [
+                "/api/subscriptions/me",
+                "/api/subscriptions/checkout",
+                "/api/subscriptions/cancel",
+                "/api/plans",
+            ],
+            "system": [
+                "/api/status",
+                "/health",
+                "/api/admin/dashboard"
+            ],
+            "public": [
+                "/api/public/assessment/{slug}",
+                "/api/public/submit/{token}",
+            ]
         },
     }
 
@@ -917,11 +981,37 @@ async def api_status():
 )
 async def admin_dashboard():
     """Admin-only dashboard endpoint."""
-    return {
-        "status": "Admin access granted",
-        "timestamp": datetime.utcnow().isoformat(),
-        "message": "Welcome to the admin dashboard"
-    }
+    try:
+        # Get system statistics
+        total_users = await db_manager.db.users.count_documents({})
+        total_assessments = await db_manager.db.assessments.count_documents({})
+        total_candidates = await db_manager.db.candidates.count_documents({})
+        active_subscriptions = await db_manager.db.subscriptions.count_documents({"status": "active"})
+        
+        # Get recent activity
+        recent_users = await db_manager.db.users.find().sort("created_at", -1).limit(10).to_list(length=10)
+        recent_assessments = await db_manager.db.assessments.find().sort("created_at", -1).limit(10).to_list(length=10)
+        
+        return {
+            "status": "Admin access granted",
+            "timestamp": datetime.utcnow().isoformat(),
+            "stats": {
+                "total_users": total_users,
+                "total_assessments": total_assessments,
+                "total_candidates": total_candidates,
+                "active_subscriptions": active_subscriptions,
+            },
+            "recent_activity": {
+                "users": [{"id": u["id"], "email": u["email"], "created_at": u["created_at"]} for u in recent_users],
+                "assessments": [{"id": a["id"], "title": a["title"], "created_at": a["created_at"]} for a in recent_assessments],
+            }
+        }
+    except Exception as e:
+        logger.error(f"Admin dashboard error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to load admin dashboard"
+        )
 
 # ===========================================
 # Authentication Routes
@@ -1078,6 +1168,77 @@ async def logout(
         "message": "Successfully logged out",
         "redirect_url": f"{config.FRONTEND_URL}/login",
     }
+
+# ===========================================
+# User Management Endpoints
+# ===========================================
+
+@api_router.put("/auth/profile", response_model=User, tags=["Authentication"])
+async def update_profile(
+    user_update: UserUpdate = Body(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Update user profile."""
+    try:
+        update_data = user_update.dict(exclude_unset=True)
+        update_data["updated_at"] = datetime.utcnow()
+        
+        await db_manager.db.users.update_one(
+            {"id": current_user.id},
+            {"$set": update_data}
+        )
+        
+        updated_user = await db_manager.db.users.find_one({"id": current_user.id})
+        updated_user.pop("_id", None)
+        return User(**updated_user)
+    except Exception as e:
+        logger.error(f"Update profile error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update profile"
+        )
+
+@api_router.post("/auth/change-password", tags=["Authentication"])
+async def change_password(
+    current_password: str = Body(...),
+    new_password: str = Body(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Change user password."""
+    try:
+        user_data = await db_manager.db.users.find_one({"id": current_user.id})
+        
+        if not verify_password(current_password, user_data.get("hashed_password", "")):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect"
+            )
+        
+        if len(new_password) < 8:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password must be at least 8 characters"
+            )
+        
+        await db_manager.db.users.update_one(
+            {"id": current_user.id},
+            {"$set": {
+                "hashed_password": get_password_hash(new_password),
+                "password_changed_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+        
+        # Terminate all sessions except current if session management is implemented
+        return SuccessResponse(message="Password changed successfully")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Change password error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to change password"
+        )
 
 # ===========================================
 # Two-Factor Authentication Endpoints
@@ -1611,18 +1772,25 @@ async def get_assessments(
     current_user: User = Depends(get_current_user),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    assessment_status: Optional[str] = Query(None)
+    assessment_status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None)
 ):
     try:
         query = {"user_id": current_user.id}
         if assessment_status:
             query["status"] = assessment_status
+        if search:
+            query["$or"] = [
+                {"title": {"$regex": search, "$options": "i"}},
+                {"description": {"$regex": search, "$options": "i"}}
+            ]
 
         assessments = (
             await db_manager.db.assessments
             .find(query)
             .skip(skip)
             .limit(limit)
+            .sort("updated_at", -1)
             .to_list(length=limit)
         )
 
@@ -1748,6 +1916,158 @@ async def update_assessment(
     updated.pop("_id", None)
     return Assessment(**updated)
 
+
+@api_router.delete(
+    "/assessments/{assessment_id}",
+    tags=["Assessments"]
+)
+async def delete_assessment(
+    assessment_id: str = Path(...),
+    current_user: User = Depends(get_current_user)
+):
+    assessment = await db_manager.db.assessments.find_one({
+        "id": assessment_id,
+        "user_id": current_user.id
+    })
+
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # Delete associated candidates
+    await db_manager.db.candidates.delete_many({"assessment_id": assessment_id})
+    
+    # Delete assessment
+    await db_manager.db.assessments.delete_one({"id": assessment_id})
+
+    return SuccessResponse(message="Assessment deleted successfully")
+
+# ===========================================
+# Assessment Questions Endpoints
+# ===========================================
+
+@api_router.get(
+    "/assessments/{assessment_id}/questions",
+    response_model=List[Question],
+    tags=["Assessments"]
+)
+async def get_assessment_questions(
+    assessment_id: str = Path(...),
+    current_user: User = Depends(get_current_user)
+):
+    assessment = await db_manager.db.assessments.find_one({
+        "id": assessment_id,
+        "user_id": current_user.id
+    })
+
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    return assessment.get("questions", [])
+
+
+@api_router.post(
+    "/assessments/{assessment_id}/questions",
+    response_model=Question,
+    tags=["Assessments"]
+)
+async def add_question(
+    assessment_id: str = Path(...),
+    question: QuestionUpdate = Body(...),
+    current_user: User = Depends(get_current_user)
+):
+    assessment = await db_manager.db.assessments.find_one({
+        "id": assessment_id,
+        "user_id": current_user.id
+    })
+
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    question_id = str(uuid.uuid4())
+    question_data = {
+        "id": question_id,
+        **question.dict(),
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+
+    await db_manager.db.assessments.update_one(
+        {"id": assessment_id},
+        {"$push": {"questions": question_data}, "$set": {"updated_at": datetime.utcnow()}}
+    )
+
+    return question_data
+
+
+@api_router.put(
+    "/assessments/{assessment_id}/questions/{question_id}",
+    response_model=Question,
+    tags=["Assessments"]
+)
+async def update_question(
+    assessment_id: str = Path(...),
+    question_id: str = Path(...),
+    question_update: QuestionUpdate = Body(...),
+    current_user: User = Depends(get_current_user)
+):
+    assessment = await db_manager.db.assessments.find_one({
+        "id": assessment_id,
+        "user_id": current_user.id
+    })
+
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # Find the question index
+    questions = assessment.get("questions", [])
+    question_index = next((i for i, q in enumerate(questions) if q.get("id") == question_id), None)
+    
+    if question_index is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    # Update the question
+    updated_question = {
+        **questions[question_index],
+        **question_update.dict(exclude_unset=True),
+        "updated_at": datetime.utcnow()
+    }
+    questions[question_index] = updated_question
+
+    await db_manager.db.assessments.update_one(
+        {"id": assessment_id},
+        {"$set": {"questions": questions, "updated_at": datetime.utcnow()}}
+    )
+
+    return updated_question
+
+
+@api_router.delete(
+    "/assessments/{assessment_id}/questions/{question_id}",
+    tags=["Assessments"]
+)
+async def delete_question(
+    assessment_id: str = Path(...),
+    question_id: str = Path(...),
+    current_user: User = Depends(get_current_user)
+):
+    assessment = await db_manager.db.assessments.find_one({
+        "id": assessment_id,
+        "user_id": current_user.id
+    })
+
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # Filter out the question
+    questions = [q for q in assessment.get("questions", []) if q.get("id") != question_id]
+
+    await db_manager.db.assessments.update_one(
+        {"id": assessment_id},
+        {"$set": {"questions": questions, "updated_at": datetime.utcnow()}}
+    )
+
+    return SuccessResponse(message="Question deleted successfully")
+
 # ===========================================
 # Assessment Publish Endpoint
 # ===========================================
@@ -1816,6 +2136,138 @@ async def publish_assessment(
             detail="Failed to publish assessment"
         )
 
+
+@api_router.post(
+    "/assessments/{assessment_id}/duplicate",
+    response_model=Assessment,
+    tags=["Assessments"]
+)
+async def duplicate_assessment(
+    assessment_id: str = Path(...),
+    duplicate_request: AssessmentDuplicateRequest = Body(...),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        assessment = await db_manager.db.assessments.find_one({
+            "id": assessment_id,
+            "user_id": current_user.id
+        })
+        if not assessment:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
+        # Check plan limits
+        user_data = await db_manager.db.users.find_one({"id": current_user.id}) or {}
+        plan = user_data.get("plan", "free")
+        
+        if plan == "free":
+            count = await db_manager.db.assessments.count_documents(
+                {"user_id": current_user.id}
+            )
+            if count >= 5:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Free plan limit reached (5 assessments)"
+                )
+
+        now = datetime.utcnow()
+        new_assessment_id = str(uuid.uuid4())
+        
+        new_assessment_data = {
+            "id": new_assessment_id,
+            "user_id": current_user.id,
+            "organization_id": current_user.organization_id,
+            "title": duplicate_request.new_title or f"{assessment['title']} (Copy)",
+            "description": assessment.get("description", ""),
+            "status": "draft",
+            "is_published": False,
+            "settings": assessment.get("settings", {}),
+            "questions": assessment.get("questions", []),
+            "candidate_count": 0,
+            "completion_rate": 0.0,
+            "average_time": 0.0,
+            "average_score": 0.0,
+            "created_at": now,
+            "updated_at": now
+        }
+
+        await db_manager.db.assessments.insert_one(new_assessment_data)
+        return Assessment(**new_assessment_data)
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Duplicate assessment error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to duplicate assessment"
+        )
+
+# ===========================================
+# Assessment Analytics Endpoints
+# ===========================================
+
+@api_router.get(
+    "/assessments/{assessment_id}/analytics",
+    response_model=AssessmentAnalytics,
+    tags=["Assessments"]
+)
+async def get_assessment_analytics(
+    assessment_id: str = Path(...),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        assessment = await db_manager.db.assessments.find_one({
+            "id": assessment_id,
+            "user_id": current_user.id
+        })
+        if not assessment:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
+        # Get candidate statistics
+        candidates = await db_manager.db.candidates.find({
+            "assessment_id": assessment_id
+        }).to_list(length=1000)
+
+        total_candidates = len(candidates)
+        completed_candidates = len([c for c in candidates if c.get("status") == "completed"])
+        pending_candidates = len([c for c in candidates if c.get("status") == "invited"])
+        
+        # Get results statistics
+        results = await db_manager.db.candidate_results.find({
+            "assessment_id": assessment_id
+        }).to_list(length=1000)
+
+        scores = [r.get("score", 0) for r in results if r.get("score") is not None]
+        average_score = sum(scores) / len(scores) if scores else 0
+        completion_times = [r.get("completion_time", 0) for r in results if r.get("completion_time")]
+        average_time = sum(completion_times) / len(completion_times) if completion_times else 0
+
+        return AssessmentAnalytics(
+            assessment_id=assessment_id,
+            total_candidates=total_candidates,
+            completed_candidates=completed_candidates,
+            pending_candidates=pending_candidates,
+            completion_rate=(completed_candidates / total_candidates * 100) if total_candidates > 0 else 0,
+            average_score=average_score,
+            average_time=average_time,
+            score_distribution={
+                "0-20": len([s for s in scores if 0 <= s <= 20]),
+                "21-40": len([s for s in scores if 21 <= s <= 40]),
+                "41-60": len([s for s in scores if 41 <= s <= 60]),
+                "61-80": len([s for s in scores if 61 <= s <= 80]),
+                "81-100": len([s for s in scores if 81 <= s <= 100]),
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Get analytics error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve assessment analytics"
+        )
+
 # ===========================================
 # Candidate Endpoints
 # ===========================================
@@ -1830,7 +2282,8 @@ async def get_candidates(
     assessment_id: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    candidate_status: Optional[str] = Query(None)
+    candidate_status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None)
 ):
     try:
         query = {"user_id": current_user.id}
@@ -1838,12 +2291,18 @@ async def get_candidates(
             query["assessment_id"] = assessment_id
         if candidate_status:
             query["status"] = candidate_status
+        if search:
+            query["$or"] = [
+                {"name": {"$regex": search, "$options": "i"}},
+                {"email": {"$regex": search, "$options": "i"}}
+            ]
 
         candidates = (
             await db_manager.db.candidates
             .find(query)
             .skip(skip)
             .limit(limit)
+            .sort("created_at", -1)
             .to_list(length=limit)
         )
 
@@ -1859,8 +2318,785 @@ async def get_candidates(
             detail="Failed to retrieve candidates"
         )
 
+
+@api_router.post(
+    "/candidates",
+    response_model=Candidate,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Candidates"]
+)
+async def create_candidate(
+    candidate_create: CandidateCreate = Body(...),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        # Check if assessment exists and belongs to user
+        assessment = await db_manager.db.assessments.find_one({
+            "id": candidate_create.assessment_id,
+            "user_id": current_user.id
+        })
+        if not assessment:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
+        # Check if candidate already exists for this assessment
+        existing = await db_manager.db.candidates.find_one({
+            "assessment_id": candidate_create.assessment_id,
+            "email": candidate_create.email.lower()
+        })
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="Candidate with this email already exists for this assessment"
+            )
+
+        now = datetime.utcnow()
+        candidate_id = str(uuid.uuid4())
+        invitation_token = secrets.token_urlsafe(32)
+
+        candidate_data = {
+            "id": candidate_id,
+            "user_id": current_user.id,
+            "assessment_id": candidate_create.assessment_id,
+            "name": candidate_create.name,
+            "email": candidate_create.email.lower(),
+            "status": "invited",
+            "invitation_token": invitation_token,
+            "invited_at": now,
+            "started_at": None,
+            "completed_at": None,
+            "score": None,
+            "answers": [],
+            "metadata": candidate_create.metadata or {},
+            "created_at": now,
+            "updated_at": now
+        }
+
+        await db_manager.db.candidates.insert_one(candidate_data)
+
+        # Send invitation email
+        assessment_title = assessment.get("title", "Assessment")
+        invitation_url = f"{config.FRONTEND_URL}/assessment/{assessment.get('public_slug', '')}?token={invitation_token}"
+        
+        await send_candidate_invitation(
+            candidate_name=candidate_create.name,
+            candidate_email=candidate_create.email,
+            assessment_title=assessment_title,
+            invitation_url=invitation_url
+        )
+
+        # Update assessment candidate count
+        await db_manager.db.assessments.update_one(
+            {"id": candidate_create.assessment_id},
+            {"$inc": {"candidate_count": 1}}
+        )
+
+        return Candidate(**candidate_data)
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Create candidate error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create candidate"
+        )
+
+
+@api_router.get(
+    "/candidates/{candidate_id}",
+    response_model=Candidate,
+    tags=["Candidates"]
+)
+async def get_candidate(
+    candidate_id: str = Path(...),
+    current_user: User = Depends(get_current_user)
+):
+    candidate = await db_manager.db.candidates.find_one({
+        "id": candidate_id,
+        "user_id": current_user.id
+    })
+
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    candidate.pop("_id", None)
+    return Candidate(**candidate)
+
+
+@api_router.put(
+    "/candidates/{candidate_id}",
+    response_model=Candidate,
+    tags=["Candidates"]
+)
+async def update_candidate(
+    candidate_id: str = Path(...),
+    candidate_update: CandidateUpdate = Body(...),
+    current_user: User = Depends(get_current_user)
+):
+    candidate = await db_manager.db.candidates.find_one({
+        "id": candidate_id,
+        "user_id": current_user.id
+    })
+
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    update_data = candidate_update.dict(exclude_unset=True)
+    update_data["updated_at"] = datetime.utcnow()
+
+    await db_manager.db.candidates.update_one(
+        {"id": candidate_id},
+        {"$set": update_data}
+    )
+
+    updated = await db_manager.db.candidates.find_one({"id": candidate_id})
+    updated.pop("_id", None)
+    return Candidate(**updated)
+
+
+@api_router.delete(
+    "/candidates/{candidate_id}",
+    tags=["Candidates"]
+)
+async def delete_candidate(
+    candidate_id: str = Path(...),
+    current_user: User = Depends(get_current_user)
+):
+    candidate = await db_manager.db.candidates.find_one({
+        "id": candidate_id,
+        "user_id": current_user.id
+    })
+
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    await db_manager.db.candidates.delete_one({"id": candidate_id})
+
+    # Update assessment candidate count
+    if candidate.get("assessment_id"):
+        await db_manager.db.assessments.update_one(
+            {"id": candidate["assessment_id"]},
+            {"$inc": {"candidate_count": -1}}
+        )
+
+    return SuccessResponse(message="Candidate deleted successfully")
+
+
+@api_router.post(
+    "/candidates/{candidate_id}/invite",
+    tags=["Candidates"]
+)
+async def resend_invitation(
+    candidate_id: str = Path(...),
+    resend_request: CandidateResendInvite = Body(...),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        candidate = await db_manager.db.candidates.find_one({
+            "id": candidate_id,
+            "user_id": current_user.id
+        })
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+
+        assessment = await db_manager.db.assessments.find_one({
+            "id": candidate["assessment_id"]
+        })
+        if not assessment:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
+        # Generate new token if requested
+        if resend_request.generate_new_token:
+            new_token = secrets.token_urlsafe(32)
+            await db_manager.db.candidates.update_one(
+                {"id": candidate_id},
+                {"$set": {"invitation_token": new_token}}
+            )
+            invitation_token = new_token
+        else:
+            invitation_token = candidate.get("invitation_token")
+
+        # Send invitation email
+        assessment_title = assessment.get("title", "Assessment")
+        invitation_url = f"{config.FRONTEND_URL}/assessment/{assessment.get('public_slug', '')}?token={invitation_token}"
+        
+        await send_candidate_invitation(
+            candidate_name=candidate.get("name"),
+            candidate_email=candidate.get("email"),
+            assessment_title=assessment_title,
+            invitation_url=invitation_url
+        )
+
+        # Update invitation timestamp
+        await db_manager.db.candidates.update_one(
+            {"id": candidate_id},
+            {"$set": {"invited_at": datetime.utcnow()}}
+        )
+
+        return SuccessResponse(message="Invitation resent successfully")
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Resend invitation error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to resend invitation"
+        )
+
+
+@api_router.get(
+    "/candidates/{candidate_id}/results",
+    response_model=CandidateResults,
+    tags=["Candidates"]
+)
+async def get_candidate_results(
+    candidate_id: str = Path(...),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        candidate = await db_manager.db.candidates.find_one({
+            "id": candidate_id,
+            "user_id": current_user.id
+        })
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+
+        # Get results from candidate_results collection
+        results = await db_manager.db.candidate_results.find_one({
+            "candidate_id": candidate_id
+        })
+
+        if not results:
+            raise HTTPException(status_code=404, detail="Results not found")
+
+        results.pop("_id", None)
+        return CandidateResults(**results)
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Get candidate results error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve candidate results"
+        )
+
 # ===========================================
-# Subscription & Billing Endpoints (PRODUCTION READY)
+# Public Assessment Endpoints
+# ===========================================
+
+@api_router.get(
+    "/public/assessment/{slug}",
+    response_model=PublicAssessment,
+    tags=["Public"]
+)
+async def get_public_assessment(
+    slug: str = Path(...),
+    token: Optional[str] = Query(None)
+):
+    try:
+        assessment = await db_manager.db.assessments.find_one({
+            "public_slug": slug,
+            "is_published": True
+        })
+        
+        if not assessment:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
+        # If token is provided, verify candidate access
+        candidate_data = None
+        if token:
+            candidate = await db_manager.db.candidates.find_one({
+                "invitation_token": token,
+                "assessment_id": assessment["id"]
+            })
+            if candidate:
+                candidate_data = {
+                    "id": candidate["id"],
+                    "name": candidate.get("name"),
+                    "email": candidate.get("email"),
+                    "status": candidate.get("status"),
+                    "started_at": candidate.get("started_at")
+                }
+
+        # Prepare public assessment data (excluding sensitive info)
+        public_assessment = {
+            "id": assessment["id"],
+            "title": assessment["title"],
+            "description": assessment.get("description", ""),
+            "settings": assessment.get("settings", {}),
+            "questions": assessment.get("questions", []),
+            "candidate": candidate_data
+        }
+
+        return PublicAssessment(**public_assessment)
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Get public assessment error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve assessment"
+        )
+
+
+@api_router.post(
+    "/public/submit/{token}",
+    tags=["Public"]
+)
+async def submit_assessment(
+    token: str = Path(...),
+    answers: List[Dict[str, Any]] = Body(...)
+):
+    try:
+        # Find candidate by token
+        candidate = await db_manager.db.candidates.find_one({
+            "invitation_token": token
+        })
+        
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Invalid invitation token")
+
+        if candidate.get("status") == "completed":
+            raise HTTPException(status_code=400, detail="Assessment already completed")
+
+        # Get assessment
+        assessment = await db_manager.db.assessments.find_one({
+            "id": candidate["assessment_id"]
+        })
+        
+        if not assessment:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
+        # Calculate score
+        questions = assessment.get("questions", [])
+        total_score = 0
+        max_score = len(questions) * 100  # Assuming each question is worth 100 points
+        
+        for question in questions:
+            question_id = question.get("id")
+            user_answer = next((a for a in answers if a.get("question_id") == question_id), None)
+            
+            if user_answer and question.get("correct_answer") == user_answer.get("answer"):
+                total_score += 100
+
+        score_percentage = (total_score / max_score * 100) if max_score > 0 else 0
+
+        # Update candidate status and store results
+        now = datetime.utcnow()
+        
+        await db_manager.db.candidates.update_one(
+            {"id": candidate["id"]},
+            {"$set": {
+                "status": "completed",
+                "completed_at": now,
+                "score": score_percentage,
+                "answers": answers,
+                "updated_at": now
+            }}
+        )
+
+        # Store detailed results
+        candidate_results = {
+            "candidate_id": candidate["id"],
+            "assessment_id": candidate["assessment_id"],
+            "user_id": candidate["user_id"],
+            "score": score_percentage,
+            "answers": answers,
+            "completion_time": (now - candidate.get("started_at", now)).total_seconds() if candidate.get("started_at") else 0,
+            "submitted_at": now,
+            "created_at": now
+        }
+
+        await db_manager.db.candidate_results.insert_one(candidate_results)
+
+        # Update assessment statistics
+        assessment_results = await db_manager.db.candidate_results.find({
+            "assessment_id": candidate["assessment_id"]
+        }).to_list(length=1000)
+
+        scores = [r.get("score", 0) for r in assessment_results]
+        average_score = sum(scores) / len(scores) if scores else 0
+
+        await db_manager.db.assessments.update_one(
+            {"id": candidate["assessment_id"]},
+            {"$set": {
+                "average_score": average_score,
+                "updated_at": now
+            }}
+        )
+
+        # Send results notification to owner
+        user = await db_manager.db.users.find_one({"id": candidate["user_id"]})
+        if user:
+            await send_candidate_results_notification(
+                owner_name=user.get("name"),
+                owner_email=user.get("email"),
+                candidate_name=candidate.get("name"),
+                candidate_email=candidate.get("email"),
+                assessment_title=assessment.get("title"),
+                score=score_percentage
+            )
+
+        return {
+            "success": True,
+            "score": score_percentage,
+            "message": "Assessment submitted successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Submit assessment error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to submit assessment"
+        )
+
+# ===========================================
+# Organization Endpoints
+# ===========================================
+
+@api_router.get(
+    "/organizations",
+    response_model=List[Organization],
+    tags=["Organizations"]
+)
+async def get_organizations(
+    current_user: User = Depends(get_current_user),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000)
+):
+    try:
+        # Get organizations where user is owner or member
+        organizations = (
+            await db_manager.db.organizations
+            .find({
+                "$or": [
+                    {"owner_id": current_user.id},
+                    {"members.user_id": current_user.id}
+                ]
+            })
+            .skip(skip)
+            .limit(limit)
+            .sort("created_at", -1)
+            .to_list(length=limit)
+        )
+
+        for org in organizations:
+            org.pop("_id", None)
+
+        return [Organization(**org) for org in organizations]
+
+    except Exception:
+        logger.exception("Get organizations error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve organizations"
+        )
+
+
+@api_router.post(
+    "/organizations",
+    response_model=Organization,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Organizations"]
+)
+async def create_organization(
+    organization_name: str = Body(..., embed=True),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        now = datetime.utcnow()
+        organization_id = str(uuid.uuid4())
+        
+        organization_data = {
+            "id": organization_id,
+            "name": organization_name,
+            "owner_id": current_user.id,
+            "slug": _slugify(organization_name),
+            "members": [{
+                "user_id": current_user.id,
+                "email": current_user.email,
+                "name": current_user.name,
+                "role": "owner",
+                "joined_at": now
+            }],
+            "settings": {},
+            "created_at": now,
+            "updated_at": now
+        }
+
+        await db_manager.db.organizations.insert_one(organization_data)
+        
+        # Update user's organization_id
+        await db_manager.db.users.update_one(
+            {"id": current_user.id},
+            {"$set": {"organization_id": organization_id}}
+        )
+
+        return Organization(**organization_data)
+
+    except Exception:
+        logger.exception("Create organization error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create organization"
+        )
+
+
+@api_router.get(
+    "/organizations/{organization_id}",
+    response_model=Organization,
+    tags=["Organizations"]
+)
+async def get_organization(
+    organization_id: str = Path(...),
+    current_user: User = Depends(get_current_user)
+):
+    organization = await db_manager.db.organizations.find_one({
+        "id": organization_id,
+        "$or": [
+            {"owner_id": current_user.id},
+            {"members.user_id": current_user.id}
+        ]
+    })
+
+    if not organization:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    organization.pop("_id", None)
+    return Organization(**organization)
+
+
+@api_router.put(
+    "/organizations/{organization_id}",
+    response_model=Organization,
+    tags=["Organizations"]
+)
+async def update_organization(
+    organization_id: str = Path(...),
+    organization_update: OrganizationUpdate = Body(...),
+    current_user: User = Depends(get_current_user)
+):
+    # Check if user is owner
+    organization = await db_manager.db.organizations.find_one({
+        "id": organization_id,
+        "owner_id": current_user.id
+    })
+
+    if not organization:
+        raise HTTPException(status_code=404, detail="Organization not found or access denied")
+
+    update_data = organization_update.dict(exclude_unset=True)
+    update_data["updated_at"] = datetime.utcnow()
+
+    if "name" in update_data and update_data["name"] != organization["name"]:
+        update_data["slug"] = _slugify(update_data["name"])
+
+    await db_manager.db.organizations.update_one(
+        {"id": organization_id},
+        {"$set": update_data}
+    )
+
+    updated = await db_manager.db.organizations.find_one({"id": organization_id})
+    updated.pop("_id", None)
+    return Organization(**updated)
+
+# ===========================================
+# Contact Form Endpoints
+# ===========================================
+
+@api_router.post(
+    "/contact",
+    response_model=SuccessResponse,
+    tags=["Contact"]
+)
+async def submit_contact_form(
+    contact_form: ContactFormCreate = Body(...)
+):
+    try:
+        # Verify reCAPTCHA if configured
+        if contact_form.recaptcha_token and not await verify_recaptcha(contact_form.recaptcha_token):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="reCAPTCHA verification failed"
+            )
+
+        now = datetime.utcnow()
+        contact_id = str(uuid.uuid4())
+
+        contact_data = {
+            "id": contact_id,
+            "name": contact_form.name,
+            "email": contact_form.email,
+            "subject": contact_form.subject,
+            "message": contact_form.message,
+            "created_at": now,
+            "status": "new",
+            "updated_at": now
+        }
+
+        await db_manager.db.contact_forms.insert_one(contact_data)
+
+        # Send notification email
+        await send_contact_notification(
+            name=contact_form.name,
+            email=contact_form.email,
+            subject=contact_form.subject,
+            message=contact_form.message
+        )
+
+        return SuccessResponse(
+            message="Thank you for your message. We'll get back to you soon."
+        )
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Submit contact form error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to submit contact form"
+        )
+
+# ===========================================
+# Demo Request Endpoints
+# ===========================================
+
+@api_router.post(
+    "/demo",
+    response_model=SuccessResponse,
+    tags=["Demo"]
+)
+async def request_demo(
+    demo_request: DemoRequestCreate = Body(...)
+):
+    try:
+        # Verify reCAPTCHA if configured
+        if demo_request.recaptcha_token and not await verify_recaptcha(demo_request.recaptcha_token):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="reCAPTCHA verification failed"
+            )
+
+        now = datetime.utcnow()
+        demo_id = str(uuid.uuid4())
+
+        demo_data = {
+            "id": demo_id,
+            "name": demo_request.name,
+            "email": demo_request.email,
+            "company": demo_request.company,
+            "role": demo_request.role,
+            "team_size": demo_request.team_size,
+            "use_case": demo_request.use_case,
+            "preferred_date": demo_request.preferred_date,
+            "preferred_time": demo_request.preferred_time,
+            "message": demo_request.message,
+            "created_at": now,
+            "status": "pending",
+            "updated_at": now
+        }
+
+        await db_manager.db.demo_requests.insert_one(demo_data)
+
+        # Send notification email
+        await send_demo_request_notification(
+            name=demo_request.name,
+            email=demo_request.email,
+            company=demo_request.company,
+            role=demo_request.role,
+            team_size=demo_request.team_size,
+            use_case=demo_request.use_case,
+            preferred_date=demo_request.preferred_date,
+            preferred_time=demo_request.preferred_time,
+            message=demo_request.message
+        )
+
+        return SuccessResponse(
+            message="Demo request received. We'll contact you soon to schedule."
+        )
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Request demo error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to submit demo request"
+        )
+
+# ===========================================
+# Dashboard Stats Endpoint
+# ===========================================
+
+@api_router.get(
+    "/dashboard/stats",
+    response_model=DashboardStats,
+    tags=["Dashboard"]
+)
+async def get_dashboard_stats(
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        # Get user's assessments
+        assessments = await db_manager.db.assessments.find({
+            "user_id": current_user.id
+        }).to_list(length=1000)
+
+        # Get user's candidates
+        candidates = await db_manager.db.candidates.find({
+            "user_id": current_user.id
+        }).to_list(length=10000)
+
+        # Calculate statistics
+        total_assessments = len(assessments)
+        published_assessments = len([a for a in assessments if a.get("is_published")])
+        total_candidates = len(candidates)
+        completed_candidates = len([c for c in candidates if c.get("status") == "completed"])
+        
+        # Calculate average score across all assessments
+        scores = []
+        for assessment in assessments:
+            assessment_results = await db_manager.db.candidate_results.find({
+                "assessment_id": assessment["id"]
+            }).to_list(length=1000)
+            scores.extend([r.get("score", 0) for r in assessment_results])
+        
+        average_score = sum(scores) / len(scores) if scores else 0
+
+        # Get recent activity
+        recent_candidates = await db_manager.db.candidates.find({
+            "user_id": current_user.id
+        }).sort("created_at", -1).limit(5).to_list(length=5)
+
+        recent_assessments = await db_manager.db.assessments.find({
+            "user_id": current_user.id
+        }).sort("updated_at", -1).limit(5).to_list(length=5)
+
+        return DashboardStats(
+            total_assessments=total_assessments,
+            published_assessments=published_assessments,
+            total_candidates=total_candidates,
+            completed_candidates=completed_candidates,
+            completion_rate=(completed_candidates / total_candidates * 100) if total_candidates > 0 else 0,
+            average_score=average_score,
+            recent_candidates=[Candidate(**c) for c in recent_candidates],
+            recent_assessments=[Assessment(**a) for a in recent_assessments]
+        )
+
+    except Exception:
+        logger.exception("Get dashboard stats error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve dashboard statistics"
+        )
+
+# ===========================================
+# Subscription & Billing Endpoints
 # ===========================================
 
 PLAN_HIERARCHY = {
@@ -1894,10 +3130,6 @@ async def get_plans():
         logger.exception("Get plans error")
         raise HTTPException(500, "Failed to retrieve plans")
 
-
-# ===========================================
-# Checkout & Subscription Creation
-# ===========================================
 
 @api_router.post("/subscriptions/checkout", tags=["Subscriptions"])
 async def create_checkout_session_endpoint(
@@ -1939,10 +3171,6 @@ async def create_checkout_session_endpoint(
     return session_data
 
 
-# ===========================================
-# Current Subscription
-# ===========================================
-
 @api_router.get("/subscriptions/me", tags=["Subscriptions"])
 async def get_user_subscription(current_user: User = Depends(get_current_user)):
     sub = await db_manager.db.subscriptions.find_one(
@@ -1960,10 +3188,6 @@ async def get_user_subscription(current_user: User = Depends(get_current_user)):
     sub.pop("_id", None)
     return sub
 
-
-# ===========================================
-# Cancel Subscription
-# ===========================================
 
 @api_router.post("/subscriptions/cancel", tags=["Subscriptions"])
 async def cancel_subscription_endpoint(current_user: User = Depends(get_current_user)):
@@ -1993,10 +3217,6 @@ async def cancel_subscription_endpoint(current_user: User = Depends(get_current_
     logger.info(f"Subscription cancelled | user={current_user.id}")
     return SuccessResponse(message="Subscription cancelled")
 
-
-# ===========================================
-# Upgrade Subscription
-# ===========================================
 
 @api_router.post("/subscriptions/upgrade", tags=["Subscriptions"])
 async def upgrade_subscription(
@@ -2048,49 +3268,98 @@ async def handle_checkout_completed(event: dict):
     """Handle checkout.session.completed event."""
     session = event["data"]["object"]
     user_id = session.get("metadata", {}).get("user_id")
+    plan_id = session.get("metadata", {}).get("plan_id", "basic")
+    
     if user_id:
+        # Update user plan
         await db_manager.db.users.update_one(
             {"id": user_id},
-            {"$set": {"plan": session.get("metadata", {}).get("plan_id", "basic")}}
+            {"$set": {"plan": plan_id, "updated_at": datetime.utcnow()}}
+        )
+        
+        # Create or update subscription record
+        subscription_data = {
+            "user_id": user_id,
+            "plan_id": plan_id,
+            "status": "active",
+            "stripe_customer_id": session.get("customer"),
+            "stripe_subscription_id": session.get("subscription"),
+            "current_period_start": datetime.fromtimestamp(session.get("created")),
+            "current_period_end": datetime.fromtimestamp(session.get("expires_at")),
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        await db_manager.db.subscriptions.update_one(
+            {"user_id": user_id},
+            {"$set": subscription_data},
+            upsert=True
         )
 
 async def handle_subscription_updated(event: dict):
     """Handle customer.subscription.updated event."""
     subscription = event["data"]["object"]
     customer_id = subscription.get("customer")
+    
     if customer_id:
-        await db_manager.db.subscriptions.update_one(
-            {"stripe_customer_id": customer_id},
-            {"$set": {
-                "status": subscription.get("status"),
-                "current_period_end": datetime.fromtimestamp(subscription.get("current_period_end")),
-                "updated_at": datetime.utcnow()
-            }}
-        )
+        # Find subscription by customer ID
+        sub = await db_manager.db.subscriptions.find_one({
+            "stripe_customer_id": customer_id
+        })
+        
+        if sub:
+            await db_manager.db.subscriptions.update_one(
+                {"stripe_customer_id": customer_id},
+                {"$set": {
+                    "status": subscription.get("status"),
+                    "plan_id": subscription.get("plan", {}).get("id", sub["plan_id"]),
+                    "current_period_end": datetime.fromtimestamp(subscription.get("current_period_end")),
+                    "updated_at": datetime.utcnow()
+                }}
+            )
+            
+            # Update user plan
+            await db_manager.db.users.update_one(
+                {"id": sub["user_id"]},
+                {"$set": {"plan": subscription.get("plan", {}).get("id", sub["plan_id"]), "updated_at": datetime.utcnow()}}
+            )
 
 async def handle_subscription_deleted(event: dict):
     """Handle customer.subscription.deleted event."""
     subscription = event["data"]["object"]
     customer_id = subscription.get("customer")
+    
     if customer_id:
-        await db_manager.db.subscriptions.update_one(
-            {"stripe_customer_id": customer_id},
-            {"$set": {
-                "status": "cancelled",
-                "cancelled_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }}
-        )
+        sub = await db_manager.db.subscriptions.find_one({
+            "stripe_customer_id": customer_id
+        })
+        
+        if sub:
+            await db_manager.db.subscriptions.update_one(
+                {"stripe_customer_id": customer_id},
+                {"$set": {
+                    "status": "cancelled",
+                    "cancelled_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                }}
+            )
+            
+            # Downgrade user to free plan
+            await db_manager.db.users.update_one(
+                {"id": sub["user_id"]},
+                {"$set": {"plan": "free", "updated_at": datetime.utcnow()}}
+            )
 
 async def handle_invoice_payment_succeeded(event: dict):
     """Handle invoice.payment_succeeded event."""
     invoice = event["data"]["object"]
     customer_id = invoice.get("customer")
+    
     if customer_id:
         await db_manager.db.invoices.insert_one({
             "stripe_invoice_id": invoice.get("id"),
             "stripe_customer_id": customer_id,
-            "amount_paid": invoice.get("amount_paid"),
+            "amount_paid": invoice.get("amount_paid") / 100,  # Convert from cents
             "currency": invoice.get("currency"),
             "status": invoice.get("status"),
             "created_at": datetime.utcnow()
@@ -2100,6 +3369,7 @@ async def handle_invoice_payment_failed(event: dict):
     """Handle invoice.payment_failed event."""
     invoice = event["data"]["object"]
     customer_id = invoice.get("customer")
+    
     if customer_id:
         await db_manager.db.subscriptions.update_one(
             {"stripe_customer_id": customer_id},
@@ -2138,30 +3408,6 @@ async def stripe_webhook(request: Request):
         await handler(event)
 
     return {"received": True, "type": event["type"]}
-
-# ===========================================
-# Basic Root Endpoints
-# ===========================================
-
-@app.head("/")
-async def head_root():
-    return Response(status_code=200)
-
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/api", status_code=307)
-
-@app.get("/favicon.ico")
-async def favicon():
-    return Response(status_code=204)
-
-@app.get("/robots.txt")
-async def robots():
-    return PlainTextResponse(
-        "User-agent: *\n"
-        "Disallow: /api/\n"
-        "Allow: /health\n"
-    )
 
 # ===========================================
 # Include Router
@@ -2224,4 +3470,4 @@ if __name__ == "__main__":
         access_log=False if config.is_production else True,
         timeout_keep_alive=30,
         workers=4 if config.is_production else 1
-        )
+    )
